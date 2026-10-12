@@ -1,0 +1,10 @@
+# binary files: never touch line endings
+*.pdf binary
+*.pt binary
+*.onnx binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.zip binary
+*.h5 binary

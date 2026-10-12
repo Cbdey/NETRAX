@@ -1,0 +1,51 @@
+{
+  "measured_at": "2026-10-12 08:15",
+  "gpu": "NVIDIA GeForce GTX 1650",
+  "cpu": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+  "imgsz": 640,
+  "frames": 20,
+  "rows": [
+    {
+      "model": "person (yolov8n COCO)",
+      "runtime": "PyTorch CUDA FP32",
+      "mean_ms": 11.2,
+      "p50_ms": 9.9,
+      "p95_ms": 15.5
+    },
+    {
+      "model": "ppe main ppe_v2.pt (yolov8s)",
+      "runtime": "PyTorch CUDA FP32",
+      "mean_ms": 21.5,
+      "p50_ms": 20.9,
+      "p95_ms": 23.7
+    },
+    {
+      "model": "fire (fire_smoke_v2B.pt)",
+      "runtime": "PyTorch CUDA FP32",
+      "mean_ms": 9.2,
+      "p50_ms": 8.4,
+      "p95_ms": 14.2
+    },
+    {
+      "model": "person+keypoints (yolov8n-pose)",
+      "runtime": "PyTorch CUDA FP32",
+      "mean_ms": 11.3,
+      "p50_ms": 10.0,
+      "p95_ms": 17.1
+    },
+    {
+      "model": "ppe_aux ppe_v3B.pt (yolov8s-P2)",
+      "runtime": "PyTorch CUDA FP32",
+      "mean_ms": 28.0,
+      "p50_ms": 27.9,
+      "p95_ms": 29.6
+    },
+    {
+      "model": "shoe_cls (yolov8n-cls, 128, per foot crop)",
+      "runtime": "PyTorch CUDA FP32",
+      "mean_ms": 5.8,
+      "p50_ms": 5.6,
+      "p95_ms": 7.7
+    }
+  ]
+}

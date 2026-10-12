@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NETRAX — Hardware & Attendance</title>
+<style>
+:root{
+  --bg:#eef1f5; --card:#ffffff; --navy:#15213a; --ink:#1d2939; --muted:#667085; --line:#e3e7ee;
+  --red:#c0392b; --red-bg:#fdecea; --amber:#c98a1b; --amber-bg:#fdf3e1; --blue:#2f6fad; --blue-bg:#e8f0f9;
+  --green:#2e7d5b; --green-bg:#e5f3ec; --grey:#98a2b3; --grey-bg:#f2f4f7; --radius:10px;
+  --spark:#2f6fad;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+button,select,input{font:inherit}
+.wrap{max-width:1440px;margin:0 auto;padding:18px 22px 30px}
+header{background:var(--navy);color:#fff;border-radius:var(--radius);padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo{width:38px;height:38px;border-radius:8px;background:var(--green);display:grid;place-items:center;font-weight:700;font-size:18px}
+header h1{margin:0;font-size:19px;font-weight:600}
+header p{margin:1px 0 0;color:#a9b4c7;font-size:12px}
+header nav{margin-left:auto;display:flex;gap:10px;align-items:center}
+header nav a{color:#cfe0f5;font-size:13px;text-decoration:none;border:1px solid #31456b;border-radius:6px;padding:6px 12px}
+header nav a:hover,header nav a:focus-visible{background:#22345a;outline:none}
+.pill{display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;font-size:12px;font-weight:600;background:#1f3b36;color:#9ce0c1}
+.pill i{width:8px;height:8px;border-radius:50%;background:#3ddc97}
+.pill.off{background:#4a2224;color:#f5b3ad}.pill.off i{background:#ef5b4c}
+h2{font-size:14px;font-weight:600;margin:0 0 10px}
+h3{font-size:13px;font-weight:600;margin:0 0 8px;color:var(--ink)}
+.panel{background:var(--card);border-radius:var(--radius);padding:16px}
+.grid2{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr);gap:16px;margin-top:16px;align-items:start}
+.grid2>*{min-width:0}
+.muted{color:var(--muted)}
+small{font-size:12px}
+
+/* station banner */
+.banner{margin-top:14px;border-radius:var(--radius);padding:14px 18px;display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;background:var(--card);border-left:6px solid var(--grey)}
+.banner .lvl{font-size:22px;font-weight:700;letter-spacing:.01em}
+.banner .why{font-size:13px}
+.banner.NORMAL{border-color:var(--green)}.banner.NORMAL .lvl{color:var(--green)}
+.banner.WARNING{border-color:var(--amber)}.banner.WARNING .lvl{color:var(--amber)}
+.banner.CRITICAL{border-color:var(--red);background:var(--red-bg)}.banner.CRITICAL .lvl{color:var(--red)}
+.banner.FAULT{border-color:var(--amber)}.banner.FAULT .lvl{color:var(--amber)}
+.banner.OFFLINE .lvl{color:var(--muted)}
+.outs{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--muted)}
+.led{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid var(--line);vertical-align:-3px;margin-right:4px;background:#fff}
+.led.on.g{background:#2fb36f;border-color:#2fb36f;box-shadow:0 0 0 3px #d6f2e3}
+.led.on.o{background:#f0a020;border-color:#f0a020;box-shadow:0 0 0 3px #fbe8c6}
+.led.on.r{background:#e0402f;border-color:#e0402f;box-shadow:0 0 0 3px #f8d4cf}
+.chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
+.c-green{background:var(--green-bg);color:var(--green)}.c-red{background:var(--red-bg);color:var(--red)}
+.c-amber{background:var(--amber-bg);color:var(--amber)}.c-blue{background:var(--blue-bg);color:var(--blue)}.c-grey{background:var(--grey-bg);color:var(--muted)}
+
+/* sensor cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.sc{border:1px solid var(--line);border-radius:8px;padding:10px 12px 8px;position:relative}
+.sc .k{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:6px}
+.sc .v{font-size:24px;font-weight:600;margin:2px 0 0;font-variant-numeric:tabular-nums}
+.sc .v small{font-size:12px;font-weight:500;color:var(--muted);margin-left:3px}
+.sc .n{font-size:11px;color:var(--muted);min-height:15px}
+.sc.alert{border-color:var(--red);background:#fffafa}.sc.warn{border-color:var(--amber)}
+.spark{display:block;width:100%;height:46px;margin-top:4px;overflow:visible}
+.spark .ln{fill:none;stroke:var(--spark);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.spark .thr{stroke:var(--red);stroke-width:1;stroke-dasharray:3 3;opacity:.7}
+.spark .base{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 3;opacity:.6}
+.spark .hx{stroke:var(--muted);stroke-width:1;display:none}
+.spark .hd{fill:#fff;stroke:var(--spark);stroke-width:2;display:none}
+.tip{position:fixed;pointer-events:none;background:var(--navy);color:#fff;font-size:12px;padding:5px 8px;border-radius:6px;display:none;z-index:40;white-space:nowrap}
+
+/* PPE contact */
+.bar{height:10px;background:var(--grey-bg);border-radius:5px;position:relative;margin:6px 0 2px;overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--blue);border-radius:5px}
+.bar b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+.ppe{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:6px 6px;border-bottom:1px solid var(--line)}
+td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.tablewrap{max-height:340px;overflow:auto;max-width:100%}
+.people{display:flex;flex-wrap:wrap;gap:8px}
+.person{border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:170px}
+.person b{display:block;font-weight:600}
+.btn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink);text-decoration:none;display:inline-block}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.form{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-top:8px}
+.form label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:3px}
+.form input,.form select{border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:150px}
+.empty{color:var(--muted);font-size:13px;padding:14px 4px}
+.toasts{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:50;max-width:360px}
+.toast{background:var(--navy);color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 6px 20px rgba(21,33,58,.25)}
+.toast b{display:block;font-size:12px;margin-bottom:2px;color:#9ce0c1}
+.rule{font-size:12px;color:var(--muted);margin:0 0 10px}
+.devsel{margin-left:8px}
+@media (max-width:1050px){.grid2{grid-template-columns:1fr}.banner{grid-template-columns:1fr}}
+@media (max-width:560px){.wrap{padding:12px 16px}.ppe{grid-template-columns:1fr}.cards{grid-template-columns:1fr 1fr}
+  .sc .v{font-size:20px}.grid2{grid-template-columns:minmax(0,1fr)}}
+</style>
+<link rel="stylesheet" href="/static/theme.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">N</div>
+    <div><h1>NETRAX — Hardware &amp; Attendance</h1>
+      <p>ESP32 safety station · live sensors · fire cross-check · RFID smart attendance</p></div>
+    <nav><a href="/">Camera dashboard</a><span class="pill off" id="livePill"><i></i><span>CONNECTING</span></span></nav>
+  </header>
+
+  <section class="banner OFFLINE" id="banner" aria-live="polite">
+    <div><div class="lvl" id="bLevel">OFFLINE</div><small class="muted" id="bName">Safety station</small>
+      <select class="devsel" id="devSel" aria-label="Station" hidden></select></div>
+    <div class="why" id="bWhy">Waiting for the ESP32 to send data to <code>/api/hw/telemetry</code>.</div>
+    <div class="outs" aria-label="Station outputs">
+      <span><i class="led g" id="oG"></i>Green</span><span><i class="led o" id="oO"></i>Orange</span><span><i class="led r" id="oR"></i>Red</span>
+      <span class="chip c-grey" id="oBuz">Buzzer off</span><span class="chip c-grey" id="oRel">Relay off</span>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <div>
+      <div class="panel">
+        <h2>Live sensors <small class="muted" id="age"></small></h2>
+        <div class="cards" id="cards"></div>
+        <p class="rule" style="margin-top:10px">Trend lines show the last 5 minutes. Dashed red = alarm threshold, dotted grey = learned baseline.
+          MQ and FSR values are raw ADC counts (0–4095), not ppm. Missing readings show “—”, never as safe.</p>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <h2>Fire &amp; smoke cross-check</h2>
+        <p class="rule" id="fRule">A camera fire or smoke detection waits for the safety station of that zone. Flame sensor, MQ-2 or temperature
+          confirms → CRITICAL and siren. Station stays green → not alarmed (camera only). Station offline → camera alarm goes ahead.</p>
+        <div class="tablewrap"><table><thead><tr><th>Time</th><th>Source</th><th>Zone</th><th>Result</th><th>Why</th></tr></thead>
+          <tbody id="fires"></tbody></table></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h2>In the area now <span class="chip c-blue" id="nIn">0</span></h2>
+        <div class="people" id="people"></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <h2>PPE contact sensors</h2>
+        <p class="rule">Helmet / shoe pressure (FSR) and touch sensors on the station's PPE kit. Supporting evidence for the checked-in
+          worker — the cameras are the main PPE check.</p>
+        <div class="ppe" id="ppe"></div>
+        <div style="margin-top:8px"><small class="muted" id="ppeWho"></small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <h2 style="margin:0">RFID smart attendance</h2>
+      <span id="readers"></span>
+      <span class="muted" style="font-size:12px">First scan = entered, next scan = exited. The server keeps the state, so an ESP32 restart changes nothing.</span>
+      <a class="btn" style="margin-left:auto" href="/api/attendance/export?days=7">Download Excel (CSV) · 7 days</a>
+    </div>
+    <div class="grid2" style="margin-top:6px">
+      <div class="tablewrap"><table><thead><tr><th>Time</th><th>Name</th><th>Worker</th><th>Area</th><th>Event</th><th>Card UID</th></tr></thead>
+        <tbody id="scans"></tbody></table></div>
+      <div>
+        <h3>Link a card to a worker</h3>
+        <p class="rule">Scan the new card once: it appears here as unregistered. Pick the worker (or type a new name) and save.</p>
+        <form class="form" id="cardForm">
+          <label>Card UID <input id="cUid" required placeholder="e.g. A1B2C3D4" autocomplete="off"></label>
+          <label>Worker <select id="cWorker"><option value="">New worker (card only)</option></select></label>
+          <label id="cNameL">Name <input id="cName" placeholder="Full name" autocomplete="off"></label>
+          <button class="btn primary" type="submit">Save card</button>
+        </form>
+        <div class="rule" id="cMsg" style="margin-top:8px"></div>
+        <h3 style="margin-top:14px">Workers and cards</h3>
+        <div id="wcards"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="tip" id="tip"></div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const tfmt = t => new Date(t*1000).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+const dfmt = t => new Date(t*1000).toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit"});
+async function api(p, o){ const r = await fetch(p, o); const d = r.status === 204 ? null : await r.json(); if (!r.ok) throw new Error((d && d.detail) || r.status); return d; }
+let STATE = null, DEV = null, HIST = {}, WORKERS = [];
+
+/* sensor card definitions: key, label, unit, threshold key / fixed value, baseline key, decimals */
+const CARDS = [
+  {k:"temperature_c", label:"Temperature (DHT22)", unit:"°C", thr:"temp_critical_c", base:"temp", dp:1, span:4, hz:"heat"},
+  {k:"humidity_pct", label:"Humidity (DHT22)", unit:"%", dp:0, span:10},
+  {k:"mq2_adc", label:"Smoke / gas (MQ-2)", unit:"ADC", thr:"mq2_abs", base:"mq2", dp:0, span:300, hz:"smoke"},
+  {k:"mq135_adc", label:"Air quality (MQ-135)", unit:"ADC", base:"mq135", dp:0, span:300},
+  {k:"flame_detected", label:"Flame sensor", bool:true},
+  {k:"pm2_5_ugm3", label:"PM2.5 (PMS5003)", unit:"µg/m³", thr:"pm25_warn", dp:0, span:20, note:d => `PM1.0 ${d.pm1_0_ugm3 ?? "—"} · PM10 ${d.pm10_ugm3 ?? "—"}`},
+  {k:"thermistor_adc", label:"Thermistor (raw)", unit:"ADC", dp:0, span:200, note:() => "°C after calibration"},
+  {k:"vibration_metric", label:"Vibration (MPU6050)", unit:"g", dp:2, span:0.2, note:d => d.mpu6050_available === false ? "sensor not detected" : (d.mpu6050_available ? "sensor online" : "")},
+];
+
+function spark(points, thr, base, dp, span){
+  const W = 200, H = 46, vals = points.map(p => p.v).filter(v => v != null);
+  if (vals.length < 2) return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true"></svg>`;
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (thr != null && thr <= hi * 1.6) hi = Math.max(hi, thr);
+  if (base != null) { lo = Math.min(lo, base); hi = Math.max(hi, base); }
+  const minSpan = span || 1e-6;
+  if (hi - lo < minSpan) { const mid = (hi + lo) / 2; hi = mid + minSpan / 2; lo = mid - minSpan / 2; }
+  const t0 = points[0].t, t1 = points[points.length-1].t || t0 + 1;
+  const X = t => (t - t0) / Math.max(1, t1 - t0) * W, Y = v => H - 3 - (v - lo) / (hi - lo) * (H - 6);
+  const path = points.filter(p => p.v != null).map((p, i) => `${i ? "L" : "M"}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join("");
+  const thrL = thr != null && thr <= hi ? `<line class="thr" x1="0" x2="${W}" y1="${Y(thr)}" y2="${Y(thr)}"/>` : "";
+  const baseL = base != null ? `<line class="base" x1="0" x2="${W}" y1="${Y(base)}" y2="${Y(base)}"/>` : "";
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Trend, last 5 minutes"
+     data-pts='${JSON.stringify(points.filter(p => p.v != null).map(p => [p.t, p.v]))}' data-dp="${dp ?? 0}">
+    ${baseL}${thrL}<path class="ln" d="${path}" vector-effect="non-scaling-stroke"/>
+    <line class="hx" y1="0" y2="${H}"/><circle class="hd" r="3.5"/></svg>`;
+}
+/* hover: crosshair + tooltip with value and time */
+document.addEventListener("mousemove", ev => {
+  const svg = ev.target.closest && ev.target.closest(".spark[data-pts]"); const tip = $("tip");
+  document.querySelectorAll(".spark .hx,.spark .hd").forEach(n => { if (!svg || !svg.contains(n)) n.style.display = "none"; });
+  if (!svg){ tip.style.display = "none"; return; }
+  const pts = JSON.parse(svg.dataset.pts), r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+  if (!pts.length) return;
+  const t0 = pts[0][0], t1 = pts[pts.length-1][0], tx = t0 + (ev.clientX - r.left) / r.width * (t1 - t0);
+  let best = pts[0]; for (const p of pts) if (Math.abs(p[0] - tx) < Math.abs(best[0] - tx)) best = p;
+  const lo = Math.min(...pts.map(p => p[1])), path = svg.querySelector(".ln");
+  const x = (best[0] - t0) / Math.max(1, t1 - t0) * vb.width;
+  const hx = svg.querySelector(".hx"); hx.setAttribute("x1", x); hx.setAttribute("x2", x); hx.style.display = "block";
+  tip.textContent = `${Number(best[1]).toFixed(+svg.dataset.dp)} · ${tfmt(best[0])}`;
+  tip.style.display = "block"; tip.style.left = (ev.clientX + 12) + "px"; tip.style.top = (ev.clientY - 30) + "px";
+});
+
+function dev(){ return (STATE?.devices || []).find(d => d.device_id === DEV) || (STATE?.devices || [])[0]; }
+
+function renderBanner(){
+  const d = dev(); const b = $("banner");
+  if (!d){ b.className = "banner OFFLINE"; $("bLevel").textContent = "NO STATION"; $("bWhy").textContent = "No station configured in config/hardware.yaml."; return; }
+  const lvl = !d.online ? "OFFLINE" : (d.eval?.level || "UNKNOWN");
+  b.className = "banner " + lvl;
+  $("bLevel").textContent = lvl === "NORMAL" ? "NORMAL · all clear" : lvl === "CRITICAL" ? "CRITICAL" : lvl === "WARNING" ? "WARNING" :
+    lvl === "FAULT" ? "SENSOR FAULT" : "OFFLINE";
+  $("bName").textContent = `${d.name} · ${d.device_id}${d.zone_id ? " · " + zoneName(d.zone_id) : " · no zone set"}`;
+  const reasons = d.eval?.reasons || [];
+  $("bWhy").innerHTML = !d.online ? (d.age_s != null ? `No data for ${Math.round(d.age_s)} s — station offline. Camera fire alerts in this zone go ahead without hardware confirmation.` :
+      "Waiting for the ESP32 to send data to <code>/api/hw/telemetry</code>.")
+    : reasons.length ? esc(reasons.join(" · ")) : "Flame, smoke, temperature and air quality are normal.";
+  const x = d.data || {};
+  const on = (id, v) => $(id).classList.toggle("on", !!v);
+  on("oG", d.online && x.green_led); on("oO", d.online && x.orange_led); on("oR", d.online && x.red_led);
+  $("oBuz").textContent = "Buzzer " + (x.buzzer_on ? "on" : "off"); $("oBuz").className = "chip " + (x.buzzer_on ? "c-red" : "c-grey");
+  $("oRel").textContent = "Siren relay " + (x.relay_on ? "on" : "off"); $("oRel").className = "chip " + (x.relay_on ? "c-red" : "c-grey");
+  const extra = [x.fw ? "firmware " + x.fw : "", x.rssi != null ? "Wi-Fi " + x.rssi + " dBm" : "", x.uptime_s != null ? "up " + Math.round(x.uptime_s/60) + " min" : ""].filter(Boolean).join(" · ");
+  $("age").textContent = d.online ? `updated ${d.age_s} s ago${extra ? " · " + extra : ""}` : "";
+}
+
+function renderCards(){
+  const d = dev(); const x = d?.data || {}, thrCfg = STATE?.thresholds || {}, base = d?.eval?.baseline || {};
+  const h = HIST[d?.device_id] || [], online = d?.online;
+  $("cards").innerHTML = CARDS.map(c => {
+    const v = online ? x[c.k] : null;
+    let val, cls = "";
+    if (c.bool){
+      val = v == null ? "—" : v ? "FLAME" : "No flame";
+      if (v) cls = "alert";
+      return `<div class="sc ${cls}"><div class="k"><span>${c.label}</span>${v ? '<span class="chip c-red">ALARM</span>' : ""}</div>
+        <div class="v">${val}</div><div class="n">${v == null ? "no reading" : "digital output"}</div>
+        ${spark(h.map(p => ({t:p.at, v:p[c.k] == null ? null : (p[c.k] ? 1 : 0)})), null, null, 0)}</div>`;
+    }
+    const thr = c.thr ? thrCfg[c.thr] : null;
+    if (v != null && thr != null && v >= thr) cls = c.k === "pm2_5_ugm3" ? "warn" : "alert";
+    if (c.hz && online && d?.eval?.hazards?.[c.hz]) cls = "alert";      // e.g. MQ-2 rose far above its baseline
+    val = v == null ? "—" : Number(v).toFixed(c.dp);
+    const note = c.note ? c.note(x) : (base[c.base] != null ? `baseline ${base[c.base]}` : (thr != null ? `limit ${thr}` : ""));
+    return `<div class="sc ${cls}"><div class="k"><span>${c.label}</span>${cls === "alert" ? '<span class="chip c-red">HIGH</span>' : cls === "warn" ? '<span class="chip c-amber">WARN</span>' : ""}</div>
+      <div class="v">${val}${v != null && c.unit ? `<small>${c.unit}</small>` : ""}</div><div class="n">${esc(note)}</div>
+      ${spark(h.map(p => ({t:p.at, v:p[c.k]})), thr, base[c.base], c.dp, c.span)}</div>`;
+  }).join("");
+}
+
+function renderPPE(){
+  const d = dev(); const x = (d?.online && d?.data) || {}, thr = STATE?.thresholds?.fsr_contact ?? 700, st = d?.eval?.ppe || {};
+  const chip = s => s === "PRESENT" ? '<span class="chip c-green">PRESENT</span>' : s === "NOT_DETECTED" ? '<span class="chip c-red">NOT DETECTED</span>' : '<span class="chip c-grey">UNKNOWN</span>';
+  const fsr = (label, v, touch, s) => `<div><div style="display:flex;justify-content:space-between"><b style="font-weight:600">${label}</b>${chip(d?.online ? s : null)}</div>
+    <div class="bar" title="FSR ${v ?? "—"} / threshold ${thr}"><i style="width:${v == null ? 0 : Math.min(100, v/4095*100)}%"></i><b style="left:${thr/4095*100}%"></b></div>
+    <small class="muted">pressure ${v ?? "—"} ADC (contact ≥ ${thr}) · touch ${touch == null ? "—" : touch ? "yes" : "no"}</small></div>`;
+  $("ppe").innerHTML = fsr("Helmet", x.helmet_fsr_adc, x.touch_helmet, st.helmet) + fsr("Safety shoes", x.shoe_fsr_adc, x.touch_shoe, st.boots) +
+    `<div><b style="font-weight:600">PPE kit touch point</b> ${chip(d?.online ? st.kit : null)}</div>`;
+  const who = (STATE?.present || []).find(p => p.device_id === d?.device_id);
+  $("ppeWho").textContent = (who ? `Kit is attributed to ${who.name} (${who.worker_id}), checked in at ${tfmt(who.since)}.` : "Nobody is checked in at this station.") +
+    (STATE?.hardware_ppe_alerts ? " Contact alerts: ON." : " Contact alerts: off (config/hardware.yaml → hardware_ppe.alerts).");
+}
+
+function renderPeople(){
+  const ps = STATE?.present || [];
+  $("nIn").textContent = ps.length;
+  const rz = (STATE?.restricted || []).map(r => `<div class="rule" style="margin:0 0 6px">🔒 <b>${esc(r.zone_name)}</b> is restricted: only ${r.allowed.map(a => esc(a.name)).join(", ")}. Anyone else tapping in raises a HIGH alert.</div>`).join("");
+  $("people").innerHTML = rz + (ps.length ? ps.map(p => `<div class="person" style="${p.access === "DENIED" ? "border-color:var(--red);background:rgba(220,38,38,.08)" : ""}"><b>${esc(p.name)}</b>${p.access === "DENIED" ? ' <span class="chip c-red">NOT AUTHORISED</span>' : ""}<small class="muted">${esc(p.worker_id)} · ${esc(p.zone_name)}<br>in since ${tfmt(p.since)}</small></div>`).join("")
+    : `<div class="empty">Nobody checked in. Scan a registered card at the reader.</div>`);
+}
+
+const EVTCHIP = {ENTERED:"c-green", EXITED:"c-blue", UNKNOWN_UID:"c-amber", REJECTED:"c-red"};
+function renderScans(rows){
+  $("scans").innerHTML = rows.length ? rows.map(r => `<tr><td>${dfmt(r.at)}</td><td>${esc(r.name || "Unregistered card")}</td><td>${esc(r.worker_id || "—")}</td>
+    <td>${esc(r.zone_name)}</td><td><span class="chip ${EVTCHIP[r.event] || "c-grey"}">${esc(r.event === "UNKNOWN_UID" ? "UNKNOWN CARD" : r.event)}</span>${r.access === "DENIED" && r.event === "ENTERED" ? ' <span class="chip c-red">NOT AUTHORISED</span>' : ""}</td>
+    <td><code>${esc(r.uid)}</code>${r.event === "UNKNOWN_UID" ? ` <button class="btn" data-uid="${esc(r.uid)}">Link</button>` : ""}</td></tr>`).join("")
+    : `<tr><td colspan="6" class="empty">No scans yet.</td></tr>`;
+}
+$("scans").addEventListener("click", ev => { const b = ev.target.closest("[data-uid]"); if (!b) return; $("cUid").value = b.dataset.uid; $("cWorker").focus(); });
+
+const VERD = {confirmed:["CONFIRMED · camera + sensors","c-red"], hardware_only:["SENSOR ALARM · no camera","c-red"],
+  hardware_clear:["NOT ALARMED · station clear","c-grey"], pending:["VERIFYING…","c-amber"],
+  hardware_offline:["CAMERA ONLY · station offline","c-amber"], no_station:["CAMERA ONLY · no station","c-amber"]};
+function renderFires(rows){
+  $("fires").innerHTML = rows.length ? rows.map(e => {
+    const v = VERD[e.verification] || [e.verification ? e.verification.replace(/_/g, " ").toUpperCase() : "CAMERA ONLY (before hardware)", "c-grey"];
+    const why = (e.actions || []).filter(a => a.action.startsWith("hw_") || a.action === "camera_only").map(a => a.note).filter(Boolean).pop() || e.end_reason || "";
+    return `<tr><td>${dfmt(e.received_at || e.started_at)}</td><td>${e.camera_id ? esc(e.camera_id.toUpperCase().replace("_","-")) + " " + esc(e.type) : "station " + esc(e.type)}</td>
+      <td>${esc(e.zone_name || "")}</td><td><span class="chip ${v[1]}">${v[0]}</span></td><td><small>${esc(why)}</small></td></tr>`;
+  }).join("") : `<tr><td colspan="5" class="empty">No fire or smoke detections in the last 24 h.</td></tr>`;
+}
+
+function renderWorkers(ws){
+  WORKERS = ws;
+  const sel = $("cWorker"), v = sel.value;
+  sel.innerHTML = `<option value="">New worker (card only)</option>` + ws.map(w => `<option value="${esc(w.worker_id)}">${esc(w.worker_id)} ${esc(w.name)}</option>`).join("");
+  sel.value = v; $("cNameL").hidden = !!sel.value;
+  $("wcards").innerHTML = ws.length ? `<table><tbody>${ws.map(w => `<tr><td>${esc(w.worker_id)}</td><td>${esc(w.name)}</td>
+      <td>${w.badge_uid ? `<code>${esc(w.badge_uid)}</code>` : '<span class="muted">no card</span>'}</td>
+      <td>${w.photos ? '<span class="chip c-blue">face ID</span>' : ""}</td>
+      <td>${w.badge_uid ? `<button class="btn" data-unlink="${esc(w.worker_id)}">Remove card</button>` : ""}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">No workers yet.</div>`;
+}
+$("cWorker").onchange = () => { $("cNameL").hidden = !!$("cWorker").value; };
+$("wcards").addEventListener("click", async ev => { const b = ev.target.closest("[data-unlink]"); if (!b) return;
+  await fetch(`/api/workers/${b.dataset.unlink}/badge`, {method:"DELETE"}); renderWorkers(await api("/api/workers")); });
+$("cardForm").onsubmit = async ev => {
+  ev.preventDefault(); const uid = $("cUid").value.trim(), wid = $("cWorker").value, name = $("cName").value.trim();
+  const msg = $("cMsg");
+  try {
+    const r = wid ? await api(`/api/workers/${wid}/badge`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({uid})})
+                  : await api("/api/workers/badge_only", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({uid, name})});
+    msg.style.color = "var(--green)"; msg.textContent = `Card ${r.uid} saved for ${r.worker_id}${r.name ? " " + r.name : ""}. Scan it again to check in.`;
+    $("cUid").value = ""; $("cName").value = ""; renderWorkers(await api("/api/workers"));
+  } catch (e) { msg.style.color = "var(--red)"; msg.textContent = "Could not save the card: " + e.message; }
+};
+
+let ZONES = {};
+const zoneName = z => ZONES[z] || z;
+function toast(head, body){
+  const t = document.createElement("div"); t.className = "toast"; t.innerHTML = `<b>${esc(head)}</b>${esc(body)}`;
+  $("toasts").prepend(t); setTimeout(() => t.remove(), 7000);
+}
+
+function renderDevSel(){
+  const ds = STATE?.devices || [], sel = $("devSel");
+  sel.hidden = ds.length < 2;
+  if (!DEV && ds.length) DEV = ds[0].device_id;
+  if (sel.options.length !== ds.length) sel.innerHTML = ds.map(d => `<option value="${esc(d.device_id)}">${esc(d.name)}</option>`).join("");
+  sel.value = DEV;
+}
+$("devSel").onchange = () => { DEV = $("devSel").value; loadHistory().then(renderAll); };
+
+function appendHistory(){
+  for (const d of STATE?.devices || []){
+    if (!d.online || !d.data) continue;
+    const h = HIST[d.device_id] = HIST[d.device_id] || [];
+    const at = STATE.server_time - (d.age_s || 0);
+    if (!h.length || at - h[h.length-1].at >= 0.5) h.push(Object.assign({at}, d.data));
+    while (h.length && at - h[0].at > 300) h.shift();
+  }
+}
+async function loadHistory(){ const d = dev(); if (d) HIST[d.device_id] = await api(`/api/hw/history/${d.device_id}?seconds=300`).catch(() => []); }
+function renderReaders(){
+  const el = document.getElementById("readers"); if (!el) return;
+  el.innerHTML = (STATE?.readers || []).map(r => {
+    const ago = r.last_seen ? Math.max(0, Math.round((Date.now()/1000 - r.last_seen)/60)) : null;
+    const txt = r.last_seen ? `${esc(r.device_id)} · ${r.online ? "connected" : "quiet"} · ${ago < 1 ? "just now" : ago + " min ago"}${r.ip ? " · " + esc(r.ip) : ""}`
+                            : `${esc(r.device_id)} · never reached this laptop (check SERVER IP in the sketch)`;
+    const col = r.online ? "#16a34a" : (r.last_seen ? "#d97706" : "#dc2626");
+    return `<span title="${esc(r.zone_name || "")}" style="font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid ${col};color:${col}">● RFID ${txt}</span>`;
+  }).join(" ");
+}
+function renderAll(){ renderDevSel(); renderBanner(); renderCards(); renderPPE(); renderPeople(); renderReaders(); }
+
+async function full(){
+  try {
+    const s = await api("/api/hw/state"); STATE = s; renderAll(); renderScans(s.scans || []); renderFires(s.fire_checks || []);
+  } catch {}
+}
+function connect(){
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
+  ws.onopen = () => { $("livePill").className = "pill"; $("livePill").querySelector("span").textContent = "LIVE"; };
+  ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
+    if (kind === "hardware"){ STATE = Object.assign(STATE || {}, data); appendHistory(); renderAll(); }
+    else if (kind === "attendance"){ toast(data.access === "DENIED" && data.event === "ENTERED" ? "⚠ NOT AUTHORISED" : data.event === "UNKNOWN_UID" ? "Unregistered card" : "RFID attendance", data.message || data.status);
+      api("/api/attendance?limit=40").then(renderScans).catch(()=>{});
+      api("/api/hw/state").then(s => { STATE = s; renderPeople(); }).catch(()=>{}); }
+    else if (kind === "event" && (data.type === "fire" || data.type === "smoke")) full();
+    else if (kind === "workers") renderWorkers(data); };
+  ws.onclose = () => { $("livePill").className = "pill off"; $("livePill").querySelector("span").textContent = "RECONNECTING"; setTimeout(connect, 2000); };
+  setInterval(() => ws.readyState === 1 && ws.send("ping"), 20000);
+}
+async function boot(){
+  try { (await api("/api/zones")).forEach(z => ZONES[z.zone_id] = z.name); } catch {}
+  await full(); await loadHistory(); renderAll();
+  api("/api/workers").then(renderWorkers).catch(()=>{});
+  connect();
+  setInterval(full, 15000);
+}
+boot();
+</script>
+</body>
+</html>

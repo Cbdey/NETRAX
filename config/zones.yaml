@@ -1,0 +1,22 @@
+# Zone rules (F06). Required PPE uses model class names:
+# helmet, vest, gloves, boots, mask, goggles   ('boots' = protective footwear / safety shoes)
+# allowed_workers: [W-001, ...]  -> restricted zone (edge/access.py + RFID in backend/hw_api.py)
+# Boots are only judged when the whole body is in frame. An item listed here is only JUDGED if it is in
+# settings.yaml -> models.trusted_items (boots + goggles wait for ppe_v3 + the shoe classifier).
+zones:
+  welding_bay:
+    name: Welding bay
+    required_ppe: [helmet, vest, gloves, goggles, boots]
+    risk: high
+    # Restricted zone: only these registered workers may be here (worker IDs from the Workers panel).
+    # Any OTHER registered worker seen by the camera or tapping their RFID card here -> HIGH alert
+    # "not authorised" + voice. Unregistered people are handled as before (visitor ID + PPE checks).
+    allowed_workers: [W-001, W-003]   # Chinmaya, Bibhu. Remove the line to open the zone to everyone.
+  warehouse:
+    name: Warehouse
+    required_ppe: [helmet, vest, boots]
+    risk: medium
+  assembly_line:
+    name: Assembly line
+    required_ppe: [helmet, vest, gloves]
+    risk: high

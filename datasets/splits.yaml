@@ -1,0 +1,34 @@
+ppe:
+  train:
+  - ppe_01_fullkit_day
+  - ppe_03_helmet_off
+  - ppe_04_gloves_off
+  - ppe_05_goggles_off
+  - ppe_07_no_ppe
+  - ppe_08_cap_shirt_lookalikes
+  - ppe_09_all_off_dim
+  - ppe_10_helmet_in_hand
+  - ppe_14_footwear_normal
+  - ppe_15_footwear_safety
+  - ppe_19_group_mixed
+  - ppe_20_overhead_cctv
+  val:
+  - ppe_06_vest_off
+  - ppe_21_far
+  test:
+  - ppe_02_fullkit_dim
+  - ppe_17_two_in_line
+  - ppe_22_backlit
+fire:
+  train:
+  - fire_01_candle
+  - fire_04_paper_tray
+  - fire_05_agarbatti
+  - neg_01_dark_room
+  - neg_08_red_cloth
+  - neg_10_kettle_steam
+  val:
+  - neg_06_phone_flash
+  test:
+  - fire_02_lighter
+  - neg_04_white_tshirt

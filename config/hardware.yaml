@@ -1,0 +1,43 @@
+# ESP32 safety station(s) - hardware integration (backend/hardware.py).
+# Each station posts telemetry to  http://<laptop-ip>:8000/api/hw/telemetry  and RFID scans to /api/hw/rfid.
+devices:
+  esp32-ppe-01:                 # must match DEVICE_ID in firmware/netrax_esp32/netrax_esp32.ino
+    name: Safety station 1
+    zone_id: welding_bay        # zone it guards: fire cross-check + attendance area (zones.yaml ids)
+
+stale_after_s: 6                # no telemetry for this long -> station OFFLINE (never shown as "safe")
+history_s: 600                  # live trend charts keep 10 minutes in memory (DB keeps 1 row / 10 s)
+
+fusion:                         # camera fire/smoke -> waits for the station of that zone
+  verify_window_s: 8            # no hardware hazard within this time and station online -> NOT alarmed
+  lookback_s: 10                # a hardware hazard up to 10 s BEFORE the camera also confirms
+
+thresholds:                     # PROTOTYPE values - calibrate on your own sensors (ADC counts are not ppm)
+  temp_critical_c: 50           # DHT22 absolute
+  temp_rise_c: 6                # DHT22 rise above its slow baseline
+  mq2_abs: 1800                 # MQ-2 raw ADC (team guide value)
+  mq2_rise: 400                 # MQ-2 rise above baseline after warm-up
+  mq135_rise: 450
+  pm25_warn: 35                 # ug/m3 -> WARNING (orange)
+  pm25_critical: 150            # ug/m3 -> counts as smoke
+  fsr_contact: 700              # helmet / shoe FSR ADC at or above = contact
+  mq_warmup_s: 60               # ignore MQ "rise" until the sensor has warmed up (uptime_s)
+  flame_min_hits: 2             # flame sensor active in 2 of the last 3 readings
+  clear_after_s: 10             # hardware-only alarm resolves after this long without a hazard
+  baseline_alpha: 0.02
+
+attendance:
+  cooldown_s: 3                 # same card held at the reader -> ignored for 3 s
+  announce: true                # speaker: "Welcome Chinmaya, Welding bay"
+  readers:                      # stand-alone RFID readers (no sensors) -> the zone they guard
+    esp32-rfid-01: welding_bay  # firmware/rfid_reader/rfid_reader.ino; restricted zone (zones.yaml allowed_workers)
+  default_reader: esp32-rfid-01 # a reader that sends no device id is treated as this one
+  default_zone: welding_bay     # zone for scans from a reader that is not listed anywhere
+  trust_reader_event: false     # false = the laptop decides ENTERED / EXITED (survives ESP32 reboots);
+                                # true only for the Google-Sheets sketch whose sheet decides
+  # every scan is ALSO sent to the team's Google Sheet (same ?name=..&uid=.. request the reader used before)
+  sheets_url: ""                # private: the real Apps Script URL is in config/hardware.local.yaml (not in git)
+
+hardware_ppe:                   # helmet / shoe FSR + touch = extra evidence for the checked-in worker
+  alerts: false                 # true = raise a PPE warning when contact is NOT_DETECTED for persist_s
+  persist_s: 5

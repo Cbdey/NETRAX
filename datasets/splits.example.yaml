@@ -1,0 +1,11 @@
+# Copy to datasets/splits.yaml and list YOUR scene folder names (datasets/own/<task>/<scene>/).
+# One scene = one recording session. A scene goes into exactly ONE split.
+# test = hard test set (dark, backlit, crowded, look-alikes) - never trained on.
+ppe:
+  train: [lab_fullkit_day, lab_items_off_day, lab_helmet_in_hand, lab_shoes_closeup]
+  val:   [lab_fullkit_evening]
+  test:  [corridor_backlit, room_crowded_night]
+fire:
+  train: [tray_paper_fire, candle_room, agarbatti_smoke, negatives_red_clothes]
+  val:   [lighter_closeup]
+  test:  [match_dark_room, phone_screen_fire_negative, kettle_steam_negative]

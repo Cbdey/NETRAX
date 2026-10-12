@@ -1,0 +1,30 @@
+# --- environment / caches (rebuild: python -m venv venv && pip install -r requirements.txt)
+venv/
+__pycache__/
+*.pyc
+.claude/
+
+# --- private data: team face photos + embeddings, alert database, attendance, snapshots, logs
+data/
+*.db
+*.log
+
+# --- secrets (examples are committed: secrets.example.h)
+firmware/**/secrets.h
+config/hardware.local.yaml
+
+# --- large / personal media and training data (videos of the team, labelled frames, zips)
+datasets/*
+!datasets/README.md
+!datasets/splits.example.yaml
+!datasets/splits.yaml
+*.mp4
+*.avi
+*.mov
+*.zip
+runs/
+
+# --- local backups, auto-downloaded base weights in the project root
+_to_delete/
+/*.pt
+/*.onnx

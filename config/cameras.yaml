@@ -1,0 +1,31 @@
+# Camera registry (demo setup, 12 Oct): laptop webcam + 2 phones, all on the same Wi-Fi as the ESP32 station.
+# source can be:
+#   0, 1 ...                 -> laptop / USB webcam index
+#   demo/clips/xxx.mp4       -> recorded video (looped)
+#   http://IP:8080/video     -> phone (IP Webcam app) or RTSP url
+# Phone addresses change when a phone reconnects to Wi-Fi:
+#   python -m tools.find_phones           -> lists phones running IP Webcam on this Wi-Fi
+#   python -m tools.find_phones --write   -> puts them into cam_02 / cam_03 below
+# rotate: 90 | 180 | 270     -> turn the picture clockwise (phone mounted upright gives a sideways picture)
+# enabled: false             -> camera not started; its tile shows "switched off"
+# share: <name>              -> camera PAIR used one at a time (not used in this setup)
+# zones: polygons in NORMALISED coordinates (0..1), checked at the worker's feet.
+# A worker outside every polygon falls back to default_zone.
+cameras:
+  cam_01:
+    name: Welding bay
+    source: 0                               # laptop webcam (zone A); ESP32 safety station + RFID guard this zone
+    default_zone: welding_bay
+    zones: []
+  cam_02:
+    name: Warehouse
+    source: http://172.20.163.173:8080/video     # PHONE 1 (yours), IP Webcam app - set by tools.find_phones
+    rotate: 90
+    default_zone: warehouse
+    zones: []
+  cam_03:
+    name: Assembly line
+    source: http://172.20.163.114:8080/video       # PHONE 2 (friend's), IP Webcam app - set by tools.find_phones
+    rotate: 90
+    default_zone: assembly_line
+    zones: []

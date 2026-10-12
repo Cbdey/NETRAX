@@ -1,0 +1,135 @@
+# NETRAX edge settings. All values are starting points - tune on your own clips.
+models:
+  ppe: models/ppe_v2.pt
+  fire: models/fire_smoke_v2B.pt        # v2B (12 Oct): D-Fire + own data. D-Fire+own val 0.706, own hard test 0.870
+  fire_fallback: models/fire_smoke_v2A.pt   # used until fire_smoke_v2B.pt is downloaded into models/
+  # v3 hybrid: the aux model supplies these classes; the main ppe model keeps helmet, vest, mask.
+  ppe_aux: models/ppe_v3B.pt   # v3B (12 Oct, Stage B with own data): own hard test mAP50 0.959 vs v3A 0.940
+  # vest from v3B (12 Oct, tools/compare_ppe_main): in the vest-off scene ppe_v2 kept 'seeing' a vest
+  # (val P 0.54 vs 0.70, AP50 0.80 vs 0.90); hard test a tie (0.995 vs 0.991). Helmet stays on ppe_v2 (0.94 vs 0.90 val).
+  aux_items: [gloves, goggles, hand, face, head, foot, vest]
+  shoe_cls: models/shoe_cls.pt   # safety shoe vs normal footwear (tools/shoes.py); 'boots' are judged only when it exists
+  shoe_min_prob: 0.6
+  person: pose          # pose = YOLOv8n-pose: persons + 17 body keypoints (item -> right worker, hidden part -> can't tell)
+                        # coco = plain YOLOv8n person detector (fallback); ppe = PPE model's person class
+  # PPE items the active model judges reliably. Required items NOT in this list are skipped (never
+  # 'missing'). ppe_v2: helmet, vest, gloves, mask. Add goggles + boots when ppe_v3 + shoe classifier are on.
+  trusted_items: [helmet, vest, gloves, mask, goggles, boots]   # goggles need ppe_aux; boots need shoe_cls too
+  device: auto          # auto | cuda | cpu
+  imgsz: 640
+
+load:                   # plan 7.5: overloaded GPU -> slow low-risk zones first (edge/load.py)
+  enabled: true
+  min_fps: 4
+  lag_ratio: 0.85
+  lag_steps: 3
+  recover_steps: 10
+
+processing:
+  target_fps: 10        # processed frames per second per camera
+  fire_every_n: 2       # fire model every 2nd frame while the scene is clear; EVERY frame as soon as a
+                        # fire/smoke candidate exists (small flames need every hit, idle frames stay fast)
+
+thresholds:
+  ppe_conf: {person: 0.45, helmet: 0.50, vest: 0.50, gloves: 0.45, boots: 0.45, mask: 0.50,
+             goggles: 0.45, head: 0.40, face: 0.40, hand: 0.35, foot: 0.35, default: 0.45}
+  fire_conf: {Fire: 0.45, Smoke: 0.35}   # lower: matches / thin agarbatti smoke score low; fire_verify filters the rest
+
+validation:               # stops shirts counting as vests and caps as helmets
+  vest_hivis_min: 0.25   # share of high-visibility pixels a vest box must contain (0 disables)
+
+association:
+  min_person_height_px: 80        # smaller people -> 'unverifiable'
+  min_person_conf_for_missing: 0.65   # rolling mean per track; hanging clothes score ~0.57
+  edge_margin_px: 4               # body part cut by frame edge -> 'unverifiable'
+  feet_margin_frac: 0.03          # box bottom within 3% of the frame edge -> feet not visible
+  full_body_min_aspect: 1.5       # boots judged only if box height >= 1.5 x width (whole body)
+  occlusion_overlap: 0.35         # region hidden by a person in front -> 'unverifiable'
+
+state_machine:                    # plan section 7.2
+  # time-to-alert ~= confirm_n / target_fps + grace_s  (was 10/10 + 3.0 = ~4 s, now ~2.2 s)
+  window_m: 10
+  confirm_n: 7
+  grace_s: 1.5
+  cooldown_s: 60
+  resolve_s: 2.0
+  lost_track_s: 5.0
+  repeat_window_s: 600
+  rearm_s: 5.0          # same worker takes PPE off again this long after fixing it -> new alert
+  # ONE DECISION PER LOOK (12 Oct, edge/state_machine.py _decide): a person is watched for first_look_s,
+  # then ONE alarm with every missing item (or one "PPE complete"); after any change (PPE off / on) the
+  # camera watches settle_s again and sends ONE new decision. No alarm per item.
+  first_look_s: 2.5
+  settle_s: 1.0
+  id_wait_s: 1.5        # face being matched: wait up to this much longer so the alarm says the right name
+  announce_compliant: true   # "PPE complete" once, only when every required item was SEEN worn
+  ok_repeat_s: 600           # ... at most once per person per 10 minutes
+  by_risk:              # zone-wise priority: high-risk zones decide first (12 Oct)
+    high:   {confirm_n: 5, grace_s: 1.0, first_look_s: 2.0, settle_s: 0.8}   # decision ~2.2 s
+    medium: {confirm_n: 7, grace_s: 1.5, first_look_s: 2.5, settle_s: 1.0}   # ~3.1 s
+    low:    {confirm_n: 7, grace_s: 2.0, first_look_s: 3.0, settle_s: 1.2}   # ~3.8 s
+  location_grid: 4
+
+fire:                             # plan section 7.4
+  window_m: 10           # fire frames (fire model now runs every frame: 10 = 1 s)
+  confirm_n: 5           # thin smoke / a match is missed in some frames - 5 of 10 is enough
+  grace_s: 1.0           # fire must persist this long before it can be confirmed
+  smoke_grace_s: 1.5     # smoke is easier to confuse (glare, haze) - wait a little longer
+  fire_color_min: 0.08   # min share of flame-coloured pixels (red/orange/yellow, bright) in a fire box
+  smoke_max_sat: 90      # smoke is greyish: mean saturation must stay below this
+  smoke_max_bright: 225  # glare / phone flash / lamp is overexposed: reject brighter regions
+  smoke_min_bright: 70   # hair / dark shadows are not smoke
+  smoke_max_skin: 0.25   # >= 25% skin-coloured pixels = a face/arm (all 25 live smoke false alarms were people)
+  smoke_max_dark: 0.30   # >= 30% dark pixels = hair
+  smoke_max_glare: 0.25  # >= 25% blown-out pixels = phone flash / lamp
+  smoke_skin_on_person: 0.12   # smoke box on a person with >= 12% skin = a face
+  smoke_person_iou: 0.5       # smoke box overlapping a person box this much (IoU) = the person (white shirt), not smoke
+  smoke_static_crops: 6       # smoke region that has not moved for 6 crops = static texture (bedsheet, wall)
+  smoke_min_texture: 8   # a defocused hand/cloth over the lens has no texture - reject it
+  growth_ratio: 1.25
+  persistent_s: 8
+  flicker_min: 4.0
+  hot_core_min: 0.02     # share of white-hot pixels that marks a real (light-emitting) flame
+  person_overlap_suppress: 0.60
+  lost_s: 5.0
+  cooldown_s: 30
+  dark_scene_luma: 70    # frame mean brightness below this = dim / dark room
+  dark_smoke_min_conf: 0.55   # in a dark scene smoke needs this confidence (noise looks like thin smoke)
+  dark_fire_min_conf: 0.45
+  debug_log: data/fire_debug.log   # one line per candidate per second: why it was kept / suppressed
+
+privacy:                          # F22
+  blur_faces_in_snapshots: true   # stored alert snapshots are pixelated at the face; live view is not
+  snapshot_retention_days: 30     # alert images older than this are deleted (records are kept); 0 = keep
+
+identity:                         # one person = one ID (edge/identity.py); registered on the dashboard
+  enabled: true
+  # 12 Oct: names were mixed up (Sushree -> Chinmaya ...). Measured on the registered photos: two different
+  # workers are up to 0.38 alike (Chinmaya ~ Chandrabhanu), above the old 0.36 threshold. Now stricter:
+  match_threshold: 0.45  # SFace cosine similarity to a registered photo
+  margin: 0.08           # best worker must beat the second best by this much
+  votes_needed: 3        # frames that must agree before a person gets a worker ID
+  min_share: 0.6         # ... and they must be >= 60 % of the recognised votes (a clear majority)
+  switch_votes: 5        # an already named person is renamed only with 5 votes ...
+  switch_share: 0.75     # ... that are >= 75 % of the votes (one odd frame never renames anyone)
+  unknown_votes: 5       # unmatched faces before an unregistered person gets a visitor ID (V-001)
+  learn_above: 0.65      # adapt to today's light only from very sure matches (wrong learning spread mix-ups)
+  learn_margin: 0.15
+  debug_log: data/identity_debug.log   # one line each time a person gets / changes a name (with scores)
+  every_n_frames: 3      # face check rate once everyone is identified (every 2nd frame until then)
+  min_face_px: 32        # smaller faces are ignored (too far away)
+  max_faces_per_frame: 3 # many people in view: match at most 3 faces per frame, unidentified people first
+
+response:                         # autonomous response on this laptop (backend/actuators.py)
+  # 12 Oct: one alarm per decision + at most ONE reminder after 60 s if nothing changed (was every 20 s, forever)
+  speaker: {enabled: true, local: true, rate: 0, volume: 100, repeat_after_s: 60, max_repeats: 1, same_person_quiet_s: 20,   # 0 = keep calling until compliant / acknowledged
+            item_names: {helmet: helmet, vest: safety vest, gloves: gloves, boots: safety shoes, mask: mask, goggles: safety goggles}}
+  alarm: {enabled: true, local: true, max_duration_s: 120}   # siren for every confirmed fire / smoke
+
+backend:
+  url: http://127.0.0.1:8000
+  preview_fps: 5
+  health_every_s: 1.0
+
+snapshots_dir: data/snapshots
+outbox_db: data/outbox.db

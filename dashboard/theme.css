@@ -1,0 +1,127 @@
+/* NETRAX look & feel: aqua / teal palette, day + night mode, gentle motion.
+   Loaded AFTER each page's own <style>, so it only re-colours and animates - no content or layout logic here.
+   Night mode = <html data-theme="dark">, set by theme.js (saved per browser). */
+
+:root{
+  --bg:#e8f3f2; --bg2:#dcefee; --card:#ffffff; --card2:#f4faf9; --ink:#14313a; --muted:#5b777d; --line:#d3e6e5;
+  --navy:#0f4c5c;                               /* header + primary buttons: deep teal instead of navy */
+  --head1:#0f4c5c; --head2:#167a78; --headink:#e9fbf8; --headmuted:#a8d6d1; --headline:#2f8c86;
+  --red:#c8372d; --red-bg:#fde8e5; --amber:#b9750c; --amber-bg:#fcf0d9; --blue:#2878b5; --blue-bg:#e2eff9;
+  --green:#18876b; --green-bg:#daf2ea; --grey:#8fa6ab; --grey-bg:#edf4f4; --spark:#1f8fa0;
+  --shadow:0 1px 2px rgba(15,76,92,.06),0 4px 14px rgba(15,76,92,.07);
+  --shadow-up:0 2px 4px rgba(15,76,92,.08),0 12px 28px rgba(15,76,92,.14);
+  --glow-red:rgba(200,55,45,.45); --glow-amber:rgba(185,117,12,.40);
+  --radius:12px;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#0a181c; --bg2:#0d2026; --card:#10242a; --card2:#142d34; --ink:#d9eaec; --muted:#8aa5aa; --line:#1e3b42;
+  --navy:#0e3d47;
+  --head1:#0c3640; --head2:#115a5b; --headink:#e6faf7; --headmuted:#8cc3bd; --headline:#1f6b68;
+  --red:#ff6d61; --red-bg:#3a1917; --amber:#e8a948; --amber-bg:#352811; --blue:#5eaae6; --blue-bg:#11304a;
+  --green:#3ccb9f; --green-bg:#0f3a30; --grey:#6f8b91; --grey-bg:#17303a; --spark:#4cc3d1;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 4px 14px rgba(0,0,0,.25);
+  --shadow-up:0 2px 6px rgba(0,0,0,.45),0 14px 30px rgba(0,0,0,.4);
+  --glow-red:rgba(255,109,97,.55); --glow-amber:rgba(232,169,72,.45);
+  color-scheme:dark;
+}
+
+/* ---------- surfaces ---------- */
+body{background:var(--bg);background-image:radial-gradient(1200px 500px at 85% -10%,var(--bg2),transparent 70%);
+  background-attachment:fixed;transition:background-color .35s ease,color .35s ease}
+header{background:linear-gradient(120deg,var(--head1),var(--head2));color:var(--headink);box-shadow:var(--shadow);
+  border-bottom:3px solid #7fd6c6}
+header p{color:var(--headmuted)}
+.logo{background:#7fd6c6;color:#0f4c5c;box-shadow:inset 0 -2px 0 rgba(0,0,0,.12)}
+.hwlink,header nav a{color:var(--headink);border-color:var(--headline)}
+.hwlink:hover,.hwlink:focus-visible,header nav a:hover,header nav a:focus-visible{background:rgba(255,255,255,.12)}
+header a{color:#a6eedd}
+.panel,.kpi,.station,.banner{box-shadow:var(--shadow)}
+.panel{border:1px solid var(--line)}
+.kpi b{letter-spacing:-.01em}
+.tile{background:var(--card);border-color:var(--line)}
+.card{background:var(--card2)}
+.sc,.person{background:var(--card2);border-color:var(--line)}
+.sc.alert{background:var(--red-bg)}
+.btn,.feedhead select,.simrow select,.reg input,.form input,.form select,#rShift,#rDays,select,input{background:var(--card);color:var(--ink);border-color:var(--line)}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+.modal .box{background:var(--card);color:var(--ink)}
+.toast{background:var(--head1);border:1px solid var(--headline)}
+.toast b{color:#9fead8}
+.led{background:var(--card2)}
+.spark .hd{fill:var(--card)}
+.tip{background:var(--head1)}
+footer a,.st-side a{color:var(--blue)}
+code{background:var(--grey-bg);padding:0 4px;border-radius:4px}
+/* chart text drawn by the page with fixed colours -> follow the theme */
+#chart text[fill="#667085"]{fill:var(--muted)}
+#chart text[fill="#1d2939"]{fill:var(--ink)}
+#donut circle[stroke="#eef1f5"]{stroke:var(--grey-bg)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- day / night switch ---------- */
+.nx-theme{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--headline);background:rgba(255,255,255,.08);
+  color:var(--headink);border-radius:999px;padding:5px 12px 5px 6px;font-size:12px;font-weight:600;cursor:pointer;
+  transition:background .2s ease,transform .2s ease}
+.nx-theme:hover{background:rgba(255,255,255,.16);transform:translateY(-1px)}
+.nx-theme:focus-visible{outline:2px solid #7fd6c6;outline-offset:2px}
+.nx-theme .knob{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#ffe08a;color:#7a5200;
+  font-size:13px;transition:transform .45s cubic-bezier(.5,1.6,.4,1),background .3s ease}
+:root[data-theme="dark"] .nx-theme .knob{background:#cfe3ff;color:#23406b;transform:rotate(-360deg)}
+html.nx-switching *{transition:background-color .35s ease,border-color .35s ease,color .35s ease !important}
+
+/* ---------- motion: pop in, hover grow, value bump ---------- */
+@keyframes nx-pop{0%{opacity:0;transform:scale(.92) translateY(6px)}60%{opacity:1;transform:scale(1.025)}100%{transform:none}}
+@keyframes nx-bump{0%{transform:scale(1)}35%{transform:scale(1.18)}100%{transform:scale(1)}}
+@keyframes nx-glow-red{0%,100%{box-shadow:var(--shadow),0 0 0 0 var(--glow-red)}50%{box-shadow:var(--shadow),0 0 0 6px transparent,0 0 18px 2px var(--glow-red)}}
+@keyframes nx-glow-amber{0%,100%{box-shadow:var(--shadow),0 0 0 0 var(--glow-amber)}50%{box-shadow:var(--shadow),0 0 16px 2px var(--glow-amber)}}
+@keyframes nx-blink{50%{opacity:.35}}
+@keyframes nx-shake{0%,100%{transform:none}20%{transform:translateX(-3px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+
+.nx-pop{animation:nx-pop .5s cubic-bezier(.2,.8,.3,1.2) both;animation-delay:var(--nx-d,0s)}
+.nx-bump{display:inline-block;animation:nx-bump .45s ease}
+.kpi b{display:block;transform-origin:left center}
+
+.kpi,.tile,.card,.sc,.person,.station,.dev,.edge-row,.rep .r,.btn,.tag,.chip{
+  transition:transform .22s cubic-bezier(.2,.8,.3,1.3),box-shadow .22s ease,background-color .35s ease,border-color .35s ease}
+.kpi:hover,.tile:hover,.sc:hover,.person:hover{transform:translateY(-3px) scale(1.035);box-shadow:var(--shadow-up);z-index:2;position:relative}
+.card:hover{transform:scale(1.02);box-shadow:var(--shadow-up)}
+.panel{transition:box-shadow .25s ease,transform .25s ease}
+.panel:hover{box-shadow:var(--shadow-up);transform:translateY(-2px)}
+.station:hover,.banner:hover{box-shadow:var(--shadow-up)}
+.btn:hover,.tag:hover{transform:translateY(-1px) scale(1.05)}
+.btn:active{transform:scale(.96)}
+.feed{padding:4px 6px 4px 2px}          /* room for the hover grow inside the scroll box */
+
+/* ---------- real warnings: the reason turns red and the box breathes ---------- */
+.card.nx-live .sub{color:var(--red);font-weight:600}
+.card.nx-live.nx-crit{animation:nx-glow-red 1.6s ease-in-out infinite}
+.card.nx-live.nx-high{animation:nx-glow-red 2.4s ease-in-out infinite}
+.card.nx-live.nx-med{animation:nx-glow-amber 2.8s ease-in-out infinite}
+.card.nx-new{animation:nx-pop .5s cubic-bezier(.2,.8,.3,1.2) both,nx-shake .45s .5s ease}
+.card.nx-new.nx-live.nx-crit{animation:nx-pop .5s cubic-bezier(.2,.8,.3,1.2) both,nx-glow-red 1.6s .5s ease-in-out infinite}
+.card.nx-new.nx-live.nx-high{animation:nx-pop .5s cubic-bezier(.2,.8,.3,1.2) both,nx-glow-red 2.4s .5s ease-in-out infinite}
+
+.tile.alert{animation:nx-glow-red 1.8s ease-in-out infinite}
+.tile.alert .badge{animation:nx-blink 1s step-end infinite}
+.station.CRITICAL,.banner.CRITICAL{animation:nx-glow-red 1.4s ease-in-out infinite}
+.station.WARNING,.banner.WARNING{animation:nx-glow-amber 2.4s ease-in-out infinite}
+.station.WARNING .st-vals,.station.CRITICAL .st-vals{color:var(--red)}
+.banner.WARNING .why,.banner.CRITICAL .why{color:var(--red);font-weight:600}
+.sc.alert{animation:nx-glow-red 1.8s ease-in-out infinite;border-color:var(--red)}
+.sc.alert .v,.sc.alert .n{color:var(--red)}
+.sc.warn .n{color:var(--amber);font-weight:600}
+.sc.warn{animation:nx-glow-amber 2.6s ease-in-out infinite}
+.person[style*="--red"]{animation:nx-glow-red 1.8s ease-in-out infinite}
+.person[style*="--red"] small{color:var(--red)}
+.pill i{animation:nx-blink 2s ease-in-out infinite}
+.pill.off i{animation:nx-blink .8s step-end infinite}
+.kpi.nx-hot{border-left-color:var(--red)!important;animation:nx-glow-red 2s ease-in-out infinite}
+.kpi.nx-hot b{color:var(--red)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .kpi:hover,.tile:hover,.sc:hover,.person:hover,.card:hover,.panel:hover{transform:none}
+}

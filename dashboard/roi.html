@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NETRAX ROI calculator</title>
+<style>
+:root{--bg:#eef1f5;--card:#fff;--navy:#15213a;--ink:#1d2939;--muted:#667085;--line:#e3e7ee;--green:#2e7d5b;--red:#c0392b;--amber:#c98a1b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,Arial,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:18px 16px 30px}
+header{background:var(--navy);color:#fff;border-radius:10px;padding:14px 20px;display:flex;align-items:center;gap:12px}
+header h1{margin:0;font-size:18px;font-weight:600}header a{margin-left:auto;color:#9ce0c1;font-size:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.panel{background:var(--card);border-radius:10px;padding:16px}
+h2{font-size:14px;margin:0 0 10px}
+label{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+label small{display:block;color:var(--muted);font-size:11px}
+input{width:120px;font:inherit;border:1px solid var(--line);border-radius:6px;padding:4px 6px;text-align:right}
+.big{font-size:26px;font-weight:600}
+.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)}
+.cases{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.case{border:1px solid var(--line);border-radius:8px;padding:10px;text-align:center}
+.case b{display:block;font-size:20px}
+.note{color:var(--muted);font-size:12px;margin-top:10px}
+.tag{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:#fdf3e1;color:var(--amber)}
+.m{background:#e5f3ec;color:var(--green)}
+@media (max-width:800px){.grid{grid-template-columns:1fr}.cases{grid-template-columns:1fr}}
+</style>
+<link rel="stylesheet" href="/static/theme.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>NETRAX: cost, bandwidth &amp; payback</h1><a href="/">← Dashboard</a></header>
+  <div class="grid">
+    <div class="panel"><h2>Inputs <span class="tag">assumptions: change them</span></h2>
+      <label>Cameras<input id="cams" type="number" value="16" min="1"></label>
+      <label>Cameras per edge PC<input id="perEdge" type="number" value="4" min="1"></label>
+      <label>Edge PC cost (₹)<input id="edge" type="number" value="70000"></label>
+      <label>New cameras needed<input id="newCams" type="number" value="0"></label>
+      <label>Camera cost (₹)<input id="camCost" type="number" value="3000"></label>
+      <label>Zones (speaker + siren each)<input id="zones" type="number" value="4"></label>
+      <label>Speaker + siren per zone (₹)<input id="spk" type="number" value="2500"></label>
+      <label>Installation + integration (₹)<input id="install" type="number" value="50000"></label>
+      <label>Yearly running cost (₹)<input id="run" type="number" value="40000"></label>
+      <label><span>Cost of one serious incident (₹)<small>injury, damage, downtime</small></span><input id="incCost" type="number" value="500000"></label>
+      <label><span>Supervisor hours saved / day<small>manual rounds replaced</small></span><input id="hours" type="number" value="2" step="0.5"></label>
+      <label>Supervisor cost per hour (₹)<input id="hourCost" type="number" value="300"></label>
+      <label>Insurance / audit savings per year (₹)<input id="ins" type="number" value="0"></label>
+    </div>
+    <div class="panel"><h2>Results</h2>
+      <div class="row"><span>One-time cost</span><b id="oneTime"></b></div>
+      <div class="row"><span>Supervisor time saved / year</span><b id="timeSaved"></b></div>
+      <h2 style="margin-top:14px">Payback by incidents avoided per year</h2>
+      <div class="cases">
+        <div class="case">Pessimistic<br><small>0.5 incident / yr</small><b id="p0"></b></div>
+        <div class="case">Expected<br><small>1 incident / yr</small><b id="p1"></b></div>
+        <div class="case">Optimistic<br><small>2 incidents / yr</small><b id="p2"></b></div>
+      </div>
+      <h2 style="margin-top:16px">Bandwidth per day <span class="tag m">alert size measured</span></h2>
+      <label>Alerts per camera per day<input id="alerts" type="number" value="80"></label>
+      <label>Mbps per CCTV stream (cloud video)<input id="mbps" type="number" value="4" step="0.5"></label>
+      <div class="row"><span>Cloud video upload</span><b id="cloud"></b></div>
+      <div class="row"><span>NETRAX (alerts + snapshots, 41.7 KB each, measured)</span><b id="ours"></b></div>
+      <div class="note">Measured on our prototype: 41.7 KB per alert (329 alerts), about 42 ms inference per frame (GTX 1650),
+        98–175 ms edge → dashboard. Everything else is an assumption. We do not claim incident reductions;
+        enter your plant's own numbers.</div>
+    </div>
+  </div>
+</div>
+<script>
+const v = id => Number(document.getElementById(id).value) || 0;
+const inr = x => "₹" + Math.round(x).toLocaleString("en-IN");
+const size = mb => mb >= 1e6 ? (mb/1e6).toFixed(1) + " TB" : mb >= 1000 ? (mb/1000).toFixed(1) + " GB" : mb.toFixed(1) + " MB";
+function calc(){
+  const one = Math.ceil(v("cams")/Math.max(1,v("perEdge")))*v("edge") + v("newCams")*v("camCost") + v("zones")*v("spk") + v("install");
+  const time = v("hours")*v("hourCost")*300;
+  document.getElementById("oneTime").textContent = inr(one);
+  document.getElementById("timeSaved").textContent = inr(time);
+  [0.5, 1, 2].forEach((n, i) => {
+    const net = n*v("incCost") + time + v("ins") - v("run");
+    document.getElementById("p"+i).textContent = net > 0 ? (one/net).toFixed(1) + " yr" : "no payback";
+  });
+  document.getElementById("cloud").textContent = size(v("cams")*v("mbps")/8*86400);
+  document.getElementById("ours").textContent = size(v("cams")*v("alerts")*41.7/1024);
+}
+document.querySelectorAll("input").forEach(i => i.addEventListener("input", calc)); calc();
+</script>
+</body>
+</html>

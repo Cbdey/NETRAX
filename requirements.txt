@@ -1,0 +1,12 @@
+ultralytics
+supervision
+opencv-python
+onnx
+onnxruntime
+fastapi
+uvicorn[standard]
+pyyaml
+numpy
+requests
+reportlab
+pywin32          # Windows SAPI voice for the speaker
