@@ -170,7 +170,8 @@ def classify(method, path, ip):
         return "public"
     if method == "POST" and (path.rstrip("/") in DEVICE_EXACT or
                              (path.startswith("/api/cameras/") and path.endswith(("/frame", "/raw"))
-                              and path.count("/") == 4)):
+                              and path.count("/") == 4) or
+                             (path.startswith("/api/events/") and path.endswith("/clip") and path.count("/") == 4)):
         return "device"
     if method == "GET" and path.startswith(("/api/rfid", "/api/hw/rfid")):
         return "device"                                     # RFID readers that use GET
@@ -178,7 +179,7 @@ def classify(method, path, ip):
         return "device"                                     # tools/latency_report.py on the edge computer
     if path.startswith(LOCAL_ONLY):
         return "local"
-    if path.startswith(("/snapshots", "/workers/")):
+    if path.startswith(("/snapshots", "/clips", "/workers/")):
         return "supervisor"
     if path.startswith(("/api/users", "/api/audit")):
         return "admin"
@@ -196,7 +197,7 @@ def allowed(role, need):
 
 
 def mask_event(e):
-    """Viewer copy of an event: no worker identity, no snapshot."""
+    """Viewer copy of an event: no worker identity, no snapshot, no clip."""
     if not isinstance(e, dict):
         return e
     e = dict(e)
@@ -204,4 +205,5 @@ def mask_event(e):
         e["worker_id"] = "W-***" if str(e["worker_id"]).startswith("W-") else e["worker_id"]
     e["worker_name"] = None
     e["snapshot"] = None
+    e["clip"] = None
     return e

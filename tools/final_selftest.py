@@ -508,6 +508,55 @@ async def main():
               and e3["details"]["override"]["decision"] == "approved" and e3["details"]["override"]["by"] == "sup"
               and db.q("SELECT * FROM audit_log WHERE action='entrance_manual_approved'"))
         check("AUTH", "health endpoint lists components", c.get("/api/health").json()["components"])
+        # ---------------- video clip per incident (sections 3, 5, 8: "snapshot or clip when available")
+        from edge.clips import ClipRecorder
+        import numpy as np
+        cdir = os.path.join(TMP, "clips_edge")
+        rec = ClipRecorder({"pre_s": 4, "post_s": 4, "fps": 6, "width": 640}, "", cdir)
+        t0 = 1000.0
+        for i in range(int(12 * 6)):                       # 12 s of a 1280x720 camera, alert at 5 s
+            ts = t0 + i / 6
+            img = np.full((720, 1280, 3), (i * 3) % 255, np.uint8)
+            if rec.due("cam_01", ts):
+                rec.add("cam_01", img, ts, [{"bbox": [100, 100, 400, 700]}])
+            if abs(ts - (t0 + 5)) < 1e-6 + 1 / 12:
+                rec.start("cam_01", "evt_t09", ts, "ppe_missing")
+        f = os.path.join(cdir, "evt_t09.mp4")
+        for _ in range(100):
+            if os.path.exists(f) and os.path.getsize(f) > 0 and not rec.jobs and rec.todo.empty():
+                break
+            time.sleep(0.1)
+        time.sleep(0.3)
+        try:
+            import av
+            with av.open(f) as vf:
+                vs = vf.streams.video[0]
+                nfr, wh, codec = sum(1 for _ in vf.decode(video=0)), (vs.width, vs.height), vs.codec_context.name
+        except Exception as x:                            # noqa: BLE001
+            nfr, wh, codec = 0, None, repr(x)
+        check("CLIP", "incident clip = ~4 s before + ~4 s after the alert, H.264 MP4 (plays in every browser), 640 px",
+              os.path.exists(f) and 40 <= nfr <= 56 and wh == (640, 360) and codec == "h264", f"{nfr} frames {wh} {codec}")
+        c.post("/api/logout")
+        r = c.post("/api/events/evt_t09/clip", content=open(f, "rb").read(), headers={"Content-Type": "video/mp4"})
+        check("CLIP", "edge uploads the clip without login (device path) -> linked to the SAME event id",
+              r.status_code == 200 and db.get_event("evt_t09")["clip"] == "/clips/evt_t09.mp4"
+              and any(a["action"] == "clip_saved" for a in db.get_event("evt_t09")["actions"]), r.text[:80])
+        check("CLIP", "no login -> clip file refused", c.get("/clips/evt_t09.mp4").status_code == 401)
+        c.post("/api/login", json={"username": "view", "password": "viewer-pass1"})
+        ev = c.get("/api/events/evt_t09").json()
+        check("CLIP", "viewer role: clip hidden (no link, file 403)", ev.get("clip") is None
+              and c.get("/clips/evt_t09.mp4").status_code == 403)
+        c.post("/api/logout")
+        c.post("/api/login", json={"username": "sup", "password": "supervisor-pass"})
+        r = c.get("/clips/evt_t09.mp4")
+        check("CLIP", "supervisor: dashboard record has the clip and it downloads (video/mp4)",
+              c.get("/api/events/evt_t09").json().get("clip") == "/clips/evt_t09.mp4" and r.status_code == 200
+              and r.headers.get("content-type", "").startswith("video/mp4") and len(r.content) > 1000)
+        from edge.retention import purge
+        old = os.path.join(m.CLIP_DIR, "evt_t09.mp4")
+        os.utime(old, (time.time() - 40 * 86400,) * 2)
+        check("CLIP", "retention: clips older than snapshot_retention_days are deleted like snapshots",
+              purge(m.CLIP_DIR, 30, None, ("*.mp4", "*.webm")) == ["evt_t09"] and not os.path.exists(old))
     os.environ["SENTINELEYE_AUTH"] = "0"
     # ---------------- shared engine: batching, priority, mapping back
     class FakeDet:

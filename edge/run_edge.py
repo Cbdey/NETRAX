@@ -11,6 +11,7 @@ from .engine import InferenceEngine
 from .identity import IdentityService
 from .load import LoadManager
 from .retention import purge
+from .clips import ClipRecorder
 from .outbox import Outbox
 from .publisher import Publisher
 from .share import ShareGroups
@@ -41,6 +42,9 @@ def main():
     publisher = Publisher(backend, settings["backend"]["preview_fps"])
     fps = settings["processing"]["target_fps"]
     identity = IdentityService(settings.get("identity"), backend)     # shared by all cameras
+    clips = ClipRecorder(settings.get("clips"), backend, path(settings.get("clips", {}).get("dir", "data/clips")),
+                         face_model=path("models/face_detection_yunet_2023mar.onnx"),
+                         blur=settings.get("privacy", {}).get("blur_faces_in_snapshots", True))
 
     readers, workers = {}, {}
     off = [c for c, cam in cameras.items() if cam.get("enabled", True) is False]
@@ -62,7 +66,8 @@ def main():
         r = StreamReader(cam_id, cam["source"], fps, cam.get("rotate", 0), cam.get("capture"))
         r.allowed = (lambda c=cam_id: share.allowed(c))
         r.start()
-        wkr = CameraWorker(cam_id, cam, zones, settings, r, outbox, publisher, identity, engine=engine)
+        wkr = CameraWorker(cam_id, cam, zones, settings, r, outbox, publisher, identity, engine=engine,
+                           clips=clips)
         wkr.start()
         readers[cam_id], workers[cam_id] = r, wkr
         print(f"[edge] {cam_id} '{cam.get('name')}' source={cam['source']} "
@@ -115,6 +120,7 @@ def main():
             if time.time() - last_purge >= 3600:
                 last_purge = time.time()
                 gone = purge(path(settings["snapshots_dir"]), keep_days)
+                purge(clips.dir, keep_days, patterns=("*.mp4", "*.webm"))      # clips never uploaded
                 if gone:
                     print(f"[edge] retention: deleted {len(gone)} snapshot(s) older than {keep_days} days")
             if time.time() - last_load >= 1.0:

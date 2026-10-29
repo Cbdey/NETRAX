@@ -255,7 +255,8 @@ def card(r, mask_names=False):
     return {"event_id": r["event_id"], "type": r["type"], "what": _what(r), "time": timeutil.fmt(r["started_at"]),
             "at": r["started_at"], "zone": r.get("zone_name") or r.get("zone_id"), "camera": r.get("camera_id"),
             "severity": r.get("severity"), "status": r.get("status"), "worker": who,
-            "snapshot": None if mask_names else r.get("snapshot"), "link": f"/#event={r['event_id']}",
+            "snapshot": None if mask_names else r.get("snapshot"),
+            "clip": None if mask_names else r.get("clip"), "link": f"/#event={r['event_id']}",
             "location": (r.get("location") or {}).get("note") if isinstance(r.get("location"), dict) else None}
 
 

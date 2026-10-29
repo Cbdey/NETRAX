@@ -108,6 +108,15 @@ fire:                             # plan section 7.4
   dark_fire_min_conf: 0.45
   debug_log: data/fire_debug.log   # one line per candidate per second: why it was kept / suppressed
 
+clips:                            # 29 Oct (brief 3/5/8): short video per incident, edge/clips.py
+  enabled: true
+  pre_s: 4.0                      # seconds BEFORE the alert (kept in memory per camera)
+  post_s: 4.0                     # seconds after the alert
+  fps: 6                          # clip frame rate (annotated picture, faces blurred like snapshots)
+  width: 640
+  dir: data/clips                 # edge copy until the backend has it (offline-safe)
+  types: [ppe_missing, unauthorized_entry, fire, smoke, entrance_check]
+
 privacy:                          # F22
   blur_faces_in_snapshots: true   # stored alert snapshots are pixelated at the face; live view is not
   snapshot_retention_days: 30     # alert images older than this are deleted (records are kept); 0 = keep

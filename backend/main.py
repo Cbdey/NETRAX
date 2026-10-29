@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -24,6 +25,8 @@ DATA_DIR = os.environ.get("SENTINELEYE_DATA_DIR") or os.path.join(ROOT, "data") 
 SNAP_DIR = os.path.join(DATA_DIR, "backend_snapshots")
 WORKER_DIR = os.path.join(DATA_DIR, "workers")              # registration photos (consented)
 os.makedirs(SNAP_DIR, exist_ok=True)
+CLIP_DIR = os.path.join(DATA_DIR, "backend_clips")    # short video per incident (edge/clips.py)
+os.makedirs(CLIP_DIR, exist_ok=True)
 os.makedirs(WORKER_DIR, exist_ok=True)
 # SENTINELEYE_DB / SENTINELEYE_MUTE=1 let tests use a scratch database and stay silent
 db.init(os.environ.get("SENTINELEYE_DB") or os.path.join(ROOT, "data", "sentineleye.db"))
@@ -66,7 +69,7 @@ def _for_viewer(kind, data):
     if kind == "event":
         return auth.mask_event(data)
     if kind in ("entrance",):
-        return dict(data, worker_id=None, worker_name=None, snapshot=None) if isinstance(data, dict) else data
+        return dict(data, worker_id=None, worker_name=None, snapshot=None, clip=None) if isinstance(data, dict) else data
     if kind in ("workers",):
         return [{"worker_id": "W-***", "name": "(hidden)", "photos": w.get("photos")} for w in data] \
             if isinstance(data, list) else data
@@ -109,12 +112,14 @@ async def escalation_loop():
 
 
 async def retention_loop():
-    """Privacy: delete alert snapshots older than privacy.snapshot_retention_days (hourly)."""
+    """Privacy: delete alert snapshots and clips older than privacy.snapshot_retention_days (hourly)."""
     from edge.retention import purge
     days = (SETTINGS.get("privacy") or {}).get("snapshot_retention_days", 30)
     while True:
         for eid in await asyncio.to_thread(purge, SNAP_DIR, days):
             db.x("UPDATE events SET snapshot_path=NULL WHERE event_id=?", (eid,))
+        for eid in await asyncio.to_thread(purge, CLIP_DIR, days, None, ("*.mp4", "*.webm")):
+            db.x("UPDATE events SET clip_path=NULL WHERE event_id=?", (eid,))
         await asyncio.sleep(3600)
 
 
@@ -200,7 +205,7 @@ async def access_control(request: Request, call_next):
         return JSONResponse({"detail": "only available on the edge computer"}, status_code=403)
     u = auth.read_token(request.cookies.get(auth.COOKIE))
     if not u:
-        if method == "GET" and not path.startswith(("/api/", "/snapshots", "/workers/", "/ws")):
+        if method == "GET" and not path.startswith(("/api/", "/snapshots", "/clips", "/workers/", "/ws")):
             return RedirectResponse(f"/login?next={path}", status_code=303)
         return JSONResponse({"detail": "login required"}, status_code=401)
     if not auth.allowed(u["role"], need):
@@ -261,6 +266,9 @@ async def ingest_event(p: dict = Body(...)):
         db.x("UPDATE events SET frame_w=?, frame_h=?, location=? WHERE event_id=?",
              (p.get("frame_w"), p.get("frame_h"), json.dumps(location.current(p.get("zone_id"), p.get("camera_id"), now)),
               eid))
+        for ext in (".mp4", ".webm"):
+            if os.path.exists(os.path.join(CLIP_DIR, eid + ext)):
+                db.x("UPDATE events SET clip_path=? WHERE event_id=?", (os.path.join(CLIP_DIR, eid + ext), eid))
         perf.add("event_e2e_ms", (now - captured) * 1000)
         perf.add("time_to_alert_ms", (now - onset) * 1000)
         e = db.get_event(eid)
@@ -740,6 +748,24 @@ async def camera_frame(camera_id: str, request: Request):
     return {"ok": True, "closed": closed} if closed else {"ok": True}
 
 
+@app.post("/api/events/{event_id}/clip")
+async def event_clip(event_id: str, request: Request):
+    """Edge uploads the short incident video (edge/clips.py) - linked to the same event id everywhere."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,80}", event_id):
+        raise HTTPException(400, "bad event id")
+    ext = ".webm" if "webm" in (request.headers.get("content-type") or "") else ".mp4"
+    data = await request.body()
+    if not data or len(data) > 50 * 1024 * 1024:
+        raise HTTPException(400, "empty or too large")
+    f = os.path.join(CLIP_DIR, event_id + ext)
+    await asyncio.to_thread(lambda: open(f, "wb").write(data))
+    if db.get_event(event_id):
+        db.x("UPDATE events SET clip_path=? WHERE event_id=?", (f, event_id))
+        db.add_action(event_id, "clip_saved", "edge", f"{len(data) // 1024} KB video")
+        await broadcast("event", db.get_event(event_id))
+    return {"ok": True, "clip": f"/clips/{event_id}{ext}"}
+
+
 @app.post("/api/cameras/{camera_id}/raw")
 async def camera_raw(camera_id: str, request: Request):
     RAW[camera_id] = (await request.body(), time.time())       # kept in memory only
@@ -1091,7 +1117,7 @@ def entrance_list(request: Request, limit: int = 30):
     rows = [entrance_payload(db.row_to_event(r)) for r in
             db.q("SELECT * FROM events WHERE type='entrance_check' ORDER BY started_at DESC LIMIT ?", (min(limit, 200),))]
     if current_user(request).get("role") == "viewer":
-        rows = [dict(r, worker_id=None, worker_name=None, snapshot=None) for r in rows]
+        rows = [dict(r, worker_id=None, worker_name=None, snapshot=None, clip=None) for r in rows]
     return rows
 
 
@@ -1236,5 +1262,6 @@ def hardware_page():
 
 
 app.mount("/snapshots", StaticFiles(directory=SNAP_DIR), name="snapshots")
+app.mount("/clips", StaticFiles(directory=CLIP_DIR), name="clips")
 app.mount("/workers", StaticFiles(directory=WORKER_DIR), name="workers")
 app.mount("/static", StaticFiles(directory=os.path.join(ROOT, "dashboard")), name="static")

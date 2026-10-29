@@ -6,13 +6,13 @@ import os
 import time
 
 
-def purge(folder, days, now=None):
-    """Delete *.jpg in folder older than `days`. Returns the deleted event ids (file stems)."""
+def purge(folder, days, now=None, patterns=("*.jpg",)):
+    """Delete *.jpg (or `patterns`) in folder older than `days`. Returns the deleted event ids (file stems)."""
     if not days or days <= 0 or not os.path.isdir(folder):
         return []
     cutoff = (now or time.time()) - days * 86400
     gone = []
-    for f in glob.glob(os.path.join(folder, "*.jpg")):
+    for f in [f for p in patterns for f in glob.glob(os.path.join(folder, p))]:
         try:
             if os.path.getmtime(f) < cutoff:
                 os.remove(f)

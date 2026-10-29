@@ -419,7 +419,7 @@ async function search(){
     const rows = (await api("/api/events/search?" + p)).filter(e => e.type !== "test");
     $("sCount").textContent = `${rows.length} incident${rows.length === 1 ? "" : "s"}${rows.length === 300 ? " (first 300)" : ""}`;
     $("sRows").innerHTML = rows.length ? rows.map(e => `<tr class="click" data-ev="${esc(e.event_id)}">
-      <td>${e.snapshot ? `<img class="thumb" src="${e.snapshot}?v=${e.updated_at}" alt="" loading="lazy">` : `<div class="thumb" style="display:grid;place-items:center;color:#789;font-size:11px">no image</div>`}</td>
+      <td>${e.snapshot ? `<img class="thumb" src="${e.snapshot}?v=${e.updated_at}" alt="" loading="lazy">` : `<div class="thumb" style="display:grid;place-items:center;color:#789;font-size:11px">no image</div>`}${e.clip ? `<div class="small" style="text-align:center">▶ clip</div>` : ""}</td>
       <td><b>${fmtT(e.started_at, false)}</b><br><span class="small">${new Date(e.started_at*1000).toLocaleDateString("en-IN",{timeZone:TZ, day:"2-digit", month:"short"})}</span></td>
       <td><b>${esc(title(e))}</b><br><span class="small">${esc(e.event_id)}</span></td>
       <td>${esc(e.zone_name || e.zone_id || "–")}<br><span class="small">${esc(e.camera_id || "safety station")}</span></td>
@@ -436,6 +436,7 @@ async function openEvent(id){
   let e; try { e = await api(`/api/events/${encodeURIComponent(id)}`); } catch(x){ toast("Not found", id, true); return; }
   const n = (e.notifications||[]).map(x => `<tr><td>${chName(x.channel)}</td><td>${nPill(x.status)}</td><td class="small">${esc(x.recipient||"")}</td><td>${x.attempts||0}</td><td>${x.latency_ms != null ? (x.latency_ms/1000).toFixed(1)+" s" : "–"}</td><td class="small">${esc(x.provider_status || x.error || "")}</td></tr>`).join("");
   $("mBox").innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:22px">${esc(title(e))}</h2>${statusPill(e)}${sevPill(e.severity)}<span class="grow"></span><button class="btn" id="mClose">Close</button></div>
+    ${e.clip ? `<video class="big" src="${e.clip}" controls autoplay muted loop playsinline preload="metadata" aria-label="Incident video clip (faces blurred)" style="width:100%;background:#000"></video><p class="small" style="margin:4px 0 8px">▶ Video clip: about 4 s before and 4 s after the alert (faces blurred).</p>` : ""}
     ${e.snapshot ? `<img class="big" src="${e.snapshot}?v=${e.updated_at}" alt="Saved snapshot (faces blurred)">` : `<p class="small">No saved snapshot for this record.</p>`}
     <div class="kv"><div>Event ID</div><div>${esc(e.event_id)}</div><div>Detected</div><div>${fmtT(e.started_at)} IST</div>
       <div>Ended</div><div>${e.ended_at ? fmtT(e.ended_at) + " IST · " + esc(e.end_reason || "") : "still active"}</div>

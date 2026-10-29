@@ -26,7 +26,7 @@ def iso(ts):
 
 class CameraWorker(threading.Thread):
     def __init__(self, cam_id, cam_cfg, zones, settings, reader, outbox, publisher, identity=None,
-                 detector=None, engine=None):
+                 detector=None, engine=None, clips=None):
         super().__init__(daemon=True, name=f"worker-{cam_id}")
         self.cam_id, self.cam_cfg, self.s = cam_id, cam_cfg, settings
         self.reader, self.outbox, self.publisher = reader, outbox, publisher
@@ -71,6 +71,7 @@ class CameraWorker(threading.Thread):
         self.aliased = {}             # raw tracker id -> stable id already handed over
         self.snap_dir = path(settings["snapshots_dir"])
         os.makedirs(self.snap_dir, exist_ok=True)
+        self.clips = clips                # short video per incident (edge/clips.py)
 
     def set_target(self, fps):
         """Load manager (edge/load.py) changes the processing rate at run time."""
@@ -189,8 +190,12 @@ class CameraWorker(threading.Thread):
             if open_ppe:
                 items_ = sorted({i for w_ in open_ppe for i in w_.open_items})
                 self.tile_badge = "NO " + " / ".join(i.upper() for i in items_)
+        if self.clips is not None and annotated is not None and self.clips.due(self.cam_id, frame_ts):
+            self.clips.add(self.cam_id, annotated, frame_ts, persons)
         for a in actions:
             a["frame_w"], a["frame_h"] = w, h
+            if self.clips is not None and a["action"] == "open":
+                self.clips.start(self.cam_id, a["event_id"], frame_ts, a.get("type"))
             self.emit(a, annotated, frame_ts, frame, persons)
         if publish:
             self.publisher.frame(self.cam_id, annotated, frame_ts)

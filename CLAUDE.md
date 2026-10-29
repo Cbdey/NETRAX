@@ -220,3 +220,10 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   the alert and take a fresh look (first_look_s, ~2 s) -> still missing = NEW event with field reopen_of; backend clears
   SPOKEN for that person, voice again, notify reason "still missing after resolve" (bypasses flood control).
   Acknowledge / False alarm (dismiss) do NOT re-check. Tests in edge.selftest + tools.access_selftest.
+- 29 Oct night, Step 2 VIDEO CLIPS (brief 3/5/8): edge/clips.py ClipRecorder (one, shared; run_edge) keeps pre_s 4 s of the
+  annotated picture per camera (6 fps, 640 px, memory); on an OPEN action (ppe/access/fire/smoke/entrance) + post_s 4 s ->
+  background thread blurs faces (own YuNet) -> H.264 MP4 via PyAV (WebM VP8 via OpenCV fallback) -> POST /api/events/<id>/clip
+  (device path, no login). Offline: file stays in data/clips, uploaded on the next try / edge restart. Backend data/backend_clips,
+  events.clip_path, event field `clip` (/clips/<id>.mp4, supervisor+, viewer masked), retention = snapshot_retention_days.
+  Shown in control-room + admin incident details (video + snapshot side by side), assistant cards "▶ clip". settings.yaml clips:.
+  Tests: final_selftest [CLIP] x6. Phone call / SMS: user decided NOT now (Telegram + e-mail only; future work).

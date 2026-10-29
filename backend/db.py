@@ -1,5 +1,6 @@
 """SQLite storage (F09). Tables follow plan section 7.6."""
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -41,7 +42,7 @@ def init(db_path):
                          ("fire_level", "INTEGER"), ("fire_reasons", "TEXT"),
                          ("frame_w", "INTEGER"), ("frame_h", "INTEGER"),
                          ("location", "TEXT"), ("acked_at", "REAL"), ("acked_by", "TEXT"),
-                         ("closed_by", "TEXT"), ("details", "TEXT")):
+                         ("closed_by", "TEXT"), ("details", "TEXT"), ("clip_path", "TEXT")):
             if col not in have:
                 _conn.execute(f"ALTER TABLE events ADD COLUMN {col} {typ}")
         have = {r[1] for r in _conn.execute("PRAGMA table_info(notifications)")}
@@ -121,6 +122,7 @@ def row_to_event(r):
     e["items_missing"] = json.loads(e["items_missing"] or "[]")
     e["bbox"] = json.loads(e["bbox"] or "null")
     e["snapshot"] = f"/snapshots/{e['event_id']}.jpg" if e.get("snapshot_path") else None
+    e["clip"] = "/clips/" + os.path.basename(e["clip_path"]) if e.get("clip_path") else None
     for k in ("location", "fire_reasons", "details"):
         if isinstance(e.get(k), str):
             try:
