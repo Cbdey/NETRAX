@@ -164,3 +164,43 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   3 votes with >=60 % share, renaming needs 5 votes / 75 %, learning only >=0.65 & margin 0.15; data/identity_debug.log.
   SUSHREE has only 1 registered photo -> re-register with 3-5 (different angles/light). Live check: 1 call + 1 reminder
   in 2 min (was ~10). Known: tracker splits still open extra dashboard records (voice merged). Backups: _to_delete/before_one_decision/.
+
+## 29 Oct 2026: FINAL ROUND (requirements brief "NETRAX Elaborated System Requirements", sections 1-12)
+- Dashboard: / = NEW control room (dashboard/index.html): big camera wall (Enlarge), incidents with Active /
+  Acknowledged / Resolved tabs (ack != resolve: POST /api/events/{id}/resolve), dashboard-wide red state + violation
+  cards for active unacknowledged High/Critical PPE / access incidents (settings incidents.emergency_severities),
+  fire panels L1 yellow / L2 critical with live feed / L3 full-screen evacuate overlay, entrance popup, AI assistant,
+  alert-delivery table, measured latency, system health. Old dashboard -> /admin (dashboard/admin.html: workers,
+  reports, analytics). /login page.
+- Login + roles (backend/auth.py): viewer (names + snapshots hidden), supervisor (act, assistant), admin (workers,
+  notify test, users, audit). config/users.local.yaml (PBKDF2), first start writes data/initial_passwords.txt.
+  python -m tools.users set <name> <pw> [role]. Devices post without login (exact paths in auth.DEVICE_EXACT).
+  Tests: SENTINELEYE_AUTH=0. Audit log table audit_log (/api/audit).
+- Notifications (backend/notify.py rewrite): Telegram bot, Twilio voice call + SMS, SMTP e-mail; background
+  Dispatcher thread, bounded retries, provider-confirmed status only (delivered / sent / failed / not_configured),
+  one message per (event, channel, kind), fire + Critical never held by cooldown. Policy config/notify.yaml,
+  credentials config/secrets.local.yaml (template secrets.example.yaml; git-ignored). python -m tools.notify_setup.
+- Fire levels (backend/fire_levels.py, settings fire_levels): L1 WARNING / L2 CRITICAL / L3 EVACUATE from flame area,
+  growth, duration, station sensors, sources; level only goes up; siren from L2 (L1 = voice warning). main.regrade_fire
+  + fire_level_loop (1 s); every raise re-notifies.
+- Entrance (edge/entrance.py): cameras.yaml role: entrance (cam_04 USB index 1, zone main_entrance helmet/vest/boots).
+  One decision per person: approved / denied (names item) / manual (unclear, >1 person, too far); >= 6 frames and >= 1 s;
+  recheck after 3 s; gate 'closed' unless approved AND entrance.controller_connected. Backend ingest_entrance ->
+  events type entrance_check (details JSON) + entrance_checks table; POST /api/entrance/{id}/decide = manual check.
+- AI assistant (backend/assistant.py): grounded parser (dates, clock times, windows, types, items, zones, cameras,
+  workers, status) -> SQL -> answer only from rows + record links; no record -> "No matching record was found";
+  optional Anthropic key in secrets (only re-words rows). POST /api/assistant, assistant_log.
+- Location (backend/location.py, config/site.yaml): hardware GPS (POST /api/location/hardware, for the later GSM/GPS
+  unit) > device GPS (browser) > configured site; stale readings marked; "Location unavailable" otherwise.
+  Stored per event (events.location JSON).
+- Latency: edge/engine.py ONE shared model set, frames of all cameras batched (processing.shared_engine, max_batch);
+  stale frames (> max_frame_age_s) skipped; boxes drawn only when a preview is due; JPEG encode in publisher thread
+  (preview_fps 10, X-Captured-At header); USB capture MJPG 1280x720 buffer 1. backend/perf.py p50/p95
+  (/api/perf, dashboard reports picture age + event arrival). python -m tools.latency_report --label ... -> docs/eval/
+  latency_report.md. Optional TensorRT FP32: python -m tools.export_engines + models.runtime: tensorrt.
+- Overlay: per-worker item lines (HELMET OK / NO GLOVES / GOGGLES ?) smoothed over ~8 frames (display only).
+- Health (/api/health, every 3 s on the websocket): edge, cameras, DB probe, each alert channel, queue, outbox,
+  station, location, disk.
+- Tests: python -m tools.final_selftest -> ALL FINAL TESTS PASSED (acceptance 01-14 with fake providers, auth, engine,
+  edge pipeline) and writes docs/eval/final_selftest.md. Older selftests still pass.
+- Hardware (GSM module, lock/turnstile controller) deliberately NOT done yet (user: software first).

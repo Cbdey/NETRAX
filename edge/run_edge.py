@@ -6,6 +6,8 @@ import os
 import time
 
 from .config import load_all, path
+from .detector import Detector
+from .engine import InferenceEngine
 from .identity import IdentityService
 from .load import LoadManager
 from .retention import purge
@@ -14,6 +16,21 @@ from .publisher import Publisher
 from .share import ShareGroups
 from .stream import StreamReader
 from .worker import CameraWorker
+
+
+def _pct(vals, p):
+    if not vals:
+        return None
+    s = sorted(vals)
+    return round(s[min(len(s) - 1, int(round((len(s) - 1) * p)))], 1)
+
+
+def _lat(w):
+    """Per-camera latency numbers for the dashboard / perf report (milliseconds)."""
+    fm, im, wm = list(w.frame_ms), list(w.infer_ms), list(w.wait_ms)
+    return {"frame_p50": _pct(fm, .5), "frame_p95": _pct(fm, .95), "infer_p50": _pct(im, .5),
+            "infer_p95": _pct(im, .95), "wait_p50": _pct(wm, .5), "wait_p95": _pct(wm, .95),
+            "dropped_stale": w.dropped_stale}
 
 
 def main():
@@ -30,14 +47,22 @@ def main():
     for c in off:
         print(f"[edge] {c} '{cameras[c].get('name')}' switched off (enabled: false in cameras.yaml)")
     cameras = {c: cam for c, cam in cameras.items() if c not in off}
+    # ONE copy of every model for all cameras, batched on the GPU (edge/engine.py)
+    proc = settings.get("processing", {})
+    engine = None
+    if proc.get("shared_engine", True):
+        engine = InferenceEngine(Detector(settings), max_batch=proc.get("max_batch", 4),
+                                 gather_ms=proc.get("batch_gather_ms", 3))
+        engine.start()
+        print(f"[edge] shared inference engine: models loaded once, batch up to {engine.max_batch} cameras")
     share = ShareGroups(cameras, settings.get("processing", {}).get("share_failover_s", 15))
     for g, members in share.groups.items():
         print(f"[edge] camera pair '{g}': {' / '.join(members)} - one at a time, now {share.active[g]}")
     for cam_id, cam in cameras.items():
-        r = StreamReader(cam_id, cam["source"], fps, cam.get("rotate", 0))
+        r = StreamReader(cam_id, cam["source"], fps, cam.get("rotate", 0), cam.get("capture"))
         r.allowed = (lambda c=cam_id: share.allowed(c))
         r.start()
-        wkr = CameraWorker(cam_id, cam, zones, settings, r, outbox, publisher, identity)
+        wkr = CameraWorker(cam_id, cam, zones, settings, r, outbox, publisher, identity, engine=engine)
         wkr.start()
         readers[cam_id], workers[cam_id] = r, wkr
         print(f"[edge] {cam_id} '{cam.get('name')}' source={cam['source']} "
@@ -74,11 +99,15 @@ def main():
                     "infer_ms": round(sum(wkr.infer_ms) / len(wkr.infer_ms), 1) if wkr.infer_ms else None,
                     "decisions": dict(wkr.decisions),
                     "target_fps": wkr.fps_target,
+                    "role": wkr.role,
+                    "latency": _lat(wkr),
                 })
             online = publisher.health({
                 "at": time.time(),
                 "device": str(next(iter(workers.values())).detector.device) if workers else "cpu",
-                "runtime": "PyTorch (ultralytics)",
+                "runtime": ("TensorRT" if getattr(next(iter(workers.values())).detector, "runtime", "") == "tensorrt"
+                            else "PyTorch (ultralytics)") + (" + shared batched engine" if engine else "") if workers else "-",
+                "engine": engine.stats() if engine else None,
                 "outbox_pending": outbox.pending(),
                 "load_note": load.note,
                 "cameras": cams,

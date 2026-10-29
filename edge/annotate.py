@@ -70,8 +70,9 @@ def draw(frame, persons, statuses, items, fire_boxes, zone_polys, rejected=(), p
         if unver:
             text += " ?" + ",".join(unver)        # cannot see that body part clearly
         if not missing and not unver and st:
-            text += " OK"
+            text += " PPE OK"
         _label(img, text, x1, y1, color)
+        _item_column(img, st, x1, y1, x2, y2)
     for cls, bbox, status, conf in fire_boxes:
         x1, y1, x2, y2 = map(int, bbox)
         color = GREY if status == "suppressed" else colour_of(cls)
@@ -82,6 +83,32 @@ def draw(frame, persons, statuses, items, fire_boxes, zone_polys, rejected=(), p
         cv2.rectangle(img, (x1, y1), (x2, y2), GREY, 1)
         _label(img, f"{cls}? rejected: {why}", x1, y2 + 18, GREY)
     return img
+
+
+ITEM_SHORT = {"helmet": "HELMET", "vest": "VEST", "gloves": "GLOVES", "boots": "SHOES", "goggles": "GOGGLES",
+              "mask": "MASK"}
+
+
+def _item_column(img, st, x1, y1, x2, y2):
+    """One clear line per required item inside the worker's box: green 'HELMET OK', red 'NO GLOVES',
+    grey 'GOGGLES ?' (body part not visible - never counted as missing)."""
+    if not st:
+        return
+    h = img.shape[0]
+    scale = max(0.45, min(0.75, (y2 - y1) / 700))
+    line = int(26 * scale / 0.55)
+    y = int(y1) + line + 6
+    for item in ("helmet", "goggles", "mask", "vest", "gloves", "boots"):
+        if item not in st:
+            continue
+        s = st[item][0]
+        name = ITEM_SHORT.get(item, item.upper())
+        text, col = ((f"{name} OK", GREEN) if s == "compliant" else (f"NO {name}", RED) if s == "missing"
+                     else (f"{name} ?", GREY))
+        if y > min(h - 4, y2 - 4):
+            break
+        _label(img, text, x1 + 4, y, col, scale=scale)
+        y += line
 
 
 def highlight(img, bbox, color=RED):
@@ -112,3 +139,22 @@ def to_jpeg(img, width=640, quality=80):
         img = cv2.resize(img, (width, int(h * width / w)))
     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
     return buf.tobytes() if ok else None
+
+
+def entrance_banner(img, checker):
+    """Big result bar on the entrance camera picture (ACCESS APPROVED / DENIED / MANUAL CHECK)."""
+    s = checker.s
+    h, w = img.shape[:2]
+    if not s:
+        text, col = "ENTRANCE PPE CHECK - step in front of the camera", (90, 90, 90)
+    elif not s.get("decided"):
+        text, col = f"CHECKING PPE... {', '.join(checker.required)}", (30, 160, 230)
+    else:
+        text, col = {"approved": ("ACCESS APPROVED - all required PPE detected", (60, 160, 60)),
+                     "denied": ("ACCESS DENIED - required PPE incomplete", (40, 40, 220)),
+                     "manual": ("VERIFICATION FAILED - manual check required", (0, 140, 255))}[s["decided"]]
+    bar = max(28, h // 14)
+    cv2.rectangle(img, (0, h - bar), (w, h), col, -1)
+    scale = max(0.5, bar / 48)
+    cv2.putText(img, text, (10, h - bar // 3), cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), 2, cv2.LINE_AA)
+    return img

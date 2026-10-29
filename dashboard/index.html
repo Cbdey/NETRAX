@@ -3,621 +3,724 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NETRAX — PPE, Smoke & Fire Safety Monitor</title>
+<title>NETRAX Control Room</title>
 <style>
 :root{
-  --bg:#eef1f5; --card:#ffffff; --navy:#15213a; --ink:#1d2939; --muted:#667085; --line:#e3e7ee;
-  --red:#c0392b; --red-bg:#fdecea; --amber:#c98a1b; --amber-bg:#fdf3e1; --blue:#2f6fad; --blue-bg:#e8f0f9;
-  --green:#2e7d5b; --green-bg:#e5f3ec; --grey:#98a2b3; --grey-bg:#f2f4f7; --radius:10px;
+  --bg:#0b161c; --panel:#11222b; --panel2:#162c37; --ink:#eaf3f4; --muted:#93aab1; --line:#24414b;
+  --ok:#22c55e; --ok-bg:#0f3a24; --warn:#f5b301; --warn-bg:#3d3006; --crit:#ef4444; --crit-bg:#4a1212;
+  --info:#38bdf8; --info-bg:#0c3346; --grey:#64748b; --teal:#14b8a6; --r:12px;
+}
+:root[data-theme="light"]{
+  --bg:#eef3f4; --panel:#ffffff; --panel2:#f3f7f8; --ink:#0f1f26; --muted:#4f6a73; --line:#d4e0e3;
+  --ok:#15803d; --ok-bg:#dcfce7; --warn:#a16207; --warn-bg:#fef3c7; --crit:#b91c1c; --crit-bg:#fee2e2;
+  --info:#0369a1; --info-bg:#e0f2fe; --grey:#64748b;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
-button,select{font:inherit}
-.wrap{max-width:1440px;margin:0 auto;padding:18px 22px 30px}
-header{background:var(--navy);color:#fff;border-radius:var(--radius);padding:14px 20px;display:flex;align-items:center;gap:14px}
-.logo{width:38px;height:38px;border-radius:8px;background:var(--green);display:grid;place-items:center;font-weight:700;font-size:18px}
-header h1{margin:0;font-size:19px;font-weight:600}
-header p{margin:1px 0 0;color:#a9b4c7;font-size:12px}
-.pill{margin-left:auto;display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;font-size:12px;font-weight:600;background:#1f3b36;color:#9ce0c1}
-.pill i{width:8px;height:8px;border-radius:50%;background:#3ddc97}
-.pill.off{background:#4a2224;color:#f5b3ad}.pill.off i{background:#ef5b4c}
-.alarm{display:none;margin-top:12px;background:var(--red);color:#fff;border-radius:var(--radius);padding:12px 18px;align-items:center;gap:14px;font-weight:600}
-.alarm.show{display:flex;animation:pulse 1.2s infinite}
-.alarm button{margin-left:auto;background:#fff;color:var(--red);border:0;border-radius:6px;padding:7px 14px;font-weight:700;cursor:pointer}
-@keyframes pulse{50%{background:#9e2b20}}
-@media (prefers-reduced-motion:reduce){.alarm.show{animation:none}}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:14px 0}
-.hwlink{margin-left:auto;color:#cfe0f5;font-size:13px;text-decoration:none;border:1px solid #31456b;border-radius:6px;padding:6px 12px}
-.hwlink:hover,.hwlink:focus-visible{background:#22345a;outline:none}
-.station{background:var(--card);border-radius:var(--radius);padding:10px 16px;margin:-2px 0 14px;display:grid;
-  grid-template-columns:auto 1fr auto;gap:16px;align-items:center;border-left:4px solid var(--grey);font-size:13px}
-.station.NORMAL{border-color:var(--green)}.station.WARNING,.station.FAULT{border-color:var(--amber)}
-.station.CRITICAL{border-color:var(--red);background:var(--red-bg)}
-.st-head{display:flex;align-items:center;gap:8px}
-.st-dot{width:9px;height:9px;border-radius:50%;background:var(--grey)}
-.station.NORMAL .st-dot{background:var(--green)}.station.CRITICAL .st-dot{background:var(--red)}
-.station.WARNING .st-dot,.station.FAULT .st-dot{background:var(--amber)}
-.st-vals{display:flex;flex-wrap:wrap;gap:6px 18px}.st-vals b{font-weight:600}
-.st-side{display:flex;gap:14px;align-items:center;color:var(--muted);flex-wrap:wrap}.st-side a{color:var(--blue)}
-.vchip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;margin-top:3px}
-.muted{color:var(--muted)}
-@media (max-width:900px){.station{grid-template-columns:1fr}}
-.kpi{background:var(--card);border-radius:var(--radius);padding:14px 18px;border-left:4px solid}
-.kpi small{color:var(--muted);font-size:12px}
-.kpi b{display:block;font-size:28px;font-weight:600;margin-top:2px}
-.kpi span{color:var(--muted);font-size:12px}
-.main{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(320px,1fr);gap:16px;align-items:start}
-h2{font-size:14px;font-weight:600;margin:0 0 8px}
-.panel{background:var(--card);border-radius:var(--radius);padding:16px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
-.tile{border:2px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
-.tile.alert{border-color:var(--red)}.tile.ok{border-color:var(--green)}.tile.warn{border-color:var(--amber)}.tile.offline{border-color:var(--grey)}.tile.standby{border-color:var(--grey);border-style:dashed}
-.screen .useBtn{margin-top:10px;padding:6px 12px;border:0;border-radius:6px;background:var(--amber,#F2A900);color:#13202E;font-weight:600;cursor:pointer}
-.screen{position:relative;aspect-ratio:16/10;background:#1b2537;display:grid;place-items:center;color:#8391a7;font-size:12px}
-.screen img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.badge{position:absolute;top:8px;left:8px;z-index:2;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;color:#fff;background:var(--red)}
-.badge.v{background:var(--amber)}
-.state{position:absolute;top:8px;right:8px;z-index:2;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;background:rgba(0,0,0,.55);color:#fff;display:flex;gap:6px;align-items:center}
-.state i{width:7px;height:7px;border-radius:50%}
-.meta{padding:8px 10px}.meta b{display:block;font-size:13px}.meta span{color:var(--muted);font-size:12px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:8px 6px;border-bottom:1px solid var(--line)}
-td{padding:9px 6px;border-bottom:1px solid var(--line)}
-.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
-.t-green{background:var(--green-bg);color:var(--green)}.t-red{background:var(--red-bg);color:var(--red)}
-.t-amber{background:var(--amber-bg);color:var(--amber)}.t-blue{background:var(--blue-bg);color:var(--blue)}.t-grey{background:var(--grey-bg);color:var(--muted)}
-.feedhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.feedhead h2{margin:0 auto 0 0}
-.feedhead select{border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:#fff;font-size:12px}
-.feed{display:flex;flex-direction:column;gap:10px;max-height:640px;overflow:auto;padding-right:2px}
-.card{border-left:4px solid;border-radius:6px;background:#fafbfc;padding:10px 12px;display:grid;grid-template-columns:1fr auto;gap:2px 10px}
-.card .ttl{font-size:12px;font-weight:700;letter-spacing:.02em}
-.card .when{color:var(--muted);font-size:12px;text-align:right}
-.card .sub{grid-column:1/-1;font-size:12px;color:var(--ink)}
-.card .st{grid-column:1/-1;font-size:11px;color:var(--muted)}
-.card .row{grid-column:1/-1;display:flex;gap:6px;margin-top:6px;align-items:center}
-.card img{width:64px;height:40px;object-fit:cover;border-radius:4px;cursor:zoom-in;margin-left:auto}
-.btn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink)}
-.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
-.btn:focus-visible,select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
-.empty{color:var(--muted);font-size:13px;padding:18px 4px;text-align:center}
-.bottom{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;margin-top:16px}
-.edge-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
-.edge-row:last-child{border:0}
-.legend{display:flex;flex-direction:column;gap:6px;font-size:12px}
-.boxlegend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12px;color:var(--muted)}
-.boxlegend i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-2px}
-.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
-.insight{font-size:12px;color:var(--muted);margin-top:6px}
-.rep{display:flex;flex-direction:column;gap:8px;font-size:13px}
-.rep .r{display:flex;justify-content:space-between;align-items:center}
-.rep a{text-decoration:none}
-.toasts{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:50;max-width:360px}
-.toast{background:var(--navy);color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;box-shadow:0 6px 20px rgba(21,33,58,.25)}
-.toast b{display:block;font-size:12px;margin-bottom:2px;color:#9ce0c1}
-.modal{position:fixed;inset:0;background:rgba(15,23,40,.7);display:none;place-items:center;z-index:60;padding:20px}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+button,input,select{font:inherit}
+a{color:var(--info)}
+.wrap{padding:14px 18px 28px;max-width:1920px;margin:0 auto}
+/* ---------- header ---------- */
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 16px}
+.logo{width:42px;height:42px;border-radius:10px;background:var(--teal);color:#05201c;display:grid;place-items:center;font-weight:800;font-size:21px;flex:none}
+header h1{margin:0;font-size:22px;letter-spacing:.05em}
+header .tag{margin:0;color:var(--muted);font-size:12px;letter-spacing:.14em}
+.hgrow{flex:1}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;font-weight:700;font-size:14px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+.chip.ok{color:var(--ok);border-color:var(--ok)} .chip.warn{color:var(--warn);border-color:var(--warn)}
+.chip.fail,.chip.crit{color:var(--crit);border-color:var(--crit)} .chip.info{color:var(--info);border-color:var(--info)}
+.clock{font-variant-numeric:tabular-nums;font-size:18px;font-weight:700}
+.navl{color:var(--ink);text-decoration:none;border:1px solid var(--line);padding:6px 10px;border-radius:8px;font-size:13px}
+.navl:hover,.navl:focus-visible{background:var(--panel2);outline:none}
+.btn{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:15px}
+.btn:hover{filter:brightness(1.15)} .btn:disabled{opacity:.5;cursor:default}
+.btn.pri{background:var(--teal);color:#05201c;border-color:var(--teal)}
+.btn.red{background:var(--crit);color:#fff;border-color:var(--crit)} .btn.amber{background:var(--warn);color:#1f1600;border-color:var(--warn)}
+.btn.big{font-size:18px;padding:12px 22px}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--info);outline-offset:2px}
+/* ---------- health strip ---------- */
+.healthbar{display:none;margin-top:10px;border-radius:var(--r);padding:10px 16px;font-size:15px;border:1px solid}
+.healthbar.show{display:block} .healthbar.warn{background:var(--warn-bg);border-color:var(--warn)} .healthbar.fail{background:var(--crit-bg);border-color:var(--crit)}
+.healthbar b{margin-right:8px}
+/* ---------- emergency (section 2) + fire (sections 8-9) ---------- */
+body.emergency .wrap{box-shadow:inset 0 0 0 8px var(--crit);border-radius:6px}
+body.emergency header{background:var(--crit-bg);border-color:var(--crit)}
+.alertzone{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.bigpanel{border-radius:var(--r);padding:16px 18px;border:3px solid;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 18px;align-items:start}
+.bigpanel.crit{background:var(--crit-bg);border-color:var(--crit)} .bigpanel.warn{background:var(--warn-bg);border-color:var(--warn)}
+.bigpanel.ack{background:var(--info-bg);border-color:var(--info);border-width:2px}
+.bigpanel h2{margin:0;font-size:28px;line-height:1.15;letter-spacing:.02em}
+.bigpanel .what{font-size:22px;font-weight:700}
+.bigpanel .facts{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:17px}
+.bigpanel .facts b{font-weight:700}
+.bigpanel .acts{display:flex;flex-direction:column;gap:8px;grid-row:1/span 4;grid-column:2}
+.bigpanel .feed{width:min(420px,32vw);aspect-ratio:16/10;object-fit:cover;border-radius:8px;background:#000;grid-column:2;grid-row:1/span 4}
+.bigpanel.withfeed{grid-template-columns:minmax(0,1fr) auto auto}
+.bigpanel.withfeed .acts{grid-column:3}
+.items{display:flex;flex-wrap:wrap;gap:8px}
+.item{font-weight:800;font-size:18px;padding:5px 12px;border-radius:8px;background:var(--crit);color:#fff;letter-spacing:.03em}
+.item.ok{background:var(--ok);color:#03210f}.item.unk{background:var(--warn);color:#1f1600}
+.violations{border:3px solid var(--crit);background:var(--crit-bg);border-radius:var(--r);padding:12px 14px}
+.vhead{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px}.vhead h2{margin:0;font-size:26px}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:10px}
+.vcard{background:var(--panel);border:2px solid var(--crit);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.vtop{display:flex;gap:10px;align-items:flex-start}.vtop>div{flex:1}
+.vtop img{width:130px;aspect-ratio:16/10;object-fit:cover;border-radius:6px;cursor:zoom-in;background:#000}
+.vt{font-size:19px;font-weight:900;color:var(--crit);margin-bottom:6px}
+.vcard .facts{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:15px}
+.vcard .row{display:flex;gap:6px;flex-wrap:wrap}
+.pulse{animation:pulse 1.1s infinite}
+@keyframes pulse{50%{filter:brightness(1.35)}}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+.overlay{position:fixed;inset:0;z-index:80;background:rgba(127,10,10,.96);color:#fff;display:none;flex-direction:column;padding:28px 34px;gap:16px;overflow:auto}
+.overlay.show{display:flex}
+.overlay h1{font-size:clamp(34px,5.2vw,78px);line-height:1.05;margin:0;letter-spacing:.02em}
+.overlay .sub{font-size:clamp(20px,2.3vw,32px);font-weight:700}
+.overlay .grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:22px;align-items:start}
+.overlay img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;border:4px solid #fff;background:#000}
+.overlay .facts{font-size:clamp(18px,1.6vw,24px);display:grid;gap:8px}
+.overlay .facts b{display:inline-block;min-width:150px;color:#ffd1d1}
+.overlay .acts{display:flex;gap:12px;flex-wrap:wrap}
+.overlay .btn{font-size:20px;padding:14px 24px;background:#fff;color:#7f0a0a;border:0}
+.overlay .btn.ghost{background:transparent;color:#fff;border:2px solid #fff}
+/* ---------- layout ---------- */
+.main{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(380px,1fr);gap:16px;margin-top:14px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.panel h2{margin:0 0 10px;font-size:19px;display:flex;align-items:center;gap:10px}
+.panel h2 .sp{flex:1}
+.stack{display:flex;flex-direction:column;gap:16px}
+/* camera wall */
+.cams{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px}
+.cams.focus{grid-template-columns:1fr}
+.cam{position:relative;border-radius:10px;overflow:hidden;border:3px solid var(--line);background:#000}
+.cam.alert{border-color:var(--crit)} .cam.warn{border-color:var(--warn)} .cam.ok{border-color:var(--ok)} .cam.off{border-style:dashed}
+.cam .screen{position:relative;aspect-ratio:16/9;display:grid;place-items:center;color:#b6c6cb;font-size:18px;text-align:center;padding:0}
+.cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.cam .top{position:absolute;left:0;right:0;top:0;display:flex;gap:8px;align-items:flex-start;padding:8px;z-index:2;
+  background:linear-gradient(rgba(0,0,0,.7),rgba(0,0,0,0))}
+.cam .name{font-size:19px;font-weight:800;color:#fff;text-shadow:0 1px 2px #000}
+.cam .zone{font-size:14px;color:#d9e6e9}
+.cam .st{margin-left:auto;font-size:14px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);border-radius:6px;padding:4px 9px;white-space:nowrap}
+.cam .badge{position:absolute;left:8px;bottom:8px;right:8px;z-index:2;font-size:20px;font-weight:800;padding:8px 12px;border-radius:8px;color:#fff;background:var(--crit)}
+.cam .badge.ok{background:var(--ok);color:#03210f}.cam .badge.warn{background:var(--warn);color:#1f1600}
+.cam .fbtn{position:absolute;right:8px;bottom:8px;z-index:3;background:rgba(0,0,0,.6);color:#fff;border:1px solid #fff5;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px}
+.risk{font-size:12px;font-weight:800;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:2px}
+.risk.high{background:var(--crit);color:#fff}.risk.medium{background:var(--warn);color:#1f1600}.risk.low{background:var(--grey);color:#fff}
+/* incidents */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tab{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:999px;padding:6px 12px;font-weight:700;font-size:14px;cursor:pointer}
+.tab[aria-pressed="true"]{background:var(--teal);color:#05201c;border-color:var(--teal)}
+.list{display:flex;flex-direction:column;gap:10px;max-height:760px;overflow:auto;padding-right:2px}
+.inc{border:1px solid var(--line);border-left:7px solid var(--grey);border-radius:10px;background:var(--panel2);padding:10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}
+.inc .state{font-size:13px;font-weight:800;letter-spacing:.06em}
+.inc .ttl{font-size:18px;font-weight:800;grid-column:1/-1}
+.inc .meta{font-size:15px;color:var(--muted);grid-column:1/-1}
+.inc .meta b{color:var(--ink);font-weight:600}
+.inc .when{font-size:14px;color:var(--muted);text-align:right}
+.inc .row{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px}
+.inc img{height:52px;border-radius:6px;margin-left:auto;cursor:zoom-in}
+.s-crit{border-left-color:var(--crit)} .s-crit .state{color:var(--crit)}
+.s-warn{border-left-color:var(--warn)} .s-warn .state{color:var(--warn)}
+.s-ack{border-left-color:var(--info)} .s-ack .state{color:var(--info)}
+.s-done{border-left-color:var(--grey);opacity:.85} .s-done .state{color:var(--muted)}
+.s-ok{border-left-color:var(--ok)} .s-ok .state{color:var(--ok)}
+.empty{color:var(--muted);text-align:center;padding:16px;font-size:15px}
+/* small tables */
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{text-align:left;color:var(--muted);font-weight:600;font-size:13px;padding:6px;border-bottom:1px solid var(--line)}
+td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:13px;font-weight:800;white-space:nowrap}
+.p-ok{background:var(--ok-bg);color:var(--ok)}.p-warn{background:var(--warn-bg);color:var(--warn)}.p-crit{background:var(--crit-bg);color:var(--crit)}
+.p-info{background:var(--info-bg);color:var(--info)}.p-grey{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.three{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;margin-top:16px}
+/* entrance */
+.gate{border-radius:10px;padding:14px;border:3px solid var(--line);display:grid;gap:6px}
+.gate .res{font-size:24px;font-weight:900;letter-spacing:.03em}
+.gate.approved{border-color:var(--ok);background:var(--ok-bg)}.gate.approved .res{color:var(--ok)}
+.gate.denied{border-color:var(--crit);background:var(--crit-bg)}.gate.denied .res{color:var(--crit)}
+.gate.manual{border-color:var(--warn);background:var(--warn-bg)}.gate.manual .res{color:var(--warn)}
+.popup{position:fixed;inset:0;z-index:90;display:none;place-items:center;background:rgba(0,0,0,.55);padding:20px}
+.popup.show{display:grid}
+.popup .card{max-width:760px;width:100%;border-radius:16px;padding:26px 28px;border:5px solid;background:var(--panel)}
+.popup .card h1{margin:0 0 6px;font-size:clamp(30px,4vw,52px);line-height:1.05}
+.popup .card p{font-size:22px;margin:6px 0}
+.popup .approved{border-color:var(--ok)} .popup .approved h1{color:var(--ok)}
+.popup .denied{border-color:var(--crit)} .popup .denied h1{color:var(--crit)}
+.popup .manual{border-color:var(--warn)} .popup .manual h1{color:var(--warn)}
+/* assistant */
+.ask{display:flex;gap:8px}
+.ask input{flex:1;padding:11px 13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:16px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.chips button{border:1px dashed var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:4px 10px;cursor:pointer;font-size:13px}
+.answer{margin-top:10px;background:var(--panel2);border-radius:10px;padding:12px 14px;font-size:16px}
+.answer .ans{font-size:18px;font-weight:600}
+.answer ul{margin:8px 0 0;padding-left:20px}
+.answer .note{color:var(--muted);font-size:13px;margin-top:6px}
+.recs{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:320px;overflow:auto}
+.rec{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px 8px;cursor:pointer;background:var(--panel)}
+.rec img{width:72px;height:44px;object-fit:cover;border-radius:5px;background:#000}
+.rec small{color:var(--muted)}
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;place-items:center;z-index:95;padding:18px}
 .modal.show{display:grid}
-.modal .box{background:#fff;border-radius:var(--radius);max-width:820px;width:100%;padding:16px}
-.modal img{width:100%;border-radius:6px;background:#1b2537}
-.modal ul{font-size:12px;color:var(--muted);padding-left:18px}
-footer{text-align:center;color:var(--grey);font-size:11px;margin-top:18px}
-.hwgrid{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:18px}
-.hwgrid h3{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px;text-transform:uppercase;letter-spacing:.04em}
-.dev{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
-.dev:last-child{border:0}
-.dev i{width:8px;height:8px;border-radius:50%;flex:none}
-.dev .r{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
-.spk{font-size:12px;padding:6px 0;border-bottom:1px solid var(--line)}
-.spk small{color:var(--muted);display:block}
-.simrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.simrow select{border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12px;background:#fff}
-.vtag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;margin-right:4px}
-.alarm .btn2{background:transparent;color:#fff;border:1px solid #fff;border-radius:6px;padding:7px 12px;font-weight:600;cursor:pointer;margin-left:8px}
-.twocol{display:grid;grid-template-columns:1fr 1.4fr;gap:16px;margin-top:16px}
-.sum{margin:0;padding-left:18px;font-size:13px;line-height:1.7}
-.heat{overflow-x:auto}
-.heat table{border-collapse:separate;border-spacing:2px;font-size:11px;width:auto}
-.heat td{padding:0;width:20px;height:20px;border:0;border-radius:3px;text-align:center}
-.heat th{border:0;padding:0 6px 0 0;font-weight:500;color:var(--muted);text-align:right;white-space:nowrap;font-size:11px}
-.heat .hh{text-align:center;padding:0;width:20px}
-@media (max-width:1100px){.twocol{grid-template-columns:1fr}}
-.reg label{display:block;font-size:12px;color:var(--muted);margin-bottom:8px}
-.reg input{display:block;width:100%;margin-top:3px;font:inherit;font-size:13px;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:#fff}
-.wlist{max-height:260px;overflow:auto}
-.wphoto{width:40px;height:40px;border-radius:50%;object-fit:cover;flex:none;background:var(--grey-bg)}
-@media (max-width:1100px){.hwgrid{grid-template-columns:1fr}}
-@media (max-width:1100px){.main,.bottom{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
-@media (max-width:560px){.kpis{grid-template-columns:1fr}header{flex-wrap:wrap}.pill{margin-left:0}}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:1000px;width:100%;max-height:92vh;overflow:auto;padding:18px}
+.modal img{width:100%;border-radius:8px;background:#000}
+.kv{display:grid;grid-template-columns:170px 1fr;gap:4px 12px;font-size:15px;margin:10px 0}
+.kv div:nth-child(odd){color:var(--muted)}
+.toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:99;max-width:420px}
+.toast{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--info);padding:10px 14px;border-radius:10px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.toast b{display:block;font-size:15px}
+.small{font-size:13px;color:var(--muted)}
+.perfgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.perf{background:var(--panel2);border-radius:8px;padding:8px 10px}
+.perf b{display:block;font-size:20px}
+.perf small{color:var(--muted);font-size:12px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:1250px){.main{grid-template-columns:1fr}.three{grid-template-columns:1fr}.two{grid-template-columns:1fr}}
+@media (max-width:700px){.cams{grid-template-columns:1fr}.bigpanel,.bigpanel.withfeed{grid-template-columns:1fr}.bigpanel .acts,.bigpanel .feed{grid-column:auto;grid-row:auto;width:100%}.overlay .grid{grid-template-columns:1fr}.kv{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/static/theme.css">
-<script src="/static/theme.js"></script>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <div class="logo">N</div>
-    <div><h1>NETRAX — PPE, Smoke & Fire Safety Monitor</h1>
-      <p>PS6 Hackathon Prototype · Zone-aware · Edge-processed · Worker ID by registered photo</p></div>
-    <a class="hwlink" href="/hardware">Hardware &amp; attendance</a>
-    <div class="pill off" id="livePill" style="margin-left:0"><i></i><span>CONNECTING</span></div>
-  </header>
+<header>
+  <div class="logo" aria-hidden="true">N</div>
+  <div><h1>NETRAX CONTROL ROOM</h1><p class="tag">SEE. SENSE. SAFEGUARD.</p></div>
+  <span class="chip" id="sysChip" title="Overall state">… CONNECTING</span>
+  <span class="chip" id="healthChip" title="System health">… health</span>
+  <span class="chip" id="locChip" title="Location source">📍 …</span>
+  <span class="hgrow"></span>
+  <span class="clock" id="clock" aria-label="Current time">--:--:--</span>
+  <a class="navl" href="/hardware">Hardware</a>
+  <a class="navl" href="/admin">Admin &amp; analytics</a>
+  <button class="btn" id="themeBtn" aria-label="Switch day / night" style="font-size:13px;padding:6px 10px">☀/☾</button>
+  <span class="chip" id="userChip">…</span>
+  <button class="btn" id="logoutBtn" style="font-size:13px;padding:6px 10px">Sign out</button>
+</header>
+<div class="healthbar" id="healthbar" role="status"></div>
+<div class="alertzone" id="alertzone" aria-live="assertive"></div>
 
-  <div class="alarm" id="alarm" role="alert"><span id="alarmText"></span>
-    <button id="alarmAck">Acknowledge</button><button class="btn2" id="alarmSilence">Silence siren</button></div>
-
-  <section class="kpis">
-    <div class="kpi" style="border-color:var(--green)"><small>Compliance rate</small><b id="kCompliance">–</b><span>Checked PPE items worn, this session</span></div>
-    <div class="kpi" style="border-color:var(--red)"><small>Active alerts</small><b id="kActive">–</b><span>Open or escalated</span></div>
-    <div class="kpi" style="border-color:var(--blue)"><small>Cameras online</small><b id="kCams">–</b><span id="kCamsSub">Waiting for edge device</span></div>
-    <div class="kpi" style="border-color:var(--amber)"><small>Median time to alert</small><b id="kLatency">–</b><span id="kLatencySub">Violation first seen → alert on this screen, 24 h</span></div>
-  </section>
-
-  <section class="station" id="station" aria-label="Safety station">
-    <div class="st-head"><span class="st-dot" id="stDot"></span><b id="stName">Safety station</b>
-      <span class="vtag t-grey" id="stLevel">OFFLINE</span></div>
-    <div class="st-vals" id="stVals"><span class="muted">Waiting for the ESP32 safety station…</span></div>
-    <div class="st-side"><span id="stIn">In area: 0</span><span id="stScan"></span><a href="/hardware">Open hardware page</a></div>
-  </section>
-
-  <div class="main">
-    <div>
-      <div class="panel">
-        <h2>Camera feeds</h2>
-        <div class="tiles" id="tiles"></div>
-        <div class="boxlegend" aria-label="Box colours in the camera view">
-          <span><i style="background:#ffd700"></i>Helmet</span><span><i style="background:#ff8c00"></i>Vest</span>
-          <span><i style="background:#3cc83c"></i>Gloves</span><span><i style="background:#a05f28"></i>Safety shoes</span>
-          <span><i style="background:#00c8e6"></i>Goggles</span><span><i style="background:#a046c8"></i>Mask</span>
-          <span><i style="background:#e61e1e"></i>Fire</span><span><i style="background:#ebebeb;border:1px solid #98a2b3"></i>Smoke</span>
-          <span><i style="border:2px solid #3caa50;background:none"></i>Worker OK</span><span><i style="border:2px solid #dc2828;background:none"></i>Worker missing PPE</span>
-        </div>
-      </div>
-      <div class="panel" style="margin-top:16px">
-        <h2>Zone rules & compliance</h2>
-        <table><thead><tr><th>Zone</th><th>Required PPE</th><th>Risk</th><th>Status</th></tr></thead>
-          <tbody id="zones"></tbody></table>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="feedhead">
-        <h2>Live alert feed</h2>
-        <select id="fStatus" aria-label="Status filter">
-          <option value="open,escalated,acknowledged,verifying">Active</option>
-          <option value="verifying">Verifying with safety station</option>
-          <option value="suppressed">Not alarmed · station clear</option>
-          <option value="">All</option>
-          <option value="resolved">Resolved</option>
-          <option value="dismissed">Dismissed</option>
-        </select>
-        <select id="fSeverity" aria-label="Severity filter">
-          <option value="">All severities</option><option>Critical</option><option>High</option>
-          <option>Medium</option><option>Low</option>
-        </select>
-        <select id="fZone" aria-label="Zone filter"><option value="">All zones</option></select>
-      </div>
-      <div class="feed" id="feed"></div>
-      <h2 style="margin-top:16px">Reports & export</h2>
-      <div class="rep">
-        <div class="r"><span>Shift
-          <select id="rShift"><option value="">All shifts</option><option value="morning">Morning 06–14</option>
-            <option value="evening">Evening 14–22</option><option value="night">Night 22–06</option></select>
-          <select id="rDays"><option value="1">Last 24 h</option><option value="7">Last 7 days</option></select></span>
-        </div>
-        <div class="r"><span>Shift compliance report</span>
-          <span><a class="tag t-blue" id="lnkCsv" href="#">CSV</a> <a class="tag t-blue" id="lnkPdf" href="#">PDF</a></span></div>
-        <div class="r"><span>Zone-wise violation summary</span><a class="tag t-blue" id="lnkZone" href="#">CSV</a></div>
-      </div>
-    </div>
+<div class="main">
+  <div class="stack">
+    <section class="panel" aria-label="Camera feeds">
+      <h2>Live cameras <span class="sp"></span><span class="small" id="camSummary"></span>
+        <button class="btn" id="unfocus" hidden>Show all cameras</button></h2>
+      <div class="cams" id="cams"></div>
+    </section>
+    <section class="panel" aria-label="AI assistant">
+      <h2>🤖 AI assistant · event history <span class="sp"></span><span class="small">answers only from saved records</span></h2>
+      <form class="ask" id="askForm"><label class="sr" for="askQ">Question</label>
+        <input id="askQ" placeholder="e.g. What happened yesterday at 4:00 PM?" autocomplete="off" maxlength="300">
+        <button class="btn pri" type="submit">Ask</button></form>
+      <div class="chips" id="askChips"></div>
+      <div id="askOut"></div>
+    </section>
   </div>
 
-  <div class="panel" style="margin-top:16px">
-    <h2>Workers &amp; autonomous response</h2>
-    <div class="hwgrid">
-      <div><h3>Register a worker</h3>
-        <form id="regForm" class="reg">
-          <label>Name <input id="regName" required maxlength="40" placeholder="e.g. Ravi Kumar" autocomplete="off"></label>
-          <label>Photos (1–5, face clearly visible)
-            <input id="regPhotos" type="file" accept="image/*" multiple></label>
-          <div class="simrow">
-            <button class="btn primary" type="submit">Register from photos</button>
-            <button class="btn" type="button" id="regCam">Capture from CAM-01 (3 shots)</button>
-          </div>
-          <div class="insight" id="regMsg">The worker gets a unique ID (W-001 …). The camera recognises them by face, so
-            one person keeps one ID and the speaker calls that ID. Photos stay on this computer; people who are not
-            registered get a temporary visitor ID that is never saved.</div>
-        </form>
+  <div class="stack">
+    <section class="panel" aria-label="Incidents">
+      <h2>Incidents <span class="sp"></span><span class="pill p-crit" id="nActive">0 active</span></h2>
+      <div class="tabs" role="group" aria-label="Incident filter">
+        <button class="tab" data-f="active" aria-pressed="true">Active</button>
+        <button class="tab" data-f="ack" aria-pressed="false">Acknowledged</button>
+        <button class="tab" data-f="done" aria-pressed="false">Resolved / closed</button>
+        <button class="tab" data-f="all" aria-pressed="false">All</button>
       </div>
-      <div><h3>Registered workers <span class="vtag t-blue" id="wCount">0</span></h3><div id="wList" class="wlist"></div></div>
-      <div><h3>Speaker &amp; siren (this laptop)</h3><div id="rAlarm"></div><div id="rSpeaker"></div></div>
-    </div>
+      <div class="list" id="incidents"></div>
+    </section>
+    <section class="panel" aria-label="Entrance PPE check">
+      <h2>🚪 Entrance PPE check <span class="sp"></span><span class="small" id="gateCtl"></span></h2>
+      <div id="gateLast"></div>
+      <table style="margin-top:8px"><thead><tr><th>Time</th><th>Result</th><th>Details</th></tr></thead><tbody id="gateList"></tbody></table>
+    </section>
   </div>
-
-  <div class="twocol">
-    <div class="panel"><h2 id="sumTitle">Shift summary</h2><ul class="sum" id="sumLines"></ul>
-      <div class="insight">Counted from the alert log, and included in the PDF report.</div></div>
-    <div class="panel"><h2>Violations by zone &amp; hour · 7 days</h2><div id="heat" class="heat"></div></div>
-  </div>
-
-  <div class="bottom">
-    <div class="panel"><h2>Violations · 7 days</h2><div id="chart"></div><div class="insight" id="insights"></div></div>
-    <div class="panel"><h2>Compliance mix</h2>
-      <div style="display:flex;align-items:center;gap:18px"><div id="donut"></div>
-        <div class="legend" id="mixLegend"></div></div>
-      <div class="insight">Unverifiable = worker too small, occluded or cut off. Never counted as missing.</div>
-    </div>
-    <div class="panel"><h2>Edge device</h2>
-      <div class="edge-row"><span id="eRuntime">Edge unit</span><span class="tag t-green" id="eFps">– FPS</span></div>
-      <div class="edge-row"><span>Streams handled</span><span class="tag t-blue" id="eStreams">–</span></div>
-      <div class="edge-row"><span>Inference</span><span class="tag t-grey" id="eInfer">–</span></div>
-      <div class="edge-row"><span>Network</span><span class="tag t-green">Alerts only</span></div>
-      <div class="edge-row"><span>Buffered offline</span><span class="tag t-grey" id="eOutbox">–</span></div>
-    </div>
-  </div>
-  <footer>Raw video stays on the edge device. Only alerts, thumbnails and status reach this dashboard.
-    · <a href="/static/roi.html">Cost, bandwidth &amp; payback calculator</a></footer>
 </div>
 
-<div class="modal" id="modal"><div class="box">
-  <div style="display:flex;align-items:center;margin-bottom:10px"><h2 id="mTitle" style="margin:0"></h2>
-    <button class="btn" style="margin-left:auto" id="mClose">Close</button></div>
-  <img id="mImg" alt="Event snapshot"><ul id="mLog"></ul></div></div>
-<div class="toasts" id="toasts"></div>
+<div class="three">
+  <section class="panel" aria-label="Zones"><h2>Zones · required PPE</h2>
+    <table><thead><tr><th>Zone</th><th>Required</th><th>Risk</th><th>State</th></tr></thead><tbody id="zones"></tbody></table></section>
+  <section class="panel" aria-label="Alert delivery"><h2>📨 Alert delivery <span class="sp"></span><span class="small" id="chanState"></span></h2>
+    <table><thead><tr><th>Channel</th><th>Status</th><th>Incident</th></tr></thead><tbody id="notifs"></tbody></table></section>
+  <section class="panel" aria-label="Performance"><h2>⏱ Latency (measured) <span class="sp"></span><span class="small">median · 95th %</span></h2>
+    <div class="perfgrid" id="perf"></div>
+    <div class="small" style="margin-top:8px" id="perfNote"></div></section>
+</div>
+<section class="panel" style="margin-top:16px" aria-label="System health"><h2>🩺 System health</h2>
+  <table><tbody id="health"></tbody></table></section>
+</div>
+
+<!-- Level 3 full-screen evacuation overlay (section 9) -->
+<div class="overlay" id="evac" role="alertdialog" aria-labelledby="evacTitle">
+  <h1 id="evacTitle">VERY CRITICAL — MAJOR FIRE DETECTED</h1>
+  <div class="sub" id="evacSub">EVACUATE THE AFFECTED AREA IMMEDIATELY.</div>
+  <div class="grid"><img id="evacImg" alt="Affected camera live view"><div class="facts" id="evacFacts"></div></div>
+  <div class="acts" id="evacActs"></div>
+</div>
+<!-- entrance decision popup (section 4) -->
+<div class="popup" id="gatePop" role="alertdialog" aria-labelledby="gpTitle"><div class="card" id="gpCard"></div></div>
+<!-- incident details -->
+<div class="modal" id="modal" role="dialog" aria-labelledby="mTitle"><div class="box" id="mBox"></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script>
 const $ = id => document.getElementById(id);
-const SEV = {Critical:"--red", High:"--amber", Medium:"--blue", Low:"--grey"};
-let EVENTS = new Map(), CAMS = {cameras:[], edge_online:false, edge:{}}, ZONES = [];
-let alarmEvent = null, audio = null;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const TZ = "Asia/Kolkata";
+const fmtT = (t, date=true) => t ? new Date(t*1000).toLocaleString("en-IN", Object.assign({timeZone:TZ, hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false}, date ? {day:"2-digit", month:"short"} : {})) + " IST" : "–";
+const ago = t => { const s = Math.max(0, Date.now()/1000 - t); return s < 60 ? `${Math.floor(s)} s ago` : s < 3600 ? `${Math.floor(s/60)} min ago` : `${Math.floor(s/3600)} h ${Math.floor(s%3600/60)} min ago`; };
+const ITEM = {helmet:"HELMET", vest:"SAFETY VEST", gloves:"GLOVES", boots:"SAFETY SHOES", goggles:"GOGGLES", mask:"MASK"};
+const iname = i => ITEM[i] || String(i).toUpperCase();
+let ME = {role:"viewer"}, EVENTS = new Map(), CAMS = {cameras:[]}, ZONES = [], NOTIFS = new Map(), ENTR = [], HEALTH = null, LOC = null;
+let FILTER = "active", FOCUS = null, CLOCK_OFF = 0, EVAC_MIN = new Set(), SEEN = new Set(), audio = null;
+const PERF = {preview_age_ms: [], dashboard_event_ms: []};
+const canAct = () => ME.role === "supervisor" || ME.role === "admin";
 
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const camLabel = id => (id || "").toUpperCase().replace("_", "-");
-const ago = t => { const s = Math.max(0, Date.now()/1000 - t); const m = Math.floor(s/60);
-  return m >= 60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m}:${String(Math.floor(s%60)).padStart(2,"0")}`; };
-async function api(path, opt){ const r = await fetch(path, opt); if(!r.ok) throw new Error(r.status); return r.status === 204 ? null : r.json(); }
-
-const ITEM = {boots:"SAFETY SHOES", vest:"VEST", helmet:"HELMET", gloves:"GLOVES", mask:"MASK"};
-function title(e){
-  if (e.type === "ppe_missing") return `${e.severity.toUpperCase()} · NO ${e.items_missing.map(i=>ITEM[i] || i.toUpperCase()).join(" + ")}`;
-  if (e.type === "unauthorized_entry") return `${e.severity.toUpperCase()} · NOT AUTHORISED · ${(e.worker_name || e.worker_id || "worker").toUpperCase()}`;
-  return `${e.severity.toUpperCase()} · ${e.type.toUpperCase()}`;
+async function api(path, opt){
+  const r = await fetch(path, opt);
+  if (r.status === 401){ location.href = "/login?next=/"; throw new Error("login"); }
+  if (!r.ok){ let d = ""; try { d = (await r.json()).detail; } catch {} throw new Error(d || r.status); }
+  return r.status === 204 ? null : r.json();
 }
-const VERIF = {confirmed:["CONFIRMED · camera + sensors","t-red"], hardware_only:["SENSOR ALARM · no camera","t-red"],
-  hardware_clear:["NOT ALARMED · safety station clear","t-grey"], pending:["VERIFYING WITH SAFETY STATION…","t-amber"],
-  hardware_offline:["CAMERA ONLY · station offline","t-amber"], no_station:["CAMERA ONLY · no station in this zone","t-amber"],
-  hardware_contact:["HARDWARE CONTACT SENSOR","t-amber"]};
-function color(e){ if (e.status === "resolved") return "var(--blue)"; if (e.status === "dismissed" || e.status === "suppressed") return "var(--grey)";
-  if (e.status === "verifying") return "var(--amber)";
-  return `var(${SEV[e.severity] || "--grey"})`; }
+const post = (p, b) => api(p, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(b || {})});
 
-/* ---------- live alert feed ---------- */
-// Zone-wise priority: active alerts first; among them fire (Critical) first, then HIGH-risk zones,
-// then medium / low zones, then severity, then newest. Closed alerts follow, newest first.
-const ACTIVE = new Set(["open","escalated","verifying","acknowledged"]);
-const SEVR = {Critical:0, High:1, Medium:2, Low:3}, RISKR = {high:0, medium:1, low:2};
-const zoneRisk = id => RISKR[(ZONES.find(z => z.zone_id === id) || {}).risk] ?? 1;
-function byPriority(a, b){
-  const t = e => e.updated_at || e.received_at;
-  const act = e => ACTIVE.has(e.status) && e.status !== "acknowledged" ? 0 : e.status === "acknowledged" ? 1 : 2;
-  if (act(a) !== act(b)) return act(a) - act(b);
-  if (act(a) === 0){
-    const crit = e => e.severity === "Critical" ? 0 : 1;
-    if (crit(a) !== crit(b)) return crit(a) - crit(b);
-    if (zoneRisk(a.zone_id) !== zoneRisk(b.zone_id)) return zoneRisk(a.zone_id) - zoneRisk(b.zone_id);
-    if ((SEVR[a.severity] ?? 4) !== (SEVR[b.severity] ?? 4)) return (SEVR[a.severity] ?? 4) - (SEVR[b.severity] ?? 4);
+/* ---------- state helpers: one visual language (text + icon + colour) ---------- */
+const ACTIVE = new Set(["open","escalated","verifying"]), DONE = new Set(["resolved","closed","dismissed","suppressed"]);
+function sev(e){
+  if (DONE.has(e.status)) return {cls:"s-done", label:e.status === "suppressed" ? "◌ NOT ALARMED (STATION CLEAR)" : `✓ ${e.status.toUpperCase()}`};
+  if (e.status === "acknowledged") return {cls:"s-ack", label:"◐ ACKNOWLEDGED — awaiting resolution"};
+  if (e.status === "verifying") return {cls:"s-warn", label:"⚠ VERIFYING WITH SAFETY STATION"};
+  if (e.type === "fire" || e.type === "smoke"){
+    const l = e.fire_level || 2;
+    return l >= 3 ? {cls:"s-crit", label:"⛔ EMERGENCY · LEVEL 3 · EVACUATE"} : l == 2 ? {cls:"s-crit", label:"▲ CRITICAL · LEVEL 2"} : {cls:"s-warn", label:"⚠ WARNING · LEVEL 1"};
   }
-  return t(b) - t(a);
+  if (e.type === "entrance_check"){ const r = (e.details||{}).result; return r === "denied" ? {cls:"s-crit", label:"✖ ENTRY DENIED"} : r === "manual" ? {cls:"s-warn", label:"⚠ MANUAL CHECK NEEDED"} : {cls:"s-ok", label:"✓ ENTRY APPROVED"}; }
+  if (e.severity === "Critical") return {cls:"s-crit", label:"▲ CRITICAL"};
+  if (e.severity === "High") return {cls:"s-crit", label:"▲ HIGH"};
+  if (e.severity === "Medium") return {cls:"s-warn", label:"⚠ MEDIUM"};
+  return {cls:"s-warn", label:"● LOW"};
 }
-function renderFeed(){
-  const st = $("fStatus").value.split(",").filter(Boolean), sv = $("fSeverity").value, zn = $("fZone").value;
-  const list = [...EVENTS.values()].filter(e => (!st.length || st.includes(e.status)) && (!sv || e.severity === sv)
-      && (!zn || e.zone_id === zn)).sort(byPriority).slice(0, 60);
-  if (!list.length){ $("feed").innerHTML = `<div class="empty">No alerts match these filters. New alerts appear here within seconds.</div>`; return; }
-  $("feed").innerHTML = list.map(e => {
-    const who = e.type === "unauthorized_entry" ? ` · ${e.worker_id || ""} ${e.worker_name || ""} · ${e.sources === "rfid" ? "RFID card" : "face ID"}`
-      : e.type === "ppe_missing" ? (e.worker_id ? ` · ${e.worker_id} ${e.worker_name || ""}` : ` · worker #${e.track_id ?? "?"}`)
-      : (e.growth > 1.25 ? " · growing region" : "");
-    const status = { open:"", acknowledged:"Acknowledged", escalated:"Escalated", resolved: e.type==="ppe_missing" ? "Resolved · compliant again" : "Resolved · cleared", dismissed:"Dismissed as false alarm",
-      verifying:"Waiting for the safety station (flame / smoke / temperature)", suppressed:"Not alarmed: " + (e.end_reason || "safety station clear") }[e.status];
-    const vc = VERIF[e.verification];
-    const want = {acknowledged:"ack", escalated:"escalate", dismissed:"dismiss"}[e.status];
-    const last = [...(e.actions || [])].reverse().find(x => want ? x.action === want || x.action === "auto_" + want : true) || null;
-    let btns = "";
-    if (e.status === "open") btns = e.severity === "Critical"
-      ? `<button class="btn primary" data-a="escalate" data-id="${e.event_id}">Escalate now</button><button class="btn" data-a="ack" data-id="${e.event_id}">Acknowledge</button><button class="btn" data-a="dismiss" data-id="${e.event_id}">Dismiss</button>`
-      : `<button class="btn primary" data-a="ack" data-id="${e.event_id}">Acknowledge</button><button class="btn" data-a="escalate" data-id="${e.event_id}">Escalate</button><button class="btn" data-a="dismiss" data-id="${e.event_id}">Dismiss</button>`;
-    else if (e.status === "escalated") btns = `<button class="btn primary" data-a="ack" data-id="${e.event_id}">Acknowledge</button><button class="btn" data-a="dismiss" data-id="${e.event_id}">Dismiss</button>`;
-    else btns = `<button class="btn" data-a="view" data-id="${e.event_id}">View log</button>`;
-    return `<div class="card" style="border-color:${color(e)}">
-      <div class="ttl" style="color:${color(e)}">${esc(e.status==="resolved" ? "RESOLVED · " + title(e).split(" · ")[1] : e.status==="suppressed" ? "CAMERA ONLY · " + title(e).split(" · ")[1] : e.status==="verifying" ? "CHECKING · " + title(e).split(" · ")[1] : title(e))}</div>
-      <div class="when" title="${new Date(e.started_at*1000).toLocaleString()}">${ago(e.started_at)}</div>
-      <div class="sub">${esc(e.zone_name)} · ${e.camera_id ? camLabel(e.camera_id) : esc(e.camera_name || "safety station")}${esc(who)}${e.confidence != null && e.camera_id ? " · confidence " + Number(e.confidence).toFixed(2) : ""}</div>
-      ${vc ? `<div><span class="vchip ${vc[1]}">${vc[0]}</span></div>` : ""}
-      ${status ? `<div class="st">${status}${last && last.by_user !== "edge" ? ` by ${esc(last.by_user)} at ${new Date(last.at*1000).toLocaleTimeString()}` : ""}</div>` : ""}
-      <div class="row">${btns}${e.snapshot ? `<img src="${e.snapshot}?v=${e.updated_at}" data-a="view" data-id="${e.event_id}" alt="Snapshot" loading="lazy">` : ""}</div>
-    </div>`;
-  }).join("");
+function title(e){
+  if (e.type === "ppe_missing") return "Missing PPE: " + (e.items_missing||[]).map(iname).join(", ");
+  if (e.type === "unauthorized_entry") return "Unauthorised entry — restricted zone";
+  if (e.type === "fire") return "FIRE DETECTED";
+  if (e.type === "smoke") return "SMOKE DETECTED";
+  if (e.type === "entrance_check"){ const d = e.details||{}; return d.message || "Entrance check"; }
+  return String(e.type || "event").replace(/_/g," ").toUpperCase();
+}
+const camName = id => ((CAMS.cameras||[]).find(c => c.camera_id === id) || {}).name || id || "safety station";
+function who(e){ if (!e.worker_id) return e.type === "ppe_missing" ? `person #${e.track_id ?? "?"} (not identified)` : ""; if (e.worker_id === "W-***") return "registered worker (name hidden)"; return `${e.worker_name || ""} (${e.worker_id})`.trim(); }
+function locText(e){ const l = e.location; if (!l || !l.valid) return `Location unavailable · ${esc((l && l.zone_label) || e.zone_name || e.zone_id || "")}`;
+  return `${l.lat.toFixed(5)}, ${l.lon.toFixed(5)} (${esc(l.source_label)})${l.map_url ? ` · <a href="${l.map_url}" target="_blank" rel="noopener">map</a>` : ""}`; }
+function isEmergencyPPE(e){ return (e.type === "ppe_missing" || e.type === "unauthorized_entry") && (e.status === "open" || e.status === "escalated") && (EMERG.includes(e.severity)); }
+const EMERG = ["Critical","High"];
+const fireActive = e => (e.type === "fire" || e.type === "smoke") && !DONE.has(e.status);
+
+/* ---------- header ---------- */
+setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-IN", {timeZone:TZ, hour12:false}) + " IST"; }, 500);
+$("themeBtn").onclick = () => { const r = document.documentElement; r.dataset.theme = r.dataset.theme === "light" ? "dark" : "light"; try { localStorage.setItem("netrax-cr-theme", r.dataset.theme); } catch {} };
+try { const t = localStorage.getItem("netrax-cr-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+$("logoutBtn").onclick = async () => { await post("/api/logout").catch(()=>{}); location.href = "/login"; };
+
+function renderSystem(){
+  const evs = [...EVENTS.values()];
+  const fires = evs.filter(e => fireActive(e) && e.status !== "verifying");
+  const lvl = Math.max(0, ...fires.map(e => e.fire_level || 2));
+  const ppe = evs.filter(isEmergencyPPE);
+  const chip = $("sysChip");
+  if (lvl >= 3){ chip.className = "chip crit pulse"; chip.textContent = "⛔ EMERGENCY · EVACUATE"; }
+  else if (lvl == 2 || ppe.length){ chip.className = "chip crit"; chip.textContent = `▲ CRITICAL · ${fires.length + ppe.length} active`; }
+  else if (lvl == 1 || evs.some(e => ACTIVE.has(e.status))){ chip.className = "chip warn"; chip.textContent = "⚠ WARNING"; }
+  else { chip.className = "chip ok"; chip.textContent = "✓ NORMAL"; }
+  document.body.classList.toggle("emergency", lvl >= 2 || ppe.length > 0);
 }
 
-$("feed").addEventListener("click", async ev => {
-  const el = ev.target.closest("[data-a]"); if (!el) return;
-  const id = el.dataset.id, a = el.dataset.a;
-  if (a === "view") return openModal(EVENTS.get(id));
-  el.disabled = true;
-  try { upsert(await api(`/api/events/${id}/${a}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({by_user:"Supervisor"})})); }
-  catch { toast("Action failed", "The backend did not respond. Check that the server is running."); el.disabled = false; }
-});
-
-function openModal(e){
-  if (!e) return;
-  $("mTitle").textContent = `${title(e)} — ${e.zone_name} · ${camLabel(e.camera_id)}`;
-  $("mImg").src = e.snapshot ? `${e.snapshot}?v=${e.updated_at}` : "";
-  const log = [`Detected ${new Date(e.started_at*1000).toLocaleString()} · confidence ${e.confidence != null ? Number(e.confidence).toFixed(2) : "–"} · time to alert ${e.time_to_alert_ms != null ? (e.time_to_alert_ms/1000).toFixed(2)+" s" : "–"} · transport ${e.latency_ms ? (e.latency_ms/1000).toFixed(2)+" s" : "–"}`]
-    .concat(e.verified_by?.length ? [`Verified by: ${e.verified_by.join(" + ")}`] : [])
-    .concat((e.actions||[]).map(x => `${x.action.replace("_"," ")} by ${x.by_user} at ${new Date(x.at*1000).toLocaleTimeString()}${x.note ? " — " + x.note : ""}`));
-  $("mLog").innerHTML = log.map(l => `<li>${esc(l)}</li>`).join("");
-  $("modal").classList.add("show");
+/* ---------- alert zone: fire panels (L1/L2), L3 overlay, PPE emergency panel (section 2) ---------- */
+function sensorsHtml(e){
+  let s = e.sensors; if (typeof s === "string") try { s = JSON.parse(s); } catch { s = null; }
+  const ver = {confirmed:"✓ Safety station CONFIRMS the camera", hardware_only:"Sensor alarm (no camera)", hardware_clear:"Station CLEAR — camera only",
+    pending:"Checking with the safety station…", hardware_offline:"Station OFFLINE — camera only, not cross-checked", no_station:"No safety station in this zone — camera only, not cross-checked"}[e.verification] || "camera detection";
+  if (!s || !s.data) return `<span><b>Sensors:</b> ${esc(ver)}</span>`;
+  const d = s.data, v = (k, dp=0, u="") => d[k] == null ? "—" : Number(d[k]).toFixed(dp) + u;
+  return `<span><b>Sensors:</b> ${esc(ver)} · temp ${v("temperature_c",1," °C")} · flame ${d.flame_detected == null ? "—" : d.flame_detected ? "YES" : "no"} · MQ-2 ${v("mq2_adc")} · PM2.5 ${v("pm2_5_ugm3",0," µg/m³")}</span>`;
 }
-$("mClose").onclick = () => $("modal").classList.remove("show");
-$("modal").onclick = ev => { if (ev.target.id === "modal") $("modal").classList.remove("show"); };
-document.addEventListener("keydown", ev => { if (ev.key === "Escape") $("modal").classList.remove("show"); });
-
-function upsert(e){
-  if (!e) return;
-  const isNew = !EVENTS.has(e.event_id);
-  EVENTS.set(e.event_id, e);
-  if (e.severity === "Critical" && e.status === "open" && (isNew || !alarmEvent)) raiseAlarm(e);
-  if (alarmEvent && alarmEvent.event_id === e.event_id && e.status !== "open") clearAlarm();
-  renderFeed(); renderKpis();
+function actButtons(e, big){
+  if (!canAct()) return `<span class="small">View only (${esc(ME.role)})</span>`;
+  const b = big ? " big" : "";
+  let h = "";
+  if (e.status === "open" || e.status === "escalated" || e.status === "verifying") h += `<button class="btn red${b}" data-a="ack" data-id="${e.event_id}">Acknowledge</button>`;
+  if (!DONE.has(e.status)) h += `<button class="btn${b}" data-a="resolve" data-id="${e.event_id}">Resolve</button>`;
+  if (e.status === "open") h += `<button class="btn${b}" data-a="escalate" data-id="${e.event_id}">Escalate</button>`;
+  if (!DONE.has(e.status) && e.type !== "fire") h += `<button class="btn${b}" data-a="dismiss" data-id="${e.event_id}">False alarm</button>`;
+  return h + `<button class="btn${b}" data-a="view" data-id="${e.event_id}">Details</button>`;
 }
-
-/* ---------- critical alarm ---------- */
-function raiseAlarm(e){
-  alarmEvent = e;
-  const src = "detected";
-  $("alarmText").textContent = `${e.type.toUpperCase()} ${src} — ${e.zone_name}${e.camera_id ? ", " + camLabel(e.camera_id) : ""}. Siren on, safety officer notified.`;
-  $("alarm").classList.add("show");
-  beep();
+const FIRE_MSG = {1:["WARNING — Small {w} detected.","Immediate inspection required."],
+  2:["CRITICAL ALERT — {W} detected.","Immediate emergency response required."],
+  3:["VERY CRITICAL — MAJOR {WW} DETECTED.","EVACUATE THE AFFECTED AREA IMMEDIATELY."]};
+function fireText(e){ const l = e.fire_level || 2, w = e.type === "smoke" ? "smoke" : "fire";
+  return FIRE_MSG[l].map(t => t.replace("{w}", w).replace("{W}", w[0].toUpperCase()+w.slice(1)).replace("{WW}", w.toUpperCase())); }
+function renderAlertZone(){
+  const evs = [...EVENTS.values()];
+  const fires = evs.filter(fireActive).sort((a,b) => (b.fire_level||0) - (a.fire_level||0) || b.started_at - a.started_at);
+  const ppe = evs.filter(isEmergencyPPE).sort((a,b) => b.started_at - a.started_at);
+  const acked = evs.filter(e => e.status === "acknowledged" && (e.type === "ppe_missing" || e.type === "unauthorized_entry") && EMERG.includes(e.severity));
+  let h = "";
+  for (const e of fires){
+    if (e.status === "verifying"){ h += `<div class="bigpanel warn"><div><h2>⚠ ${e.type === "fire" ? "POSSIBLE FIRE" : "POSSIBLE SMOKE"} — VERIFYING</h2>
+      <div class="facts"><span><b>Camera:</b> ${esc(e.camera_id)} · ${esc(camName(e.camera_id))}</span><span><b>Zone:</b> ${esc(e.zone_name)}</span><span><b>Time:</b> ${fmtT(e.started_at)}</span></div>
+      <div class="facts">${sensorsHtml(e)}</div><div class="small">Not a confirmed fact yet: the camera saw something fire-like; the safety station is being checked.</div></div>
+      <div class="acts">${actButtons(e)}</div></div>`; continue; }
+    const l = e.fire_level || 2, [t1, t2] = fireText(e), acked = e.status === "acknowledged";
+    const cls = acked ? "ack" : l >= 2 ? "crit" : "warn";
+    const icon = l >= 3 ? "⛔" : l == 2 ? "▲" : "⚠";
+    h += `<div class="bigpanel ${cls} withfeed ${!acked && l >= 2 ? "pulse" : ""}"><div>
+      <h2>${icon} ${esc(t1)}</h2><div class="what">${esc(t2)}</div>
+      <div class="facts"><span><b>Status:</b> ${acked ? "ACKNOWLEDGED — still active until resolved" : "ACTIVE"}</span><span><b>Level:</b> ${l} of 3</span>
+        <span><b>Zone:</b> ${esc(e.zone_name || e.zone_id)}</span><span><b>Camera:</b> ${esc(e.camera_id || "safety station")}</span><span><b>Time:</b> ${fmtT(e.started_at)}</span></div>
+      <div class="facts"><span><b>Location:</b> ${locText(e)}</span></div>
+      <div class="facts">${sensorsHtml(e)}</div>
+      <div class="small">Why level ${l}: ${esc((e.fire_reasons||[]).join("; ") || "—")}. Level is a risk grade from evidence, not a measured fire size.</div></div>
+      ${e.camera_id ? `<img class="feed" data-live="${e.camera_id}" alt="Live view ${esc(e.camera_id)}">` : `<div></div>`}
+      <div class="acts">${actButtons(e, true)}${l >= 3 ? `<button class="btn amber big" data-a="evac" data-id="${e.event_id}">Full screen</button>` : ""}</div></div>`;
+  }
+  if (ppe.length){
+    h += `<div class="violations"><div class="vhead"><h2>▲ SAFETY VIOLATION — ${ppe.length} ACTIVE ${ppe.length > 1 ? "INCIDENTS" : "INCIDENT"}</h2>
+      <span class="small">Each incident is tracked separately and stays here until acknowledged, then on the list until resolved.</span></div><div class="vgrid">`;
+    for (const e of ppe){
+      h += `<div class="vcard"><div class="vtop"><div>
+        <div class="vt">${e.type === "unauthorized_entry" ? "⛔ NOT AUTHORISED — RESTRICTED ZONE" : "▲ REQUIRED PPE MISSING"}</div>
+        <div class="items">${e.type === "ppe_missing" ? (e.items_missing||[]).map(i => `<span class="item">✖ NO ${iname(i)}</span>`).join("") : `<span class="item">✖ ${esc(e.worker_name || e.worker_id || "person")}</span>`}</div></div>
+        ${e.snapshot ? `<img src="${e.snapshot}?v=${e.updated_at}" alt="Snapshot" data-a="view" data-id="${e.event_id}">` : ""}</div>
+        <div class="facts"><span><b>Zone:</b> ${esc(e.zone_name || e.zone_id)}</span><span><b>Camera:</b> ${esc(e.camera_id)}</span>
+          <span><b>Time:</b> ${fmtT(e.started_at, false)} (${ago(e.started_at)})</span>${who(e) ? `<span><b>Worker:</b> ${esc(who(e))}</span>` : ""}<span><b>Severity:</b> ${esc(e.severity)}</span></div>
+        <div class="row">${actButtons(e)}</div></div>`;
+    }
+    h += `</div></div>`;
+  }
+  if (acked.length) h += `<div class="bigpanel ack"><div><h2 style="font-size:20px">◐ ${acked.length} acknowledged violation${acked.length>1?"s":""} — awaiting resolution</h2>
+    <div class="facts">${acked.map(e => `<span>${esc(title(e))} · ${esc(e.zone_name)} · ${fmtT(e.started_at, false)}</span>`).join("")}</div></div></div>`;
+  const az = $("alertzone"); const sig = h; if (az.dataset.sig !== sig){ az.innerHTML = h; az.dataset.sig = sig; }
+  // Level 3 overlay
+  const l3 = fires.find(e => (e.fire_level||0) >= 3 && e.status !== "acknowledged" && e.status !== "verifying" && !EVAC_MIN.has(e.event_id));
+  if (l3){
+    const [t1, t2] = fireText(l3);
+    $("evacTitle").textContent = "⛔ " + t1; $("evacSub").textContent = t2;
+    $("evacImg").dataset.live = l3.camera_id || "";
+    $("evacFacts").innerHTML = `<div><b>Zone</b> ${esc(l3.zone_name || l3.zone_id)}</div><div><b>Camera</b> ${esc(l3.camera_id || "safety station")} · ${esc(camName(l3.camera_id))}</div>
+      <div><b>Detected</b> ${fmtT(l3.started_at)}</div><div><b>Location</b> ${locText(l3)}</div><div><b>Status</b> ACTIVE · Level 3 of 3</div>
+      <div>${sensorsHtml(l3)}</div><div><b>Action</b> Evacuate now. Call the fire brigade (101). Follow the site evacuation plan.</div>`;
+    $("evacActs").innerHTML = (canAct() ? `<button class="btn" data-a="ack" data-id="${l3.event_id}">Acknowledge</button><button class="btn ghost" data-a="resolve" data-id="${l3.event_id}">Fire out — resolve</button>` : "")
+      + `<button class="btn ghost" data-a="evacmin" data-id="${l3.event_id}">Minimise (stays on top bar)</button>`;
+    if (!$("evac").classList.contains("show")){ $("evac").classList.add("show"); alarmTone(); }
+  } else $("evac").classList.remove("show");
+  renderSystem();
 }
-function clearAlarm(){ alarmEvent = null; $("alarm").classList.remove("show"); }
-$("alarmAck").onclick = async () => { if (!alarmEvent) return;
-  const e = await api(`/api/events/${alarmEvent.event_id}/ack`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({by_user:"Supervisor"})}).catch(()=>null);
-  clearAlarm(); if (e) upsert(e); };
-$("alarmSilence").onclick = () => api("/api/alarm/silence", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({by_user:"Supervisor"})}).catch(()=>{});
-
-/* ---------- speaker + siren (this laptop) ---------- */
-let lastSpoken = 0;
-function renderResponse(r){
-  const a = r.alarm;
-  $("rAlarm").innerHTML = a
-    ? `<div class="dev"><i style="background:var(--red)"></i><span><b style="font-weight:600;color:var(--red)">SIREN ON</b><br><small style="color:var(--muted)">${esc(a.reason)} · ${ago(a.since)} ago</small></span>
-        <span class="r"><button class="btn" id="rSilence">Silence</button></span></div>`
-    : `<div class="dev"><i style="background:var(--green)"></i><span>Siren idle</span><span class="r"><span class="vtag t-grey">voice: ${esc(r.speaker?.mode || "–")}</span></span></div>`;
-  const s = $("rSilence"); if (s) s.onclick = () => $("alarmSilence").click();
-  const log = r.speaker?.log || [];
-  $("rSpeaker").innerHTML = log.length ? log.slice(0, 5).map(l => `<div class="spk">“${esc(l.text)}”
-    <small>${new Date(l.at*1000).toLocaleTimeString()} · ${l.channel === "mock" ? "MOCK (no audio device)" : "spoken on this laptop"}</small></div>`).join("")
-    : `<div class="empty">No announcements yet.</div>`;
-  if (log.length && log[0].at > lastSpoken){ if (lastSpoken) toast("Speaker", log[0].text); lastSpoken = log[0].at; }
-  if (a && !$("alarm").classList.contains("show")){ $("alarmText").textContent = `SIREN ON — ${a.reason}.`; $("alarm").classList.add("show"); }
-  else if (!a && !alarmEvent) $("alarm").classList.remove("show");
-}
-
-/* ---------- worker registration ---------- */
-function renderWorkers(ws){
-  $("wCount").textContent = ws.length;
-  $("wList").innerHTML = ws.length ? ws.map(w => `<div class="dev"><img src="${w.photo}" alt="" class="wphoto">
-      <span><b style="font-weight:600">${esc(w.worker_id)}</b> ${esc(w.name)}<br><small style="color:var(--muted)">${w.badge_uid ? "card " + esc(w.badge_uid) + " · " : ""}${w.photos} photo${w.photos===1?"":"s"} · since ${new Date(w.created_at*1000).toLocaleDateString()}</small></span>
-      <span class="r"><button class="btn" data-del="${w.worker_id}" aria-label="Remove ${esc(w.name)}">Remove</button></span></div>`).join("")
-    : `<div class="empty">No workers registered yet. Unregistered people get a temporary visitor ID.</div>`;
-}
-$("wList").addEventListener("click", async ev => {
-  const b = ev.target.closest("[data-del]"); if (!b) return;
-  if (!confirm(`Remove ${b.dataset.del}? Their photo and face data are deleted.`)) return;
-  await fetch(`/api/workers/${b.dataset.del}`, {method:"DELETE"}).catch(()=>{});
-  renderWorkers(await api("/api/workers"));
-});
-const readFile = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
-async function register(body, btn){
-  const msg = $("regMsg"); btn.disabled = true; msg.style.color = "var(--muted)";
-  msg.textContent = body.camera_id ? "Look at the camera… capturing 3 photos" : "Checking the photos…";
-  try {
-    const r = await fetch("/api/workers", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || r.status);
-    msg.style.color = "var(--green)";
-    msg.textContent = `Registered ${d.worker_id} ${d.name} (${d.used_photos} of ${d.total_photos} photos had a clear face). The camera will recognise them within a few seconds.`;
-    $("regForm").reset(); renderWorkers(await api("/api/workers"));
-  } catch (e) { msg.style.color = "var(--red)"; msg.textContent = "Not registered: " + e.message; }
-  btn.disabled = false;
-}
-$("regForm").addEventListener("submit", async ev => {
-  ev.preventDefault();
-  const files = [...$("regPhotos").files].slice(0, 5);
-  if (!files.length){ $("regMsg").style.color = "var(--red)"; $("regMsg").textContent = "Choose 1–5 photos, or use Capture from CAM-01."; return; }
-  register({name: $("regName").value, photos: await Promise.all(files.map(readFile))}, ev.submitter || $("regForm").querySelector("[type=submit]"));
-});
-$("regCam").onclick = () => {
-  if (!$("regName").value.trim()){ $("regName").focus(); $("regMsg").style.color = "var(--red)"; $("regMsg").textContent = "Enter the worker's name first."; return; }
-  register({name: $("regName").value, camera_id: "cam_01"}, $("regCam"));
-};
-
-function beep(){
-  try { audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-    [0, .35, .7].forEach(t => { const o = audio.createOscillator(), g = audio.createGain();
-      o.frequency.value = 880; o.connect(g); g.connect(audio.destination);
-      g.gain.setValueAtTime(.15, audio.currentTime + t); o.start(audio.currentTime + t); o.stop(audio.currentTime + t + .2); });
-  } catch {}
-}
-document.addEventListener("click", () => { if (audio && audio.state === "suspended") audio.resume(); else if (!audio) try { audio = new AudioContext(); } catch {} }, {once:true});
 
 /* ---------- cameras ---------- */
-document.addEventListener("click", async e => {        // camera pair: give the slot to this camera
-  const b = e.target.closest("[data-use]"); if (!b) return;
-  b.disabled = true; b.textContent = "Switching…";
-  try { await api(`/api/cameras/${b.dataset.use}/activate`, {method:"POST"}); toast("Switching camera", "the picture moves to this tile in about 2 s"); }
-  catch { b.disabled = false; b.textContent = "Use this camera"; }
-});
 function renderCams(){
-  const cams = CAMS.cameras || [];
-  const DOWN = ["OFFLINE", "OFF", "STANDBY"];
-  const online = cams.filter(c => !DOWN.includes(c.status));
-  const active = cams.filter(c => c.status !== "OFF" && c.status !== "STANDBY");
-  const pill = $("livePill");
-  pill.className = "pill" + (CAMS.edge_online ? "" : " off");
-  pill.querySelector("span").textContent = CAMS.edge_online ? `LIVE · ${online.length} STREAM${online.length===1?"":"S"} ACTIVE` : "EDGE OFFLINE";
-  const html = cams.map(c => {
-    const badge = c.badge ? `<span class="badge ${c.badge.startsWith("verifying") ? "v" : ""}">${esc(c.badge)}</span>` : "";
-    const cls = c.status === "STANDBY" ? "standby" : (c.status === "OFFLINE" || c.status === "OFF") ? "offline" : c.badge ? (c.badge.startsWith("verifying") ? "warn" : "alert") : "ok";
-    const sub = c.badge && c.badge.startsWith("verifying") ? c.badge : `${c.risk} risk`;
-    return `<div class="tile ${cls}" id="tile_${c.camera_id}">
-      <div class="screen">${badge}<span class="state" id="st_${c.camera_id}"></span>
-        ${c.status === "STANDBY" ? `<div style="display:flex;flex-direction:column;align-items:center"><span>${esc(c.detail || "Standby")}</span><button class="useBtn" data-use="${c.camera_id}">Use this camera</button></div>`
-          : (c.status === "OFFLINE" || c.status === "OFF") ? `<span>${esc(c.detail || "No signal")}</span>` : `<img data-cam="${c.camera_id}" alt="Live view ${esc(c.name)}">`}</div>
-      <div class="meta"><b>${esc(c.name)}</b><span>${camLabel(c.camera_id)} · ${esc(sub)}</span></div></div>`;
-  }).join("");
-  // keep existing <img> elements so the live view does not flicker
-  const sig = JSON.stringify(cams.map(c => [c.camera_id, c.status, c.badge, c.detail]));
-  if ($("tiles").dataset.sig !== sig){ $("tiles").innerHTML = html; $("tiles").dataset.sig = sig; }
-  cams.forEach(c => { const el = $("st_" + c.camera_id); if (!el) return;
-    const dot = {ONLINE:"var(--green)", DEGRADED:"var(--amber)", OFFLINE:"var(--red)", OFF:"var(--grey)", STANDBY:"var(--grey)"}[c.status];
-    el.innerHTML = `<i style="background:${dot}"></i>${c.status}${!DOWN.includes(c.status) ? " · " + c.fps + " fps" : ""}`; });
-  $("kCams").textContent = `${online.length} / ${active.length}`;
-  const nOff = cams.filter(c => c.status === "OFF").length, nSb = cams.filter(c => c.status === "STANDBY").length;
-  $("kCamsSub").textContent = CAMS.edge_online ? `${cams.filter(c=>c.status==="DEGRADED").length} degraded` + (nSb ? ` · ${nSb} on standby` : "") + (nOff ? ` · ${nOff} switched off` : "") : "Edge device not reporting";
-  const fps = online.length ? (online.reduce((s,c)=>s+c.fps,0)/online.length).toFixed(0) : "–";
-  $("eRuntime").textContent = `Edge unit · ${CAMS.edge?.device === "0" || CAMS.edge?.device === 0 ? "GPU" : (CAMS.edge?.device ? "CPU" : "–")}`;
-  $("eFps").textContent = `${fps} FPS`;
-  $("eStreams").textContent = `${online.length} / ${cams.length}`;
-  const inf = online.filter(c => c.infer_ms).map(c => c.infer_ms);
-  $("eInfer").textContent = inf.length ? `${(inf.reduce((a,b)=>a+b,0)/inf.length).toFixed(0)} ms / frame` : "–";
-  const ob = CAMS.edge?.outbox_pending;
-  $("eOutbox").textContent = ob == null ? "–" : `${ob} alert${ob===1?"":"s"}`;
-  $("eOutbox").className = "tag " + (ob > 0 ? "t-amber" : "t-grey");
-}
-async function pollFrames(){
-  for (const img of document.querySelectorAll("img[data-cam]")){
-    const r = await fetch(`/api/frame/${img.dataset.cam}?t=${Date.now()}`).catch(()=>null);
-    if (r && r.status === 200){ const url = URL.createObjectURL(await r.blob()); const old = img.src; img.src = url; if (old.startsWith("blob:")) URL.revokeObjectURL(old); }
+  const cams = (CAMS.cameras || []);
+  const shown = FOCUS ? cams.filter(c => c.camera_id === FOCUS) : cams;
+  $("unfocus").hidden = !FOCUS;
+  $("cams").classList.toggle("focus", !!FOCUS);
+  const on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED").length;
+  $("camSummary").textContent = `${on} of ${cams.filter(c => c.status !== "OFF").length} cameras live` + (CAMS.edge_online ? "" : " · EDGE OFFLINE");
+  const sig = JSON.stringify([FOCUS, shown.map(c => [c.camera_id, c.status === "ONLINE" || c.status === "DEGRADED"])]);
+  if ($("cams").dataset.sig !== sig){
+    $("cams").innerHTML = shown.map(c => {
+      const live = c.status === "ONLINE" || c.status === "DEGRADED";
+      return `<div class="cam" id="cam_${c.camera_id}"><div class="screen">
+        <div class="top"><div><div class="name">${esc(c.name)}${c.role === "entrance" ? " · PPE GATE" : ""}<span class="risk ${c.risk}">${esc(String(c.risk||"").toUpperCase())} RISK</span></div>
+          <div class="zone">${esc(c.camera_id)} · ${esc(c.zone_name)}</div></div><span class="st" id="st_${c.camera_id}"></span></div>
+        ${live ? `<img data-live="${c.camera_id}" alt="Live view ${esc(c.name)}">` : `<span id="off_${c.camera_id}"></span>`}
+        <span class="badge" id="bd_${c.camera_id}" hidden></span>
+        <button class="fbtn" data-focus="${c.camera_id}">${FOCUS ? "Exit full view" : "Enlarge"}</button></div></div>`; }).join("") || `<div class="empty">No cameras configured.</div>`;
+    $("cams").dataset.sig = sig;
   }
-  setTimeout(pollFrames, 250);
+  for (const c of shown){
+    const st = $("st_" + c.camera_id), bd = $("bd_" + c.camera_id), box = $("cam_" + c.camera_id), off = $("off_" + c.camera_id);
+    if (!st) continue;
+    const icon = {ONLINE:"●", DEGRADED:"◐", OFFLINE:"✖", OFF:"○", STANDBY:"○"}[c.status] || "?";
+    const age = FRAME_AGE[c.camera_id];
+    st.textContent = `${icon} ${c.status}${c.status === "ONLINE" || c.status === "DEGRADED" ? ` · ${c.fps} fps${age != null ? ` · ${age} ms` : ""}` : ""}`;
+    if (off) off.textContent = c.detail || "No signal";
+    const b = c.badge || "";
+    bd.hidden = !b; bd.textContent = b ? (/APPROVED/.test(b) ? "✓ " : /MANUAL|verifying/i.test(b) ? "⚠ " : "▲ ") + b : "";
+    bd.className = "badge" + (/APPROVED/.test(b) ? " ok" : /MANUAL|verifying/i.test(b) ? " warn" : "");
+    box.className = "cam " + (c.status === "OFFLINE" ? "off" : c.status === "OFF" || c.status === "STANDBY" ? "off" : b ? (/APPROVED/.test(b) ? "ok" : /MANUAL|verifying/i.test(b) ? "warn" : "alert") : "ok");
+  }
+}
+document.addEventListener("click", ev => { const f = ev.target.closest("[data-focus]"); if (!f) return; FOCUS = FOCUS ? null : f.dataset.focus; renderCams(); });
+$("unfocus").onclick = () => { FOCUS = null; renderCams(); };
+
+/* live pictures: one loop per camera, newest frame only; measures picture age with the server clock */
+const FRAME_AGE = {}, LOOPS = new Set();
+function startFrameLoop(cam){
+  if (LOOPS.has(cam)) return; LOOPS.add(cam);
+  (async function loop(){
+    let url = null;
+    while (true){
+      const imgs = document.querySelectorAll(`img[data-live="${cam}"]`);
+      const want = imgs.length && !document.hidden;
+      if (!want){ await new Promise(r => setTimeout(r, 400)); continue; }
+      const t0 = performance.now();
+      try {
+        const r = await fetch(`/api/frame/${cam}?t=${Date.now()}`, {cache:"no-store"});
+        if (r.status === 200){
+          const cap = parseFloat(r.headers.get("X-Captured-At")), srv = parseFloat(r.headers.get("X-Server-Time"));
+          const blob = await r.blob(); const rtt = performance.now() - t0;
+          const nu = URL.createObjectURL(blob);
+          document.querySelectorAll(`img[data-live="${cam}"]`).forEach(i => i.src = nu);
+          if (url) URL.revokeObjectURL(url); url = nu;
+          if (cap && srv){ const age = Math.round((srv - cap) * 1000 + rtt / 2); FRAME_AGE[cam] = age; PERF.preview_age_ms.push(age);
+            CLOCK_OFF = srv - (Date.now() - rtt / 2) / 1000; }
+        }
+      } catch {}
+      const spent = performance.now() - t0;
+      await new Promise(r => setTimeout(r, Math.max(15, 80 - spent)));
+    }
+  })();
+}
+setInterval(() => (CAMS.cameras||[]).forEach(c => startFrameLoop(c.camera_id)), 1000);
+
+/* ---------- incidents ---------- */
+function inFilter(e){
+  if (e.type === "entrance_check" && e.status === "closed" && FILTER !== "all" && FILTER !== "done") return false;
+  if (FILTER === "active") return ACTIVE.has(e.status);
+  if (FILTER === "ack") return e.status === "acknowledged";
+  if (FILTER === "done") return DONE.has(e.status);
+  return true;
+}
+const PRIO = e => (fireActive(e) ? -10 - (e.fire_level||0) : 0) + ({Critical:0, High:1, Medium:2, Low:3}[e.severity] ?? 4);
+function renderIncidents(){
+  const list = [...EVENTS.values()].filter(e => e.type !== "test").filter(inFilter)
+    .sort((a,b) => (ACTIVE.has(b.status) - ACTIVE.has(a.status)) || PRIO(a) - PRIO(b) || b.started_at - a.started_at).slice(0, 80);
+  $("nActive").textContent = `${[...EVENTS.values()].filter(e => ACTIVE.has(e.status)).length} active`;
+  $("incidents").innerHTML = list.length ? list.map(e => { const s = sev(e);
+    const ackd = (e.actions||[]).filter(a => a.action === "ack").pop(), res = (e.actions||[]).filter(a => ["resolve","dismiss","auto_resolve"].includes(a.action)).pop();
+    return `<div class="inc ${s.cls}"><div class="state">${s.label}</div><div class="when" title="${fmtT(e.started_at)}">${fmtT(e.started_at, false)}<br>${ago(e.started_at)}</div>
+      <div class="ttl">${esc(title(e))}${e.type === "fire" || e.type === "smoke" ? ` · L${e.fire_level || "?"}` : ""}</div>
+      <div class="meta"><b>${esc(e.zone_name || e.zone_id || "")}</b> · ${esc(e.camera_id || "safety station")}${who(e) ? " · " + esc(who(e)) : ""} · ${esc(e.severity || "")}</div>
+      ${ackd ? `<div class="meta">Acknowledged by <b>${esc(ackd.by_user)}</b> at ${fmtT(ackd.at, false)}</div>` : ""}
+      ${res && DONE.has(e.status) ? `<div class="meta">${esc(res.action.replace("_"," "))} by <b>${esc(res.by_user)}</b> at ${fmtT(res.at, false)}${res.note ? " — " + esc(res.note) : ""}</div>` : ""}
+      <div class="row">${actButtons(e)}${e.snapshot ? `<img src="${e.snapshot}?v=${e.updated_at}" alt="Snapshot" data-a="view" data-id="${e.event_id}" loading="lazy">` : ""}</div></div>`; }).join("")
+    : `<div class="empty">${FILTER === "active" ? "✓ No active incidents." : "Nothing in this list."}</div>`;
+}
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => { FILTER = t.dataset.f; document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-pressed", x === t)); renderIncidents(); });
+
+document.addEventListener("click", async ev => {
+  const el = ev.target.closest("[data-a]"); if (!el) return;
+  const a = el.dataset.a, id = el.dataset.id;
+  if (a === "view") return openEvent(id);
+  if (a === "evac"){ EVAC_MIN.delete(id); return renderAlertZone(); }
+  if (a === "evacmin"){ EVAC_MIN.add(id); return renderAlertZone(); }
+  if (a === "gate"){ el.disabled = true; try { await post(`/api/entrance/${id}/decide`, {decision: el.dataset.d, note: "manual check at the entrance"}); closeGate(); } catch(x){ toast("Not saved", x.message, "crit"); el.disabled = false; } return; }
+  el.disabled = true;
+  try { upsert(await post(`/api/events/${id}/${a}`, {})); toast(`${a === "ack" ? "Acknowledged" : a[0].toUpperCase() + a.slice(1) + "d"}`, id); }
+  catch (x){ toast("Action failed", x.message, "crit"); el.disabled = false; }
+});
+
+/* ---------- details ---------- */
+async function openEvent(id){
+  let e; try { e = await api(`/api/events/${encodeURIComponent(id)}`); } catch(x){ toast("Not found", id, "crit"); return; }
+  const s = sev(e), d = e.details || {};
+  const notif = (e.notifications||[]).map(n => `<tr><td>${esc(n.channel)}</td><td>${statusPill(n.status)}</td><td>${esc(n.recipient || "")}</td><td>${n.attempts || 0}</td><td>${n.latency_ms != null ? (n.latency_ms/1000).toFixed(1) + " s" : "–"}</td><td class="small">${esc(n.provider_status || n.error || "")}</td></tr>`).join("");
+  $("mBox").innerHTML = `<div style="display:flex;align-items:center;gap:10px"><h2 id="mTitle" style="margin:0;font-size:22px">${esc(title(e))}</h2><span class="pill ${s.cls === "s-crit" ? "p-crit" : s.cls === "s-warn" ? "p-warn" : s.cls === "s-ack" ? "p-info" : s.cls === "s-ok" ? "p-ok" : "p-grey"}">${esc(s.label)}</span>
+    <span style="flex:1"></span><button class="btn" id="mClose">Close</button></div>
+    ${e.snapshot ? `<img src="${e.snapshot}?v=${e.updated_at}" alt="Saved snapshot (faces blurred)" style="margin-top:10px">` : `<p class="small">No saved snapshot for this record${e.camera_id ? "" : " (sensor / hardware event)"}${ME.role === "viewer" ? " or your role cannot view footage" : ""}.</p>`}
+    <div class="kv"><div>Event ID</div><div>${esc(e.event_id)}</div><div>Type</div><div>${esc(e.type)}${e.fire_level ? ` · Level ${e.fire_level}` : ""}</div>
+      <div>Severity</div><div>${esc(e.severity)}</div><div>Status</div><div>${esc(e.status)}${e.acked_by ? ` · acknowledged by ${esc(e.acked_by)} ${fmtT(e.acked_at)}` : ""}${e.closed_by ? ` · closed by ${esc(e.closed_by)}` : ""}</div>
+      <div>Detected</div><div>${fmtT(e.started_at)}</div><div>Ended</div><div>${e.ended_at ? fmtT(e.ended_at) + " · " + esc(e.end_reason || "") : "still active"}</div>
+      <div>Camera</div><div>${esc(e.camera_id || "—")} ${esc(camName(e.camera_id))}</div><div>Zone</div><div>${esc(e.zone_name || e.zone_id || "—")}</div>
+      <div>Location</div><div>${locText(e)}</div>${who(e) ? `<div>Worker</div><div>${esc(who(e))}</div>` : ""}
+      ${e.items_missing && e.items_missing.length ? `<div>Missing</div><div>${e.items_missing.map(iname).join(", ")}</div>` : ""}
+      ${d.result ? `<div>Entrance</div><div>${esc(d.message)}${d.items_uncertain && d.items_uncertain.length ? " · not verified: " + d.items_uncertain.join(", ") : ""}${d.reason ? " · " + esc(d.reason) : ""} · decided in ${d.decision_ms} ms · gate ${esc(d.gate)} (${esc(d.controller)})${d.override ? ` · manual check: ${esc(d.override.decision)} by ${esc(d.override.by)}` : ""}</div>` : ""}
+      ${e.fire_reasons ? `<div>Level evidence</div><div>${esc((e.fire_reasons||[]).join("; "))}</div>` : ""}
+      ${e.type === "fire" || e.type === "smoke" ? `<div>Sensors</div><div>${sensorsHtml(e)}</div>` : ""}
+      <div>Confidence</div><div>${e.confidence != null ? Number(e.confidence).toFixed(2) : "—"}</div>
+      <div>Timing</div><div>time to alert ${e.time_to_alert_ms != null ? (e.time_to_alert_ms/1000).toFixed(2) + " s" : "—"} · edge → server ${e.latency_ms != null ? Math.round(e.latency_ms) + " ms" : "—"}</div></div>
+    <h3 style="margin:8px 0 4px">Notifications</h3>${notif ? `<table><thead><tr><th>Channel</th><th>Status</th><th>To</th><th>Tries</th><th>Delivery</th><th>Provider</th></tr></thead><tbody>${notif}</tbody></table>` : `<p class="small">No message was sent for this record (policy: dashboard only).</p>`}
+    <h3 style="margin:12px 0 4px">Audit trail</h3><ul class="small">${(e.actions||[]).map(x => `<li>${fmtT(x.at)} · ${esc(x.action)} · ${esc(x.by_user)}${x.note ? " — " + esc(x.note) : ""}</li>`).join("")}</ul>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${actButtons(e)}</div>`;
+  $("modal").classList.add("show"); $("mClose").onclick = closeModal; $("mClose").focus();
+}
+function closeModal(){ $("modal").classList.remove("show"); if (location.hash.startsWith("#event=")) history.replaceState(null, "", "/"); }
+$("modal").onclick = ev => { if (ev.target.id === "modal") closeModal(); };
+document.addEventListener("keydown", ev => { if (ev.key === "Escape"){ closeModal(); closeGate(); } });
+
+/* ---------- entrance ---------- */
+let gateTimer = null;
+function closeGate(){ $("gatePop").classList.remove("show"); clearTimeout(gateTimer); }
+function gateHtml(g, big){
+  const head = {approved:"✓ ACCESS APPROVED", denied:"✖ ACCESS DENIED", manual:"⚠ VERIFICATION FAILED"}[g.result] || g.result;
+  const msg = {approved:"All required PPE detected. You may proceed.", denied:"Required PPE is incomplete. Entry is not permitted.", manual:"Manual check required."}[g.result];
+  const items = (g.required||[]).map(i => (g.missing||[]).includes(i) ? `<span class="item">✖ ${iname(i)}</span>` : (g.ok||[]).includes(i) ? `<span class="item ok">✓ ${iname(i)}</span>` : `<span class="item unk">? ${iname(i)}</span>`).join("");
+  const manual = g.result === "manual" && !g.override && canAct() ? `<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap"><button class="btn pri${big ? " big" : ""}" data-a="gate" data-d="approved" data-id="${g.event_id}">Checked — approve</button><button class="btn red${big ? " big" : ""}" data-a="gate" data-d="denied" data-id="${g.event_id}">Checked — deny</button></div>` : "";
+  return {head, msg, items, manual};
+}
+function showGatePopup(g){
+  const x = gateHtml(g, true);
+  $("gpCard").className = "card " + g.result;
+  $("gpCard").innerHTML = `<h1 id="gpTitle">${x.head}</h1><p>${x.msg}</p><div class="items" style="margin:12px 0">${x.items}</div>
+    ${g.result === "denied" && g.missing.length ? `<p><b>Missing:</b> ${g.missing.map(iname).join(", ")}</p>` : ""}
+    ${g.reason && g.result !== "approved" ? `<p class="small">${esc(g.reason)}</p>` : ""}
+    <p class="small">${esc(g.zone_name || g.zone_id)} · ${esc(g.camera_id)} · ${esc(g.time)}${g.worker_name ? " · " + esc(g.worker_name) : ""} · decided in ${g.decision_ms} ms · gate: ${esc(g.gate)} (${esc(g.controller)})</p>
+    ${x.manual}<div style="margin-top:12px"><button class="btn" onclick="closeGate()">Close</button></div>`;
+  $("gatePop").classList.add("show");
+  clearTimeout(gateTimer);
+  if (g.result === "approved") gateTimer = setTimeout(closeGate, 5000);
+  else if (g.result === "denied") gateTimer = setTimeout(closeGate, 12000);
+}
+function renderGate(){
+  const g = ENTR[0];
+  $("gateCtl").textContent = g ? `gate: ${g.gate} · ${g.controller}` : "";
+  if (!g){ $("gateLast").innerHTML = `<div class="empty">No entrance checks yet. The entrance camera decides when a person stands in front of it.</div>`; $("gateList").innerHTML = ""; return; }
+  const x = gateHtml(g, false);
+  $("gateLast").innerHTML = `<div class="gate ${g.result}"><div class="res">${x.head}</div><div>${x.msg}${g.override ? ` · manual check: <b>${esc(g.override.decision)}</b> by ${esc(g.override.by)}` : ""}</div>
+    <div class="items">${x.items}</div><div class="small">${esc(g.time)} · ${esc(g.camera_id)}${g.worker_name ? " · " + esc(g.worker_name) : ""} · ${g.decision_ms} ms</div>${x.manual}</div>`;
+  $("gateList").innerHTML = ENTR.slice(0, 8).map(r => `<tr><td>${fmtT(r.at, false)}</td><td><span class="pill ${r.result === "approved" ? "p-ok" : r.result === "denied" ? "p-crit" : "p-warn"}">${r.result === "approved" ? "✓" : r.result === "denied" ? "✖" : "⚠"} ${r.result.toUpperCase()}</span></td>
+    <td class="small">${r.missing && r.missing.length ? "missing " + r.missing.map(iname).join(", ") : r.result === "manual" ? esc(r.reason || "") : "all PPE seen"}${r.override ? " · manual: " + esc(r.override.decision) : ""}</td></tr>`).join("");
 }
 
-/* ---------- zones, KPIs, analytics ---------- */
+/* ---------- zones, notifications, health, perf, location ---------- */
 function renderZones(){
-  $("zones").innerHTML = ZONES.map(z => {
-    const s = z.status, c = s === "Compliant" ? "t-green" : s.startsWith("Verifying") ? "t-amber" : "t-red";
-    const nc = new Set(z.not_checked || []);
-    const item = p => { const n = p === "boots" ? "Safety shoes" : p[0].toUpperCase()+p.slice(1);
-      return nc.has(p) ? `<span style="color:var(--muted)" title="Not judged yet: waits for the v3 model">${n} (soon)</span>` : n; };
-    const lock = z.allowed ? `<div style="font-size:12px;color:var(--muted)">🔒 Only: ${z.allowed.map(esc).join(", ")}</div>` : "";
-    const ins = (z.inside || []).length ? `<div style="font-size:12px">Inside (RFID): ${z.inside.map(p =>
-      `<span style="color:${p.allowed === false ? "var(--red)" : "inherit"}">${esc(p.name)}${p.allowed === false ? " ⚠" : ""}</span>`).join(", ")}</div>` : "";
-    return `<tr><td>${esc(z.name)}${lock}${ins}</td><td>${z.required_ppe.map(item).join(", ")}</td>
-      <td>${z.risk[0].toUpperCase()+z.risk.slice(1)}</td><td><span class="tag ${c}">${esc(s)}</span></td></tr>`;
-  }).join("");
-  const opts = `<option value="">All zones</option>` + ZONES.map(z => `<option value="${z.zone_id}">${esc(z.name)}</option>`).join("");
-  if ($("fZone").options.length !== ZONES.length + 1){ const v = $("fZone").value; $("fZone").innerHTML = opts; $("fZone").value = v; }
+  $("zones").innerHTML = ZONES.map(z => { const bad = z.status !== "Compliant";
+    return `<tr><td><b>${esc(z.name)}</b>${z.allowed ? `<div class="small">🔒 only ${z.allowed.map(esc).join(", ")}</div>` : ""}</td><td class="small">${z.required_ppe.map(iname).join(", ")}</td>
+      <td><span class="risk ${z.risk}">${z.risk.toUpperCase()}</span></td><td><span class="pill ${bad ? (/fire|smoke/i.test(z.status) ? "p-crit" : "p-warn") : "p-ok"}">${bad ? "⚠ " : "✓ "}${esc(z.status)}</span></td></tr>`; }).join("");
 }
-function renderKpis(){
-  $("kActive").textContent = [...EVENTS.values()].filter(e => e.status === "open" || e.status === "escalated").length;
+function statusPill(s){
+  const m = {delivered:["p-ok","✓ DELIVERED"], sent:["p-ok","✓ SENT (accepted)"], queued:["p-info","… QUEUED"], sending:["p-info","↻ SENDING"], retrying:["p-warn","↻ RETRYING"],
+    failed:["p-crit","✖ FAILED"], not_configured:["p-grey","○ NOT CONFIGURED"], skipped:["p-grey","– SKIPPED"]}[s] || ["p-grey", s || "–"];
+  return `<span class="pill ${m[0]}">${m[1]}</span>`;
 }
-function renderAnalytics(a){
-  $("kCompliance").textContent = a.compliance_rate == null ? "–" : a.compliance_rate + "%";
-  $("kLatency").textContent = a.avg_time_to_alert_s == null ? (a.avg_latency_s == null ? "–" : a.avg_latency_s + "s") : a.avg_time_to_alert_s + "s";
-  $("kLatencySub").textContent = a.avg_time_to_alert_s == null ? "Frame captured → alert received, 24 h"
-    : `Violation first seen → alert here, 24 h · transport ${a.avg_latency_s ?? "–"} s`;
-  const d = a.violations_7d, max = Math.max(1, ...d.map(x => x.count)), W = 320, H = 130, bw = W / d.length;
-  $("chart").innerHTML = `<svg viewBox="0 0 ${W} ${H+22}" width="100%" role="img" aria-label="Violations per day, last 7 days">` +
-    d.map((x,i) => { const h = Math.max(2, (x.count/max) * H), c = x.count >= max*.66 && x.count ? "var(--red)" : x.count >= max*.33 && x.count ? "var(--amber)" : "var(--blue)";
-      return `<rect x="${i*bw+8}" y="${H-h}" width="${bw-16}" height="${h}" rx="3" fill="${c}"><title>${x.date}: ${x.count}</title></rect>
-        <text x="${i*bw+bw/2}" y="${H+15}" text-anchor="middle" font-size="11" fill="#667085">${x.label}</text>
-        ${x.count ? `<text x="${i*bw+bw/2}" y="${H-h-4}" text-anchor="middle" font-size="10" fill="#1d2939">${x.count}</text>` : ""}`; }).join("") + `</svg>`;
-  $("insights").textContent = a.insights.length ? a.insights.join(". ") + "." : "Trend insights appear once there is data from more than one shift.";
-  const m = a.compliance_mix, parts = [["Compliant", m.compliant, "var(--green)"], ["Unverifiable", m.unverifiable, "var(--amber)"], ["Missing", m.missing, "var(--red)"]];
-  let off = 25; const R = 15.915;
-  $("donut").innerHTML = `<svg viewBox="0 0 42 42" width="118" height="118" role="img" aria-label="Compliance mix">
-    <circle cx="21" cy="21" r="${R}" fill="none" stroke="#eef1f5" stroke-width="6"/>` +
-    parts.filter(p => p[1] > 0).map(p => { const s = `<circle cx="21" cy="21" r="${R}" fill="none" stroke="${p[2]}" stroke-width="6" stroke-dasharray="${p[1]} ${100-p[1]}" stroke-dashoffset="${off}"/>`; off -= p[1]; return s; }).join("") + `</svg>`;
-  $("mixLegend").innerHTML = parts.map(p => `<span><i style="background:${p[2]}"></i>${p[0]} ${p[1]}%</span>`).join("");
+const CH = {telegram:"✈ Telegram", call:"☎ Phone call", sms:"✉ SMS", email:"@ E-mail", mock:"(mock)"};
+function renderNotifs(){
+  const rows = [...NOTIFS.values()].sort((a,b) => b.id - a.id).slice(0, 10);
+  $("notifs").innerHTML = rows.length ? rows.map(n => `<tr><td>${CH[n.channel] || esc(n.channel)}</td><td>${statusPill(n.status)}${n.attempts > 1 ? ` <span class="small">try ${n.attempts}</span>` : ""}</td>
+    <td class="small"><a href="#event=${encodeURIComponent(n.event_id)}">${esc(n.event_id)}</a>${n.latency_ms != null ? ` · ${(n.latency_ms/1000).toFixed(1)} s` : ""}${n.error && n.status !== "delivered" ? `<br>${esc(String(n.error).slice(0, 80))}` : ""}</td></tr>`).join("")
+    : `<tr><td colspan="3" class="empty">No alert messages yet.</td></tr>`;
 }
-function renderSummary(a){
-  const s = a.shift_summary; if (!s) return;
-  $("sumTitle").textContent = "Shift summary · " + s.title;
-  $("sumLines").innerHTML = s.lines.map(l => `<li>${esc(l)}</li>`).join("");
-  const h = a.heatmap; if (!h || !h.zones.length){ $("heat").innerHTML = `<div class="empty">No violations in the last 7 days.</div>`; return; }
-  const max = Math.max(1, ...h.counts.flat());
-  const cell = n => { const t = n / max; return `<td title="${n} alert${n===1?"":"s"}" style="background:${n ? `rgba(192,57,43,${0.15 + 0.85*t})` : "var(--grey-bg)"};color:${t > .55 ? "#fff" : "var(--ink)"}">${n || ""}</td>`; };
-  $("heat").innerHTML = `<table role="img" aria-label="Violations by zone and hour of day"><tr><th></th>${[...Array(24).keys()].map(x => `<th class="hh">${x % 3 ? "" : x}</th>`).join("")}</tr>` +
-    h.zones.map((z, i) => `<tr><th>${esc(z)}</th>${h.counts[i].map(cell).join("")}</tr>`).join("") + `</table>`;
+function renderHealth(){
+  if (!HEALTH) return;
+  const icon = {ok:"✓", warn:"⚠", fail:"✖", off:"○"}, cls = {ok:"p-ok", warn:"p-warn", fail:"p-crit", off:"p-grey"};
+  $("health").innerHTML = HEALTH.components.map(c => `<tr><td style="width:32%"><b>${esc(c.name)}</b></td><td style="width:16%"><span class="pill ${cls[c.state]}">${icon[c.state]} ${c.state.toUpperCase()}</span></td><td class="small">${esc(c.message)}</td></tr>`).join("");
+  const bad = HEALTH.components.filter(c => c.state === "fail" || c.state === "warn");
+  const fails = bad.filter(c => c.state === "fail");
+  const hc = $("healthChip"); hc.className = "chip " + (fails.length ? "fail" : bad.length ? "warn" : "ok");
+  hc.textContent = fails.length ? `✖ ${fails.length} fault${fails.length>1?"s":""}` : bad.length ? `⚠ ${bad.length} warning${bad.length>1?"s":""}` : "✓ all systems";
+  const hb = $("healthbar"); const important = bad.filter(c => c.state === "fail" || /Edge|Camera|Database|queue|offline/i.test(c.name + c.message));
+  hb.className = "healthbar" + (important.length ? " show " + (fails.length ? "fail" : "warn") : "");
+  hb.innerHTML = important.map(c => `<div><b>${c.state === "fail" ? "✖" : "⚠"} ${esc(c.name)}:</b>${esc(c.message)}</div>`).join("");
+  const chans = HEALTH.components.filter(c => c.name.startsWith("Alerts:"));
+  $("chanState").textContent = chans.filter(c => c.state === "ok").length + " of " + chans.length + " channels ready";
 }
-function reportLinks(){
-  const q = `shift=${$("rShift").value}&days=${$("rDays").value}`;
-  $("lnkCsv").href = `/api/reports/export?format=csv&kind=shift&${q}`;
-  $("lnkPdf").href = `/api/reports/export?format=pdf&${q}`;
-  $("lnkZone").href = `/api/reports/export?format=csv&kind=zone&${q}`;
+function renderLoc(){
+  const c = LOC && LOC.current, ch = $("locChip");
+  if (!c || !c.valid){ ch.className = "chip warn"; ch.innerHTML = `📍 Location unavailable <button class="btn" style="padding:2px 8px;font-size:12px" id="gpsBtn">Use this device</button>`; }
+  else { ch.className = "chip ok"; ch.innerHTML = `📍 ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)} · ${esc(c.source_label)}${c.age_s != null ? ` · ${Math.round(c.age_s/60)} min old` : ""} <button class="btn" style="padding:2px 8px;font-size:12px" id="gpsBtn">Update</button>`; }
+  const b = $("gpsBtn"); if (b) b.onclick = useGps;
 }
-
-/* ---------- safety station strip ---------- */
-let LASTSCAN = null;
-function renderStation(st){
-  const d = (st.devices || [])[0], box = $("station");
-  if (!d){ box.className = "station"; $("stLevel").textContent = "NOT CONFIGURED"; return; }
-  const lvl = d.online ? (d.eval?.level || "UNKNOWN") : "OFFLINE", x = d.data || {};
-  box.className = "station " + lvl;
-  $("stName").textContent = `${d.name}${d.zone_id ? " · " + ((ZONES.find(z => z.zone_id === d.zone_id) || {}).name || d.zone_id) : ""}`;
-  $("stLevel").textContent = lvl === "FAULT" ? "SENSOR FAULT" : lvl;
-  $("stLevel").className = "vtag " + ({NORMAL:"t-green", WARNING:"t-amber", FAULT:"t-amber", CRITICAL:"t-red"}[lvl] || "t-grey");
-  const v = (k, dp=0) => x[k] == null ? "—" : Number(x[k]).toFixed(dp);
-  $("stVals").innerHTML = !d.online ? `<span class="muted">No data from ${esc(d.device_id)}${d.age_s != null ? " for " + Math.round(d.age_s) + " s" : ""} — camera fire alerts go ahead without hardware check.</span>`
-    : `<span>Temp <b>${v("temperature_c",1)} °C</b></span><span>Humidity <b>${v("humidity_pct")} %</b></span>
-       <span>MQ-2 <b>${v("mq2_adc")}</b></span><span>Flame <b style="color:${x.flame_detected ? "var(--red)" : "inherit"}">${x.flame_detected == null ? "—" : x.flame_detected ? "YES" : "no"}</b></span>
-       <span>PM2.5 <b>${v("pm2_5_ugm3")} µg/m³</b></span>` + ((d.eval?.reasons || []).length ? `<span style="color:var(--red)">${esc(d.eval.reasons.join(" · "))}</span>` : "");
-  $("stIn").textContent = `In area: ${(st.present || []).length}`;
+function useGps(){
+  if (!navigator.geolocation){ toast("Location", "This browser has no location service.", "crit"); return; }
+  if (!window.isSecureContext){ toast("Location", "The browser only allows GPS on https or on this computer (http://127.0.0.1:8000). The configured site position is used instead.", "crit"); return; }
+  navigator.geolocation.getCurrentPosition(async p => {
+    try { LOC = await post("/api/location/device", {lat: p.coords.latitude, lon: p.coords.longitude, accuracy_m: p.coords.accuracy, at: p.timestamp}); renderLoc(); toast("Location updated", `accuracy ${Math.round(p.coords.accuracy)} m`); }
+    catch(x){ toast("Location not saved", x.message, "crit"); }
+  }, err => toast("Location not available", err.message, "crit"), {enableHighAccuracy:true, timeout:15000, maximumAge:60000});
 }
-async function loadStation(){
-  try { const s = await api("/api/hw/state"); renderStation(s);
-    const last = (s.scans || [])[0]; if (last) $("stScan").textContent = `Last scan: ${last.name || "unknown card"} ${last.event === "ENTERED" ? "in" : last.event === "EXITED" ? "out" : ""} ${new Date(last.at*1000).toLocaleTimeString()}`;
+async function renderPerf(){
+  try {
+    const p = await api("/api/perf"); const m = p.metrics || {};
+    const box = (k, label) => m[k] ? `<div class="perf"><small>${label}</small><b>${m[k].p50 < 1000 ? Math.round(m[k].p50) + " ms" : (m[k].p50/1000).toFixed(1) + " s"}</b><small>95%: ${m[k].p95 < 1000 ? Math.round(m[k].p95) + " ms" : (m[k].p95/1000).toFixed(1) + " s"} · n=${m[k].n}</small></div>` : "";
+    let cams = "";
+    if (p.edge && p.edge.cameras) for (const [id, c] of Object.entries(p.edge.cameras)) if (c.frame_p50 != null)
+      cams += `<div class="perf"><small>${esc(id)} capture → processed</small><b>${Math.round(c.frame_p50)} ms</b><small>95%: ${Math.round(c.frame_p95)} ms · ${c.fps} fps</small></div>`;
+    $("perf").innerHTML = cams + box("event_e2e_ms","Detection → server") + box("dashboard_event_ms","Detection → this screen") + box("preview_age_ms","Live picture age")
+      + box("time_to_alert_ms","Hazard seen → alert (incl. confirm)") + box("notify_telegram_ms","Telegram delivered") + box("notify_call_ms","Phone call answered")
+      + box("notify_sms_ms","SMS") + box("notify_email_ms","E-mail accepted") + box("assistant_ms","AI assistant answer") || `<div class="small">No measurements yet.</div>`;
+    $("perfNote").textContent = p.edge && p.edge.engine ? `GPU engine: batch ${p.edge.engine.batch_ms_p50 ?? "–"} ms median, ${p.edge.engine.batch_size_avg ?? "–"} cameras per batch · ${p.edge.runtime || ""}` : "Edge computer not reporting.";
   } catch {}
 }
+setInterval(() => { const b = {}; for (const k in PERF){ b[k] = PERF[k].splice(0); } if (b.preview_age_ms.length || b.dashboard_event_ms.length) post("/api/perf/client", b).catch(()=>{}); }, 10000);
 
-/* ---------- toasts + websocket ---------- */
-function toast(head, body){
+/* ---------- AI assistant ---------- */
+const EXAMPLES = ["What happened yesterday at 4:00 PM?", "Any fire or smoke today?", "Show helmet violations in the last 2 hours", "Entrance denied today", "Open alerts in the welding bay", "Who entered the welding bay today?"];
+$("askChips").innerHTML = EXAMPLES.map(q => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("");
+$("askChips").onclick = ev => { const b = ev.target.closest("[data-q]"); if (b){ $("askQ").value = b.dataset.q; ask(); } };
+$("askForm").onsubmit = ev => { ev.preventDefault(); ask(); };
+async function ask(){
+  const q = $("askQ").value.trim(); if (!q) return;
+  $("askOut").innerHTML = `<div class="answer"><span class="small">Searching the event database…</span></div>`;
+  try {
+    const r = await post("/api/assistant", {question: q});
+    $("askOut").innerHTML = `<div class="answer"><div class="ans">${esc(r.answer)}</div>
+      ${r.details && r.details.length ? `<ul>${r.details.map(d => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
+      <div class="note">Searched ${esc(r.interpretation.from)} → ${esc(r.interpretation.to)}${Object.keys(r.interpretation.filters).length ? " · filters: " + esc(Object.entries(r.interpretation.filters).map(([k,v]) => k + "=" + (Array.isArray(v) ? v.join("/") : v)).join(", ")) : ""}.
+        ${r.notes.length ? esc(r.notes.join(". ")) + "." : ""} ${r.unavailable.length ? "Unavailable: " + esc(r.unavailable.join("; ")) + "." : ""} ${r.llm ? "Worded by an LLM from these records only." : "Answer built only from database records."}</div>
+      ${r.records.length ? `<div class="recs">${r.records.slice().reverse().map(c => `<div class="rec" data-a="view" data-id="${esc(c.event_id)}" role="button" tabindex="0">
+        ${c.snapshot ? `<img src="${c.snapshot}" alt="" loading="lazy">` : `<span class="small" style="width:72px;text-align:center">no image</span>`}
+        <div><b>${esc(c.what)}</b><br><small>${esc(c.time)} · ${esc(c.zone || "")} · ${esc(c.camera || "station")} · ${esc(c.status)}${c.worker ? " · " + esc(c.worker) : ""}</small></div></div>`).join("")}</div>` : ""}
+      ${r.attendance && r.attendance.length ? `<div class="note">RFID: ${r.attendance.map(a => esc(`${a.time} ${a.name || a.worker_id || "?"} ${a.event || ""}`)).join(" · ")}</div>` : ""}</div>`;
+  } catch (x){ $("askOut").innerHTML = `<div class="answer">Could not answer: ${esc(x.message)}</div>`; }
+}
+
+/* ---------- toasts, sound ---------- */
+function toast(head, body, kind){
   const t = document.createElement("div"); t.className = "toast";
-  t.innerHTML = `<b>${esc(head)}</b>${esc(body)}`; $("toasts").prepend(t);
-  setTimeout(() => t.remove(), 7000);
+  if (kind === "crit") t.style.borderLeftColor = "var(--crit)";
+  t.innerHTML = `<b>${esc(head)}</b>${esc(body)}`; $("toasts").prepend(t); setTimeout(() => t.remove(), 8000);
+}
+function alarmTone(){
+  try { audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    [0, .3, .6, .9].forEach(t => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = t % .6 ? 660 : 990;
+      o.connect(g); g.connect(audio.destination); g.gain.setValueAtTime(.18, audio.currentTime + t); o.start(audio.currentTime + t); o.stop(audio.currentTime + t + .25); }); } catch {}
+}
+document.addEventListener("click", () => { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {} }, {once:true});
+
+/* ---------- data flow ---------- */
+function upsert(e){
+  if (!e || !e.event_id) return;
+  const isNew = !EVENTS.has(e.event_id);
+  EVENTS.set(e.event_id, e);
+  if (isNew && SEEN.size && e.captured_at){ const cap = Date.parse(e.captured_at) / 1000; const now = Date.now()/1000 + CLOCK_OFF;
+    if (cap && now - cap < 60) PERF.dashboard_event_ms.push(Math.round((now - cap) * 1000)); }
+  if (isNew && SEEN.size && (isEmergencyPPE(e) || (fireActive(e) && e.status !== "verifying"))) alarmTone();
+  SEEN.add(e.event_id);
+  renderIncidents(); renderAlertZone();
 }
 function connect(){
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
   ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
     if (kind === "event") upsert(data);
     else if (kind === "cameras"){ CAMS = data; renderCams(); }
-    else if (kind === "response") renderResponse(data);
-    else if (kind === "workers") renderWorkers(data);
-    else if (kind === "hardware") renderStation(data);
-    else if (kind === "attendance") { toast(data.access === "DENIED" && data.event === "ENTERED" ? "⚠ NOT AUTHORISED (RFID)" : data.event === "UNKNOWN_UID" ? "Unregistered card scanned" : "RFID attendance", data.message || data.status);
-      api("/api/zones").then(z => { ZONES = z; renderZones(); }).catch(() => {}); }
-    else if (kind === "ppe_ok") toast("✓ PPE complete", `${data.worker_name || data.worker_id || "Worker"} · ${data.zone_name || data.zone_id || ""}`);
-    else if (kind === "notification") toast(`${data.channel === "mock" ? "Mock notification" : "Telegram"} → ${data.recipient}`, data.message); };
-  ws.onclose = () => { $("livePill").className = "pill off"; $("livePill").querySelector("span").textContent = "RECONNECTING"; setTimeout(connect, 2000); };
+    else if (kind === "health"){ HEALTH = data; renderHealth(); }
+    else if (kind === "location"){ LOC = data; renderLoc(); }
+    else if (kind === "notification"){ NOTIFS.set(data.id, Object.assign(NOTIFS.get(data.id) || {}, data)); renderNotifs();
+      if (data.status === "failed") toast(`${CH[data.channel] || data.channel} failed`, `${data.event_id}: ${data.error || ""}`, "crit"); }
+    else if (kind === "entrance"){ ENTR = [data].concat(ENTR.filter(x => x.event_id !== data.event_id)); renderGate(); if (!data.override) showGatePopup(data); else closeGate(); }
+    else if (kind === "ppe_ok") toast("✓ PPE complete", `${data.worker_name || data.worker_id || "Worker"} · ${data.zone_name || ""}`);
+  };
+  ws.onopen = () => { $("sysChip").dataset.ws = "1"; };
+  ws.onclose = ev => { if (ev.code === 4401){ location.href = "/login?next=/"; return; } $("sysChip").className = "chip warn"; $("sysChip").textContent = "↻ RECONNECTING"; setTimeout(connect, 2000); };
   setInterval(() => ws.readyState === 1 && ws.send("ping"), 20000);
 }
-
-async function refresh(){
-  try {
-    const [z, a, r] = await Promise.all([api("/api/zones"), api("/api/analytics/summary"), api("/api/response")]);
-    ZONES = z; renderZones(); renderAnalytics(a); renderSummary(a); renderResponse(r);
-  } catch {}
+async function refreshSlow(){
+  try { ZONES = await api("/api/zones"); renderZones(); } catch {}
+  try { HEALTH = await api("/api/health"); renderHealth(); } catch {}
 }
 async function boot(){
-  ["fStatus","fSeverity","fZone"].forEach(id => $(id).onchange = renderFeed);
-  ["rShift","rDays"].forEach(id => $(id).onchange = reportLinks); reportLinks();
-  try { CAMS = await api("/api/cameras"); renderCams();
-    (await api("/api/events?limit=200")).forEach(e => EVENTS.set(e.event_id, e)); renderFeed(); renderKpis(); } catch {}
-  await refresh(); connect(); pollFrames(); loadStation(); setInterval(loadStation, 15000);
-  api("/api/workers").then(renderWorkers).catch(()=>{});
-  setInterval(refresh, 5000);
-  setInterval(renderFeed, 15000);   // keep the "time ago" labels fresh
+  try { ME = await api("/api/me"); } catch { return; }
+  $("userChip").textContent = `👤 ${ME.user || "local"} · ${String(ME.role).toUpperCase()}`;
+  $("logoutBtn").hidden = !ME.auth;
+  try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
+  try { (await api("/api/events?limit=300")).forEach(e => { EVENTS.set(e.event_id, e); SEEN.add(e.event_id); }); } catch {}
+  try { (await api("/api/notifications?limit=30")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
+  try { ENTR = await api("/api/entrance?limit=20"); renderGate(); } catch {}
+  try { LOC = await api("/api/location"); renderLoc(); } catch {}
+  SEEN.add("_boot");
+  renderIncidents(); renderAlertZone(); refreshSlow(); renderPerf();
+  connect();
+  setInterval(refreshSlow, 5000); setInterval(renderPerf, 10000); setInterval(renderIncidents, 15000);
+  const h = location.hash.match(/^#event=(.+)$/); if (h) openEvent(decodeURIComponent(h[1]));
+  window.addEventListener("hashchange", () => { const m = location.hash.match(/^#event=(.+)$/); if (m) openEvent(decodeURIComponent(m[1])); });
 }
 boot();
 </script>

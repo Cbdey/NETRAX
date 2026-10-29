@@ -17,6 +17,8 @@ models:
   trusted_items: [helmet, vest, gloves, mask, goggles, boots]   # goggles need ppe_aux; boots need shoe_cls too
   device: auto          # auto | cuda | cpu
   imgsz: 640
+  runtime: pytorch      # pytorch | tensorrt (uses models/*.engine made by python -m tools.export_engines;
+                        # FP32 engines, safe on GTX 16xx). Missing engine -> the .pt file is used.
 
 load:                   # plan 7.5: overloaded GPU -> slow low-risk zones first (edge/load.py)
   enabled: true
@@ -26,7 +28,11 @@ load:                   # plan 7.5: overloaded GPU -> slow low-risk zones first 
   recover_steps: 10
 
 processing:
-  target_fps: 10        # processed frames per second per camera
+  target_fps: 12        # processed frames per second per camera (upper limit; the GPU decides the real rate)
+  shared_engine: true   # 29 Oct: ONE copy of the models for all cameras, frames batched (edge/engine.py)
+  max_batch: 4          # cameras processed in one GPU call
+  batch_gather_ms: 3    # wait at most this long for other cameras' frames to join a batch
+  max_frame_age_s: 0.6  # a frame older than this when the camera gets to it is skipped (never judge stale pictures)
   fire_every_n: 2       # fire model every 2nd frame while the scene is clear; EVERY frame as soon as a
                         # fire/smoke candidate exists (small flames need every hit, idle frames stay fast)
 
@@ -128,8 +134,38 @@ response:                         # autonomous response on this laptop (backend/
 
 backend:
   url: http://127.0.0.1:8000
-  preview_fps: 5
+  preview_fps: 10       # live picture to the dashboard (encoded in the publisher thread, newest frame only)
   health_every_s: 1.0
 
 snapshots_dir: data/snapshots
 outbox_db: data/outbox.db
+
+entrance:                         # final-round section 4 (edge/entrance.py), camera with role: entrance
+  min_frames: 6                   # never decide on one frame
+  min_look_s: 1.0                 # ... and look at least 1 s
+  max_look_s: 4.0                 # still unclear after 4 s -> "Verification failed - manual check required"
+  share: 0.6                      # an item counts as worn / missing when >= 60 % of the frames agree
+  min_votes: 3
+  min_height_frac: 0.35           # person must fill >= 35 % of the picture height (closer = clearer)
+  leave_s: 2.0                    # person gone this long -> next person
+  recheck_s: 3.0                  # a denied person who fixes their PPE is checked again after 3 s
+  controller_connected: false     # true only when a lock / turnstile controller confirms commands
+
+fire_levels:                      # final-round section 9 (backend/fire_levels.py) - PROTOTYPE values, validate on site
+  l2_area_frac: 0.03              # flame box >= 3 % of the picture -> at least Level 2
+  l3_area_frac: 0.15              # >= 15 % -> Level 3
+  l2_smoke_area_frac: 0.10
+  l3_smoke_area_frac: 0.35
+  l2_growth: 1.3                  # region grew 30 % -> Level 2
+  l3_growth: 2.0                  # doubled -> Level 3
+  l2_duration_s: 15               # still active after 15 s -> Level 2
+  l3_duration_s: 60               # fire still burning after 60 s -> Level 3
+  l3_sources: 2                   # fire seen by 2+ sources (cameras / station) in one zone -> Level 3
+  l3_temp_c: 60                   # station flame + temperature >= 60 C -> Level 3
+  siren_from_level: 2             # Level 1 = voice warning + yellow panel; siren from Level 2
+
+auth:                             # dashboard login (backend/auth.py). Users: config/users.local.yaml
+  enabled: true
+
+incidents:                        # final-round section 2: dashboard-wide violation state
+  emergency_severities: [Critical, High]   # an ACTIVE, UNACKNOWLEDGED PPE / access alert of this severity -> red screen

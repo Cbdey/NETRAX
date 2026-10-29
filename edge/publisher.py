@@ -1,5 +1,9 @@
 """Sends live preview frames and camera health to the backend (best effort, not buffered).
-Preview frames stay on the local network; only events/thumbnails are the 'real' payload."""
+Preview frames stay on the local network; only events/thumbnails are the 'real' payload.
+
+Latency (final-round section 7): the camera thread only hands over the picture; JPEG encoding and the
+HTTP post happen in this publisher's own thread, newest frame only (an old frame is replaced, never
+queued). Each frame carries its capture time (X-Captured-At) so the dashboard can measure picture age."""
 import threading
 import time
 
@@ -9,48 +13,58 @@ from . import annotate
 
 
 class Publisher:
-    def __init__(self, backend_url, preview_fps):
+    def __init__(self, backend_url, preview_fps, raw_every_s=1.0, width=800, quality=72):
         self.base = backend_url.rstrip("/")
-        self.min_gap = 1.0 / preview_fps
+        self.min_gap = 1.0 / max(1.0, preview_fps)
+        self.raw_gap = raw_every_s
+        self.width, self.quality = width, quality
         self.last = {}
         self.lock = threading.Lock()
-        self.pending = {}
+        self.cv = threading.Condition(self.lock)
+        self.pending = {}                       # key -> (image, captured_ts)
+        self.posted_ms = []
         threading.Thread(target=self._loop, daemon=True, name="publisher").start()
 
-    def frame(self, cam_id, img):
-        now = time.time()
-        if now - self.last.get(cam_id, 0) < self.min_gap:
+    def due(self, cam_id):
+        """True when this camera's next preview frame is due (the worker only draws boxes then)."""
+        return time.time() - self.last.get(cam_id, 0) >= self.min_gap
+
+    def frame(self, cam_id, img, captured=None):
+        if img is None:
             return
-        self.last[cam_id] = now
-        jpg = annotate.to_jpeg(img, width=640, quality=70)
-        if jpg:
-            with self.lock:
-                self.pending[cam_id] = jpg
+        self.last[cam_id] = time.time()
+        with self.cv:
+            self.pending[cam_id] = (img, captured or time.time())
+            self.cv.notify()
 
     def raw(self, cam_id, img):
-        """Clean (un-annotated) frame, 2 per second, used only for worker registration photos."""
+        """Clean (un-annotated) frame, about 1 per second, used only for worker registration photos."""
         now = time.time()
-        if now - self.last.get(("raw", cam_id), 0) < 0.5:
+        if now - self.last.get(("raw", cam_id), 0) < self.raw_gap:
             return
         self.last[("raw", cam_id)] = now
-        jpg = annotate.to_jpeg(img, width=960, quality=85)
-        if jpg:
-            with self.lock:
-                self.pending[("raw", cam_id)] = jpg
+        with self.cv:
+            self.pending[("raw", cam_id)] = (img, now)
+            self.cv.notify()
 
     def _loop(self):
         s = requests.Session()
         while True:
-            with self.lock:
+            with self.cv:
+                while not self.pending:
+                    self.cv.wait(timeout=1.0)
                 batch, self.pending = self.pending, {}
-            for key, jpg in batch.items():
+            for key, (img, ts) in batch.items():
                 raw = isinstance(key, tuple)
+                jpg = annotate.to_jpeg(img, width=960 if raw else self.width, quality=85 if raw else self.quality)
+                if not jpg:
+                    continue
                 url = f"{self.base}/api/cameras/{key[1] if raw else key}/{'raw' if raw else 'frame'}"
                 try:
-                    s.post(url, data=jpg, timeout=1, headers={"Content-Type": "image/jpeg"})
+                    s.post(url, data=jpg, timeout=1, headers={"Content-Type": "image/jpeg",
+                                                              "X-Captured-At": f"{ts:.3f}"})
                 except requests.RequestException:
                     pass
-            time.sleep(0.02)
 
     def health(self, payload):
         try:

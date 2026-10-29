@@ -25,8 +25,11 @@ def reachable(url, timeout=1.5):
 class StreamReader(threading.Thread):
     ROTATE = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
 
-    def __init__(self, cam_id, source, target_fps, rotate=0):
+    def __init__(self, cam_id, source, target_fps, rotate=0, capture=None):
         super().__init__(daemon=True, name=f"reader-{cam_id}")
+        # USB / laptop webcams: MJPG at a fixed size and frame rate, 1-frame driver buffer (no built-up lag).
+        # cameras.yaml  capture: {width: 1280, height: 720, fps: 30, mjpg: true, exposure: null}
+        self.capture = dict({"width": 1280, "height": 720, "fps": 30, "mjpg": True}, **(capture or {}))
         self.cam_id = cam_id
         self.rotate = self.ROTATE.get(int(rotate or 0))    # phone held upright -> picture sideways
         self.source = source
@@ -47,6 +50,19 @@ class StreamReader(threading.Thread):
         if isinstance(src, int) or (isinstance(src, str) and src.isdigit()):
             idx = int(src)
             cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW) if os.name == "nt" else cv2.VideoCapture(idx)
+            if cap is not None and cap.isOpened():
+                c = self.capture
+                if c.get("mjpg"):
+                    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+                if c.get("width"):
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(c["width"]))
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(c["height"]))
+                if c.get("fps"):
+                    cap.set(cv2.CAP_PROP_FPS, int(c["fps"]))
+                if c.get("exposure") is not None:          # fixed exposure = less motion blur when running
+                    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+                    cap.set(cv2.CAP_PROP_EXPOSURE, float(c["exposure"]))
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         elif self.is_file:
             full = src if os.path.isabs(src) else path(src)
             if not os.path.exists(full):
@@ -60,6 +76,8 @@ class StreamReader(threading.Thread):
                 self.detail = f"not reachable: {src.split('//')[-1].split('/')[0]} (same Wi-Fi? app running?)"
                 return None
             cap = cv2.VideoCapture(src)
+            if cap is not None and cap.isOpened():
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)          # keep only the newest network frame
         if not cap or not cap.isOpened():
             self.detail = "cannot open source"
             return None

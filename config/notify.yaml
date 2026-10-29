@@ -1,0 +1,45 @@
+# NETRAX notification policy (backend/notify.py). Credentials are NOT here:
+# put them in config/secrets.local.yaml (never pushed to GitHub) - see config/secrets.example.yaml.
+# A channel without credentials is shown as "NOT CONFIGURED" and nothing is ever reported as delivered.
+
+timezone: Asia/Kolkata          # time printed in every message (IST)
+dashboard_url: http://127.0.0.1:8000   # link in messages - use the laptop's Wi-Fi IP for phones
+include_worker_names: true      # worker name/ID in messages (only for registered, consented workers)
+
+# Channels in use (29 Oct: team decision - Telegram + e-mail only; phone call / SMS switched off).
+# Add call / sms back here to use Twilio again (code and settings are kept).
+enabled_channels: [telegram, email]
+
+# Which channels fire for which incident. Keys are matched in this order:
+#   fire_level_3 / fire_level_2 / fire_level_1   (fire and smoke, by severity level)
+#   <event type>_<Severity>   e.g. ppe_missing_High, unauthorized_entry_High
+#   <event type>              e.g. entrance_denied
+#   <Severity>                Critical / High / Medium / Low
+rules:
+  fire_level_3: [telegram, call, sms, email]      # VERY CRITICAL - evacuate: everything, immediately
+  fire_level_2: [telegram, call, sms, email]      # CRITICAL: Telegram + phone immediately, SMS + email
+  fire_level_1: [telegram, email]                 # WARNING: responsible operator
+  ppe_missing_Critical: [telegram, call, sms, email]
+  ppe_missing_High: [telegram, email]
+  ppe_missing_Medium: [telegram]
+  unauthorized_entry: [telegram, email]
+  entrance_denied: [telegram, email]
+  escalation: [telegram, call, sms, email]        # supervisor did not acknowledge in time
+  Critical: [telegram, call, sms, email]
+  High: [telegram]
+  Medium: []
+  Low: []
+
+retry:
+  max_attempts: 3               # bounded retries per message (recoverable errors only)
+  backoff_s: [2, 6, 15]
+  call_status_poll_s: 90        # follow a Twilio call/SMS this long to record its final status
+
+cooldown:                       # same continuous incident is never re-sent; these stop floods
+  same_zone_type_s: 60          # a NEW ppe/entrance event in the same zone+type within 60 s -> Telegram only
+  never_for: [fire, smoke]      # fire/evacuation alerts are NEVER delayed or merged by a cooldown
+
+phone:
+  provider: twilio              # twilio (voice call + SMS)
+  voice: alice
+  repeat_message: 2             # the call reads the alert twice

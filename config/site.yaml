@@ -1,0 +1,30 @@
+# Site + location (final-round section 6, software side). backend/location.py
+# Location sources, best first:
+#   1. hardware  - GPS fix from a hardware unit (POST /api/location/hardware) - for the later GSM/GPS module
+#   2. device    - GPS / network location of the dashboard device (browser "Use this device's location")
+#   3. configured- the site coordinates below, entered by an admin (exact building position)
+# A reading older than max_age_s is STALE and is not used; with no valid source the dashboard and
+# every message say "Location unavailable" plus the configured zone. A fixed camera's coordinates are the
+# site / zone position, NOT the precise position of a fire inside the picture.
+
+site:
+  name: NETRAX demo plant
+  address: ""                 # e.g. "Lab 2, CET Bhubaneswar"
+  lat: null                   # e.g. 20.29610   (leave null until measured - never invent coordinates)
+  lon: null                   # e.g. 85.82450
+  set_by: ""                  # who measured it and how (Google Maps pin, phone GPS ...)
+
+max_age_s:
+  device: 900                 # browser/phone GPS reading valid for 15 min
+  hardware: 120               # hardware GPS fix valid for 2 min
+
+zones:                        # where each zone is inside the site (shown with every incident)
+  welding_bay: {label: "Welding bay - entrance side"}
+  warehouse: {label: "Warehouse - storage racks"}
+  assembly_line: {label: "Assembly line - work tables"}
+
+cameras:                      # what each camera looks at
+  cam_01: {label: "Welding bay, laptop webcam"}
+  cam_02: {label: "Warehouse, phone camera 1"}
+  cam_03: {label: "Assembly line, phone camera 2"}
+  cam_04: {label: "Main entrance, USB webcam (PPE gate)"}

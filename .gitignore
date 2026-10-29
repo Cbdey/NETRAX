@@ -28,3 +28,8 @@ runs/
 _to_delete/
 /*.pt
 /*.onnx
+
+# --- final round (29 Oct): credentials, users, sessions, TensorRT engines
+config/secrets.local.yaml
+config/users.local.yaml
+*.engine

@@ -1,0 +1,555 @@
+"""Final-round acceptance tests (requirements brief section 11, tests 01-14) + login / roles + shared engine.
+No cameras, GPU, internet or provider accounts needed: providers are replaced by fakes that answer like
+Telegram / Twilio / SMTP do, so delivery, retries and failures are tested for real.
+    python -m tools.final_selftest          -> must end with ALL FINAL TESTS PASSED
+Writes docs/eval/final_selftest.md (the table for the acceptance checklist)."""
+import asyncio
+import json
+import os
+import sys
+import tempfile
+import threading
+import time
+
+TMP = tempfile.mkdtemp()
+os.environ.setdefault("SENTINELEYE_MUTE", "1")
+os.environ["SENTINELEYE_DB"] = os.path.join(TMP, "final_test.db")
+os.environ["SENTINELEYE_DATA_DIR"] = TMP
+os.environ["SENTINELEYE_AUTH"] = "0"           # HTTP auth is switched on per test below
+os.environ["NETRAX_CHANNELS"] = "telegram,call,sms,email"   # test every channel even if the site disabled some
+for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM",
+          "ALERT_PHONE_TO", "SMTP_USER", "SMTP_PASSWORD", "ALERT_EMAIL_TO"):
+    os.environ.pop(k, None)
+
+import backend.main as m                       # noqa: E402
+from backend import auth, assistant, db, fire_levels, location, notify, perf, timeutil   # noqa: E402
+from edge.engine import InferenceEngine        # noqa: E402
+from edge.entrance import EntranceChecker      # noqa: E402
+
+RESULTS, ok_all = [], True
+
+
+def check(tid, name, cond, evidence=""):
+    global ok_all
+    ok_all &= bool(cond)
+    RESULTS.append((tid, name, "PASS" if cond else "FAIL", evidence))
+    print(("PASS " if cond else "FAIL ") + f"[{tid}] {name}" + (f"  ({evidence})" if evidence else ""))
+
+
+# ------------------------------------------------------------------ fake providers
+class FakeResp:
+    def __init__(self, code, body):
+        self.status_code, self._b = code, body
+        self.text = json.dumps(body)
+
+    def json(self):
+        return self._b
+
+
+class FakeNet:
+    """Answers like api.telegram.org / api.twilio.com. Behaviour per channel is switchable."""
+    def __init__(self):
+        self.mode = {"telegram": "ok", "call": "completed", "sms": "delivered"}
+        self.calls, self.fail_first = [], {}
+        self.lock = threading.Lock()
+
+    def _flaky(self, key):
+        with self.lock:
+            n = self.fail_first.get(key, 0)
+            if n > 0:
+                self.fail_first[key] = n - 1
+                return True
+        return False
+
+    def post(self, url, json=None, data=None, files=None, auth=None, timeout=None):
+        self.calls.append(("POST", url, json or data))
+        if "api.telegram.org" in url:
+            if self.mode["telegram"] == "down" or self._flaky("telegram"):
+                import requests
+                raise requests.ConnectionError("no internet")
+            if self.mode["telegram"] == "badtoken":
+                return FakeResp(401, {"ok": False, "description": "Unauthorized"})
+            return FakeResp(200, {"ok": True, "result": {"message_id": 42}})
+        if self.mode.get("twilio_trial") and ("Calls.json" in url or "Messages.json" in url):
+            d = data or {}
+            if "Twiml" in d or "From" in d or (d.get("Body") and not str(d["Body"]).startswith("sms_")):
+                return FakeResp(400, {"message": "Invalid or disallowed parameters provided - trial accounts have "
+                                                 "limited parameter access"})
+        if "Calls.json" in url:
+            return FakeResp(201, {"sid": "CA123", "status": "queued"})
+        if "Messages.json" in url:
+            if self._flaky("sms"):
+                return FakeResp(503, {"message": "Service Unavailable"})
+            return FakeResp(201, {"sid": "SM123", "status": "queued"})
+        return FakeResp(404, {})
+
+    def get(self, url, auth=None, timeout=None):
+        if "/Calls/" in url:
+            return FakeResp(200, {"sid": "CA123", "status": self.mode["call"]})
+        if "/Messages/" in url:
+            return FakeResp(200, {"sid": "SM123", "status": self.mode["sms"]})
+        return FakeResp(404, {})
+
+
+NET = FakeNet()
+import requests as _real_requests              # noqa: E402
+
+
+class _ReqShim:
+    RequestException = _real_requests.RequestException
+    ConnectionError = _real_requests.ConnectionError
+    post = staticmethod(NET.post)
+    get = staticmethod(NET.get)
+
+
+notify.requests = _ReqShim
+SMTP_SENT = []
+
+
+def fake_email(sec, subject, body, photo=None):
+    if not (sec["email"]["username"] and sec["email"]["app_password"] and sec["email"]["to"]):
+        return notify.Result("not_configured", error="SMTP not set")
+    if NET._flaky("email"):
+        return notify.Result("failed", error="SMTPServerDisconnected", recoverable=True)
+    SMTP_SENT.append((subject, body))
+    return notify.Result("sent", provider_status="accepted by mail server")
+
+
+notify.send_email = fake_email
+
+
+def set_creds(on=True):
+    vals = {"TELEGRAM_BOT_TOKEN": "123:abc", "TELEGRAM_CHAT_ID": "-100200", "TWILIO_ACCOUNT_SID": "AC1",
+            "TWILIO_AUTH_TOKEN": "tok", "TWILIO_FROM": "+15550001", "ALERT_PHONE_TO": "+919800000000",
+            "SMTP_USER": "netrax@example.com", "SMTP_PASSWORD": "app-pass", "ALERT_EMAIL_TO": "safety@example.com"}
+    for k, v in vals.items():
+        if on:
+            os.environ[k] = v
+        else:
+            os.environ.pop(k, None)
+
+
+def wait_notifs(eid, n_final, timeout=20):
+    t = time.time()
+    while time.time() - t < timeout:
+        rows = db.q("SELECT * FROM notifications WHERE event_id=?", (eid,))
+        if rows and sum(1 for r in rows if r["status"] in notify.FINAL) >= n_final:
+            return rows
+        time.sleep(0.2)
+    return db.q("SELECT * FROM notifications WHERE event_id=?", (eid,))
+
+
+# ------------------------------------------------------------------ helpers
+def persons(*boxes):
+    return [{"tid": i + 1, "bbox": b, "conf": 0.9} for i, b in enumerate(boxes)]
+
+
+def run_entrance(statuses_per_frame, n=10, box=(100, 40, 300, 700), h=720, dt=0.15, crowd=False):
+    ec = EntranceChecker("cam_04", "main_entrance", ["helmet", "vest", "boots"], {})
+    t0, out = 1000.0, []
+    for i in range(n):
+        ps = persons(box) + (persons(box, (120, 50, 310, 690))[1:] if crowd else [])
+        st = {1: statuses_per_frame(i)}
+        out += ec.update(ps, st, 1280, h, t0 + i * dt)
+        if out:
+            break
+    return out
+
+
+def ppe_payload(eid, items, sev="High", cam="cam_01", zone="welding_bay", action="open", t=None):
+    t = t or time.time()
+    iso = timeutil.local(t).isoformat()
+    return {"event_id": eid, "action": action, "type": "ppe_missing", "items_missing": items, "severity": sev,
+            "camera_id": cam, "camera_name": cam, "zone_id": zone, "zone_name": m.ZONES[zone]["name"],
+            "track_id": 7, "worker_id": "W-001", "worker_name": "Chinmaya", "confidence": 0.88, "bbox": [10, 10, 200, 600],
+            "captured_at": iso, "started_at": iso, "onset_at": iso, "frame_w": 1280, "frame_h": 720}
+
+
+def fire_payload(eid, bbox, growth=1.0, action="open", typ="fire", cam="cam_02", zone="warehouse", t=None):
+    t = t or time.time()
+    iso = timeutil.local(t).isoformat()
+    return {"event_id": eid, "action": action, "type": typ, "items_missing": [], "severity": "Critical",
+            "camera_id": cam, "camera_name": cam, "zone_id": zone, "zone_name": m.ZONES[zone]["name"], "track_id": None,
+            "confidence": 0.8, "bbox": bbox, "growth": growth, "captured_at": iso, "started_at": iso, "onset_at": iso,
+            "frame_w": 1280, "frame_h": 720}
+
+
+def pipeline_test():
+    import types
+    import numpy as np
+    if "ultralytics" not in sys.modules:
+        try:
+            import ultralytics  # noqa: F401
+        except Exception:                          # noqa: BLE001 - CI box without torch: stub the import only
+            sys.modules["ultralytics"] = types.SimpleNamespace(YOLO=None)
+    from edge.config import load_all
+    from edge.worker import CameraWorker
+    settings, zones, cameras = load_all()
+
+    class Det:
+        device, runtime, has_parts, last_parts = "cpu", "pytorch", False, []
+        supported = {"helmet", "vest", "gloves", "boots", "mask", "goggles"}
+
+        def __init__(self):
+            self.helmet = True
+
+        def detect_batch(self, frames, flags):
+            out = []
+            for f, fl in zip(frames, flags):
+                p = {"cls": "person", "conf": 0.92, "bbox": [500.0, 60.0, 780.0, 680.0], "kps": None}
+                items = [{"cls": "vest", "conf": 0.9, "bbox": [520.0, 200.0, 760.0, 400.0]},
+                         {"cls": "boots", "conf": 0.8, "bbox": [560.0, 640.0, 630.0, 680.0]},
+                         {"cls": "boots", "conf": 0.8, "bbox": [650.0, 640.0, 720.0, 680.0]},
+                         {"cls": "gloves", "conf": 0.8, "bbox": [500.0, 380.0, 560.0, 440.0]}]
+                if self.helmet:
+                    items.append({"cls": "helmet", "conf": 0.9, "bbox": [580.0, 50.0, 700.0, 130.0]})
+                out.append({"persons": [p], "items": items, "parts": [], "fire": [] if fl else None,
+                            "timings": {"total_ms": 20.0}})
+            return out
+
+    class Box:
+        def __init__(self):
+            self.items = []
+
+        def put(self, payload):
+            self.items.append(payload)
+
+    class Pub:
+        def __init__(self):
+            self.frames = 0
+
+        def due(self, cam):
+            return True
+
+        def frame(self, cam, img, ts=None):
+            self.frames += 1
+
+        def raw(self, cam, img):
+            pass
+
+    class Reader:
+        target_fps = 12
+
+    det = Det()
+    eng = InferenceEngine(det, max_batch=4, gather_ms=2)
+    eng.start()
+    frame = np.zeros((720, 1280, 3), np.uint8)
+    frame[200:400, 520:760] = (0, 255, 200)               # lime hi-vis vest pixels
+    box, pub = Box(), Pub()
+    s2 = json.loads(json.dumps(settings))
+    s2["snapshots_dir"] = os.path.join(TMP, "snaps")
+    s2.setdefault("identity", {})["enabled"] = False
+    w_ent = CameraWorker("cam_04", dict(cameras["cam_04"], role="entrance"), zones, s2, Reader(), box, pub, None,
+                         engine=eng)
+    t0 = time.time()
+    while time.time() - t0 < 1.6:
+        w_ent.process(frame, time.time(), 1)
+        time.sleep(0.1)
+    ent = [p for p in box.items if p["type"] == "entrance_check"]
+    check("01", "edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached)",
+          len(ent) == 1 and ent[0]["result"] == "approved" and ent[0]["frame_w"] == 1280 and pub.frames > 5,
+          ent and f"{ent[0]['result']} {ent[0]['decision_ms']} ms, {ent[0]['frames']} frames, ok {ent[0]['items_ok']} "
+          f"missing {ent[0]['items_missing']} unclear {ent[0]['items_uncertain']} {ent[0]['evidence']}")
+    det.helmet = False
+    box.items.clear()
+    w_mon = CameraWorker("cam_01", cameras["cam_01"], zones, s2, Reader(), box, pub, None, engine=eng)
+    t0 = time.time()
+    while time.time() - t0 < 3.5 and not box.items:
+        w_mon.process(frame, time.time(), 2)
+        time.sleep(0.08)
+    ppe = [p for p in box.items if p["type"] == "ppe_missing"]
+    check("04", "edge pipeline: monitored zone, helmet off -> one PPE alert naming the helmet",
+          ppe and "helmet" in ppe[0]["items_missing"] and ppe[0]["camera_id"] == "cam_01",
+          ppe and f"items {ppe[0]['items_missing']} after {ppe[0].get('time_to_alert_ms') or '?'}")
+    check("12", "edge pipeline: per-camera latency samples recorded (capture -> processed)",
+          len(w_mon.frame_ms) > 5 and w_mon.infer_ms and w_mon.infer_ms[-1] == 20.0)
+
+
+async def main():
+    m.hw_api.setup(broadcast=m.broadcast, respond=m.respond, notify_async=m.notify_async, announce=m.announce,
+                   ALARM=m.ALARM, ZONES=m.ZONES, list_workers=m.list_workers)
+    m.LOOP["loop"] = asyncio.get_running_loop()
+    notify.DISPATCHER.start()
+    # ---------------- 01-03 entrance
+    out = run_entrance(lambda i: {"helmet": ("compliant", .9), "vest": ("compliant", .9), "boots": ("compliant", .8)})
+    check("01", "complete PPE -> ACCESS APPROVED after >= 6 frames / 1 s (never on one frame)",
+          out and out[0]["result"] == "approved" and out[0]["frames"] >= 6, out and f"{out[0]['frames']} frames, {out[0]['decision_ms']} ms")
+    out[0].update(event_id="ent_t01", captured_at=timeutil.local(time.time()).isoformat(),
+                  started_at=timeutil.local(time.time()).isoformat(), camera_name="Main entrance", zone_name="Main entrance")
+    await m.ingest_event(out[0])
+    rec = db.q("SELECT * FROM entrance_checks WHERE check_id='ent_t01'")
+    ev = db.get_event("ent_t01")
+    check("01", "approval recorded (entrance_checks + event history, gate stays closed without controller)",
+          rec and rec[0]["result"] == "approved" and ev and ev["status"] == "closed" and ev["details"]["gate"] == "closed")
+    out = run_entrance(lambda i: {"helmet": ("compliant", .9), "vest": ("missing", .9), "boots": ("compliant", .8)})
+    check("02", "vest missing -> ACCESS DENIED naming the missing item",
+          out and out[0]["result"] == "denied" and out[0]["items_missing"] == ["vest"])
+    out[0].update(event_id="ent_t02", captured_at=timeutil.local(time.time()).isoformat(),
+                  started_at=timeutil.local(time.time()).isoformat())
+    await m.ingest_event(out[0])
+    ev = db.get_event("ent_t02")
+    check("02", "denial recorded with required items, evidence and missing item",
+          ev["status"] == "open" and ev["items_missing"] == ["vest"] and "helmet" in ev["details"]["required"]
+          and ev["details"]["evidence"]["vest"]["missing"] >= 3)
+    out = run_entrance(lambda i: {"helmet": ("compliant", .9), "vest": ("compliant", .9), "boots": ("unverifiable", .5)}, n=40)
+    check("03", "feet not visible -> 'Verification failed - manual check required', no approval",
+          out and out[0]["result"] == "manual" and "boots" in out[0]["items_uncertain"])
+    out = run_entrance(lambda i: {"helmet": ("compliant", .9), "vest": ("compliant", .9), "boots": ("compliant", .9)},
+                       n=40, crowd=True)
+    check("03", "two people overlapping in front of the camera -> manual check, never auto-approved",
+          out and out[0]["result"] == "manual")
+    flip = run_entrance(lambda i: {"helmet": ("compliant" if i % 2 else "missing", .6), "vest": ("compliant", .9),
+                                   "boots": ("compliant", .9)}, n=40)
+    check("03", "flickering helmet evidence (50/50) -> manual check, not approved",
+          flip and flip[0]["result"] == "manual")
+    out[0].update(event_id="ent_t03", captured_at=timeutil.local(time.time()).isoformat(),
+                  started_at=timeutil.local(time.time()).isoformat())
+    await m.ingest_event(out[0])
+    # ---------------- 04 serious violation, 11 multiple
+    set_creds(True)
+    await m.ingest_event(ppe_payload("evt_t04a", ["helmet", "vest"], "High", "cam_01", "welding_bay"))
+    await m.ingest_event(ppe_payload("evt_t04b", ["gloves"], "High", "cam_03", "assembly_line"))
+    a, b = db.get_event("evt_t04a"), db.get_event("evt_t04b")
+    check("04", "serious PPE violation stored open with items, camera, zone, time, worker",
+          a["status"] == "open" and a["items_missing"] == ["helmet", "vest"] and a["camera_id"] == "cam_01"
+          and a["zone_id"] == "welding_bay" and a["started_at"] and a["worker_id"] == "W-001")
+    check("04", "dashboard-wide state rule: High/Critical + open -> emergency severities from settings",
+          a["severity"] in m.EMERGENCY_SEV)
+    check("11", "two simultaneous violations kept as two separate active incidents",
+          a["event_id"] != b["event_id"] and b["status"] == "open" and db.get_event("evt_t04a")["status"] == "open")
+    await m._act("evt_t04a", "ack", "acknowledged", {"by_user": "sup1"})
+    e = db.get_event("evt_t04a")
+    check("04", "acknowledged != resolved: ack keeps the incident (status acknowledged, acked_by recorded)",
+          e["status"] == "acknowledged" and e["acked_by"] == "sup1" and e["ended_at"] is None)
+    await m._act("evt_t04a", "resolve", "resolved", {"by_user": "sup1"})
+    e = db.get_event("evt_t04a")
+    check("04", "resolve closes it with who/when (traceable)", e["status"] == "resolved" and e["closed_by"] == "sup1" and e["ended_at"])
+    await m.ingest_event(ppe_payload("evt_t04b", ["gloves", "goggles"], "High", "cam_03", "assembly_line", action="update"))
+    check("11", "an update changes only its own incident", db.get_event("evt_t04b")["items_missing"] == ["gloves", "goggles"]
+          and db.get_event("evt_t04a")["status"] == "resolved")
+    # ---------------- 05/06 fire panel data + levels
+    await m.ingest_event(fire_payload("evt_t05", [600, 300, 640, 340]))          # 0.17 % of the picture
+    f = db.get_event("evt_t05")
+    check("05", "fire event has type, timestamp, camera, zone, status, level for the big panel",
+          f["type"] == "fire" and f["started_at"] and f["camera_id"] == "cam_02" and f["zone_id"] == "warehouse"
+          and f["status"] == "open" and f["fire_level"] == 1, f"level {f['fire_level']}, status {f['status']}")
+    check("06", "small flame, no other evidence -> Level 1 WARNING (severity High, voice warning, no siren)",
+          f["fire_level"] == 1 and f["severity"] == "High" and not m.ALARM.state())
+    await m.ingest_event(fire_payload("evt_t05", [560, 260, 760, 460], growth=1.4, action="update"))
+    f = db.get_event("evt_t05")
+    check("06", "flame grows (x1.4, 4 % of picture) -> raised to Level 2 CRITICAL + siren", f["fire_level"] == 2
+          and f["severity"] == "Critical" and m.ALARM.state() is not None, "; ".join(f["fire_reasons"] or []))
+    await m.ingest_event(fire_payload("evt_t05", [580, 280, 600, 300], growth=1.0, action="update"))
+    check("06", "flame looks smaller in a later frame -> level is NOT downgraded", db.get_event("evt_t05")["fire_level"] == 2)
+    await m.ingest_event(fire_payload("evt_t05", [200, 100, 900, 650], growth=2.3, action="update"))
+    f = db.get_event("evt_t05")
+    check("06", "large / doubling fire -> Level 3 VERY CRITICAL (evacuate)", f["fire_level"] == 3)
+    lv, why = fire_levels.classify({"type": "fire", "bbox": [600, 300, 620, 320], "frame_w": 1280, "frame_h": 720,
+                                    "sensors": json.dumps({"level": "CRITICAL", "reasons": ["flame sensor active",
+                                                           "temperature 64.0 C >= 50"], "data": {"flame_detected": 1,
+                                                           "temperature_c": 64.0}}), "status": "open"})
+    check("06", "tiny visible flame but station flame + 64 C -> Level 3 (danger evidence beats flame size)", lv == 3,
+          "; ".join(why))
+    rows = wait_notifs("evt_t05", 4)
+    kinds = {r["kind"] for r in rows}
+    check("06", "each level raise re-notifies immediately (no cooldown for fire)",
+          any("LEVEL RAISED to 2" in k for k in kinds) and any("LEVEL RAISED to 3" in k for k in kinds))
+    # ---------------- 07 Telegram
+    tg = [r for r in rows if r["channel"] == "telegram"]
+    check("07", "Telegram message reaches the (fake) group and the outcome is logged as delivered",
+          tg and all(r["status"] == "delivered" for r in tg) and tg[0]["provider_id"] == "42")
+    body = tg[0]["message"]
+    check("07", "message has incident type, level, zone, camera, time, action and event ID",
+          all(x in body for x in ("fire", "Level 1", "Warehouse", "cam_02", "IST", "Action:", "evt_t05")))
+    # ---------------- 08 phone call
+    rows = wait_notifs("evt_t05", 8, timeout=25)
+    calls = [r for r in rows if r["channel"] == "call"]
+    check("08", "phone call placed via Twilio, followed until Twilio reports 'completed' -> delivered",
+          calls and any(r["status"] == "delivered" and r["provider_status"] == "completed" for r in calls),
+          ", ".join(f"{r['status']}/{r['provider_status']}" for r in calls))
+    # ---------------- 08b Twilio TRIAL account: custom text refused -> Twilio template call / SMS (still rings)
+    NET.mode["twilio_trial"] = True
+    sec = notify.load_secrets()
+    rc = notify.send_call(sec, "+919800000000", "test", {})
+    rs = notify.send_sms(sec, "+919800000000", "test")
+    check("08", "Twilio TRIAL account (custom text refused) -> falls back to Twilio's template call + SMS, labelled TRIAL",
+          rc.status == "sending" and "TRIAL" in rc.provider_status and rs.status == "sending" and "TRIAL" in rs.provider_status,
+          f"{rc.provider_status} / {rs.provider_status}")
+    check("08", "phone numbers typed without '+' are fixed (916372863454 -> +916372863454)",
+          notify._e164(916372863454) == "+916372863454")
+    NET.mode["twilio_trial"] = False
+    notify._TRIAL["on"] = None
+    # ---------------- 09 SMS + email, retry
+    NET.fail_first["sms"] = 1
+    NET.fail_first["email"] = 1
+    await m.ingest_event(ppe_payload("evt_t09", ["helmet"], "Critical", "cam_01", "welding_bay"))
+    rows = wait_notifs("evt_t09", 4, timeout=40)
+    sms = [r for r in rows if r["channel"] == "sms"]
+    em = [r for r in rows if r["channel"] == "email"]
+    check("09", "SMS: first try fails (HTTP 503) -> retried -> delivered, attempts logged",
+          sms and sms[0]["status"] == "delivered" and sms[0]["attempts"] >= 2, sms and f"attempts {sms[0]['attempts']}")
+    check("09", "SMS text has type, severity, location, time and recommended action",
+          sms and all(x in sms[0]["message"] for x in ("Critical", "Welding bay", "IST", "wear")))
+    check("09", "e-mail: SMTP drop -> retried -> accepted by the mail server ('sent', never claimed 'delivered')",
+          em and em[0]["status"] == "sent" and em[0]["attempts"] >= 2 and SMTP_SENT)
+    # ---------------- 13 provider / network failure
+    NET.mode["telegram"] = "down"
+    t0 = time.time()
+    await m.ingest_event(ppe_payload("evt_t13", ["vest"], "High", "cam_01", "welding_bay"))
+    ingest_ms = (time.time() - t0) * 1000
+    check("13", "internet down: the alert is stored + shown at once (sending never blocks detection)",
+          db.get_event("evt_t13")["status"] == "open" and ingest_ms < 500, f"ingest {ingest_ms:.0f} ms")
+    rows = wait_notifs("evt_t13", 1, timeout=40)
+    tg = [r for r in rows if r["channel"] == "telegram"]
+    check("13", "Telegram failure retried (bounded) then shown as FAILED with the reason - never 'delivered'",
+          tg and tg[0]["status"] == "failed" and tg[0]["attempts"] == 3 and "network" in (tg[0]["error"] or ""))
+    h = m.system_health()
+    check("13", "system health shows the failing channel", any(c["name"] == "Alerts: telegram" and c["state"] == "fail"
+                                                              for c in h["components"]))
+    NET.mode["telegram"] = "ok"
+    set_creds(False)
+    await m.ingest_event(ppe_payload("evt_t13b", ["vest"], "High", "cam_01", "welding_bay"))
+    rows = wait_notifs("evt_t13b", 1)
+    check("13", "no credentials -> NOT CONFIGURED (clearly labelled), nothing claimed as sent",
+          rows and all(r["status"] == "not_configured" and not r["delivered"] for r in rows))
+    check("13", "health lists unconfigured channels as warnings", any(c["name"].startswith("Alerts:") and c["state"] == "warn"
+                                                                       for c in m.system_health()["components"]))
+    set_creds(True)
+    # dedupe: same incident, same reason -> no second message
+    n_before = len(db.q("SELECT id FROM notifications WHERE event_id='evt_t09'"))
+    await m.notify_async(db.get_event("evt_t09"))
+    check("05", "same continuous incident is not sent twice on a channel",
+          len(db.q("SELECT id FROM notifications WHERE event_id='evt_t09'")) == n_before)
+    # ---------------- 10 AI assistant
+    known = timeutil.local(time.time()).replace(hour=16, minute=2, second=0, microsecond=0)
+    from datetime import timedelta
+    yday = known - timedelta(days=1)
+    db.x("INSERT INTO events (event_id, type, items_missing, severity, camera_id, zone_id, zone_name, started_at, received_at, "
+         "status, worker_id, worker_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+         ("evt_known", "ppe_missing", '["helmet"]', "High", "cam_01", "welding_bay", "Welding bay", yday.timestamp(),
+          yday.timestamp(), "resolved", "W-003", "Bibhu", yday.timestamp()))
+    db.x("INSERT INTO events (event_id, type, items_missing, severity, camera_id, zone_id, zone_name, started_at, received_at, "
+         "status, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+         ("evt_other", "smoke", "[]", "High", "cam_02", "warehouse", "Warehouse", (yday - timedelta(hours=5)).timestamp(),
+          (yday - timedelta(hours=5)).timestamp(), "resolved", yday.timestamp()))
+    workers = [{"worker_id": "W-003", "name": "Bibhu"}, {"worker_id": "W-001", "name": "Chinmaya"}]
+    r = assistant.answer("What happened yesterday at 4:00 PM?", workers=workers, zones=m.ZONES, cameras=m.CAMERAS)
+    ids = [c["event_id"] for c in r["records"]]
+    check("10", "'What happened yesterday at 4:00 PM?' -> the saved record at 16:02 yesterday, nothing else",
+          ids == ["evt_known"] and "Missing helmet" in r["details"][0], r["answer"])
+    r2 = assistant.answer("what happened yesterday at 3 am", workers=workers, zones=m.ZONES, cameras=m.CAMERAS)
+    check("10", "no record in the window -> says 'No matching record was found' (no invented events)",
+          r2["count"] == 0 and r2["answer"].startswith("No matching record"))
+    r3 = assistant.answer("any smoke yesterday", workers=workers, zones=m.ZONES, cameras=m.CAMERAS)
+    check("10", "type filter (smoke) + whole day", [c["event_id"] for c in r3["records"]] == ["evt_other"])
+    r4 = assistant.answer("did bibhu have violations yesterday", workers=workers, zones=m.ZONES, cameras=m.CAMERAS,
+                          role="viewer")
+    check("10", "viewer role: worker names hidden in the answer", r4["records"] and "Bibhu" not in json.dumps(r4["records"]))
+    check("10", "every question logged", db.q("SELECT COUNT(*) AS n FROM assistant_log")[0]["n"] >= 4)
+    # ---------------- 12 latency numbers exist
+    s = perf.summary()
+    check("12", "latency measured as median + 95th percentile (event e2e, time to alert, notification delivery)",
+          "event_e2e_ms" in s and "p95" in s["event_e2e_ms"] and "notify_telegram_ms" in s, json.dumps(s.get("event_e2e_ms")))
+    # ---------------- 14 location
+    loc = location.current("welding_bay", "cam_01")
+    site = (location.cfg().get("site") or {})
+    if site.get("lat") is None:
+        check("14", "no GPS + no configured site -> 'Location unavailable' + zone label (never invented)",
+              not loc["valid"] and loc["note"] == "Location unavailable" and loc["zone_label"])
+    ok, _ = location.record("device", 20.2961, 85.8245, 25, time.time())
+    loc = location.current("welding_bay", "cam_01")
+    check("14", "valid device GPS -> shown with source, accuracy and map link",
+          loc["valid"] and loc["source"] == "device" and "maps.google" in loc["map_url"])
+    location.record("device", 20.3, 85.8, 20, time.time() - 3600)
+    db.x("DELETE FROM locations WHERE at > ?", (time.time() - 60,))
+    loc = location.current("welding_bay", "cam_01")
+    check("14", "1-hour-old reading -> marked STALE and not used", any("stale" in w for w in (loc.get("warnings") or []))
+          and (not loc["valid"] or loc["source"] == "configured"))
+    bad, _ = location.record("hardware", 0, 0, None, time.time())
+    check("14", "0,0 / invalid coordinates rejected", bad is False)
+    # ---------------- login, roles, masking (section 10)
+    from fastapi.testclient import TestClient
+    os.environ["SENTINELEYE_AUTH"] = "1"
+    auth.USERS_FILE = os.path.join(TMP, "users.local.yaml")
+    auth.set_user("sup", "supervisor-pass", "supervisor")
+    auth.set_user("view", "viewer-pass1", "viewer")
+    with TestClient(m.app) as c:
+        check("AUTH", "no login -> API refuses (401) and the page redirects to /login",
+              c.get("/api/events").status_code == 401 and c.get("/", follow_redirects=False).status_code == 303)
+        check("AUTH", "edge / ESP32 posts work without login (devices)",
+              c.post("/api/edge/health", json={"cameras": []}).status_code == 200)
+        check("AUTH", "but actions on events need a login (POST /api/events/<id>/ack -> 401)",
+              c.post("/api/events/evt_t09/ack", json={}).status_code == 401)
+        r = c.post("/api/login", json={"username": "view", "password": "viewer-pass1"})
+        ev = c.get("/api/events?limit=50").json()
+        check("AUTH", "viewer: worker names and snapshots hidden", r.status_code == 200 and
+              all(e.get("worker_name") is None and not e.get("snapshot") for e in ev))
+        rr = c.post("/api/events/evt_t09/ack", json={})
+        check("AUTH", "viewer cannot acknowledge (403) and the refusal is audited",
+              rr.status_code == 403 and db.q("SELECT * FROM audit_log WHERE action='denied'"), f"{rr.status_code} {rr.text[:80]}")
+        c.post("/api/logout")
+        for _ in range(5):
+            c.post("/api/login", json={"username": "sup", "password": "wrong"})
+        check("AUTH", "5 wrong passwords -> locked for a minute",
+              c.post("/api/login", json={"username": "sup", "password": "supervisor-pass"}).status_code == 401)
+        auth._fails.clear()
+        c.post("/api/login", json={"username": "sup", "password": "supervisor-pass"})
+        r = c.post("/api/events/evt_t09/ack", json={})
+        check("AUTH", "supervisor acknowledges; audit log names the user", r.status_code == 200 and
+              db.q("SELECT * FROM audit_log WHERE action='ack' AND user='sup'"))
+        check("AUTH", "supervisor cannot register workers (admin only)", c.post("/api/workers", json={"name": "x"}).status_code == 403)
+        r = c.post("/api/assistant", json={"question": "What happened yesterday at 4 PM?"})
+        check("AUTH", "assistant over HTTP returns the record with a link", r.status_code == 200
+              and r.json()["records"] and r.json()["records"][0]["link"] == "/#event=evt_known")
+        r = c.post("/api/entrance/ent_t03/decide", json={"decision": "approved", "note": "checked by hand"})
+        e3 = db.get_event("ent_t03")
+        check("03", "manual check result recorded (who, decision) and audited", r.status_code == 200
+              and e3["details"]["override"]["decision"] == "approved" and e3["details"]["override"]["by"] == "sup"
+              and db.q("SELECT * FROM audit_log WHERE action='entrance_manual_approved'"))
+        check("AUTH", "health endpoint lists components", c.get("/api/health").json()["components"])
+    os.environ["SENTINELEYE_AUTH"] = "0"
+    # ---------------- shared engine: batching, priority, mapping back
+    class FakeDet:
+        device = "cpu"
+
+        def __init__(self):
+            self.batches = []
+
+        def detect_batch(self, frames, flags):
+            self.batches.append(len(frames))
+            time.sleep(0.03)
+            return [{"persons": [{"cam": f}], "items": [], "parts": [], "fire": [] if fl else None,
+                     "timings": {"total_ms": 30}} for f, fl in zip(frames, flags)]
+    det = FakeDet()
+    eng = InferenceEngine(det, max_batch=4, gather_ms=5)
+    eng.start()
+    res = {}
+
+    def cam(i):
+        res[i] = eng.infer(f"cam_{i}", f"frame_{i}", i == 2, rank=1)
+    ths = [threading.Thread(target=cam, args=(i,)) for i in range(3)]
+    t0 = time.time()
+    [t.start() for t in ths]
+    [t.join() for t in ths]
+    took = (time.time() - t0) * 1000
+    check("12", "3 cameras at once -> ONE batched GPU call, each camera gets its own result back",
+          det.batches[0] == 3 and all(res[i]["persons"][0]["cam"] == f"frame_{i}" for i in range(3))
+          and res[2]["fire"] == [] and res[0]["fire"] is None, f"batches {det.batches}, {took:.0f} ms for 3 cameras")
+    # ---------------- whole edge pipeline with fake models (worker -> shared engine -> entrance / state machine)
+    pipeline_test()
+    # ---------------- report
+    os.makedirs("docs/eval", exist_ok=True)
+    with open("docs/eval/final_selftest.md", "w", encoding="utf-8") as f:
+        f.write(f"# NETRAX final acceptance self-test\n\nRun: {timeutil.fmt(time.time())} - `python -m tools.final_selftest`\n\n"
+                "Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the real services; "
+                "the live-provider and camera tests are in docs/NETRAX_Final_Test_Guide.pdf.\n\n"
+                "| Test | Check | Result | Evidence |\n|---|---|---|---|\n")
+        for tid, name, res_, evd in RESULTS:
+            f.write(f"| {tid} | {name} | {res_} | {str(evd).replace('|', '/')} |\n")
+    print("\nALL FINAL TESTS PASSED" if ok_all else "\nSOME FINAL TESTS FAILED")
+    return ok_all
+
+
+if __name__ == "__main__":
+    good = asyncio.run(main())
+    sys.exit(0 if good else 1)

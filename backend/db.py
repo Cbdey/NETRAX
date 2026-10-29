@@ -36,10 +36,70 @@ def init(db_path):
         """)
         # columns added after v1 (alert contract: add fields only)
         have = {r[1] for r in _conn.execute("PRAGMA table_info(events)")}
-        for col, typ in (("onset_at", "REAL"), ("time_to_alert_ms", "REAL"), ("worker_name", "TEXT")):
+        for col, typ in (("onset_at", "REAL"), ("time_to_alert_ms", "REAL"), ("worker_name", "TEXT"),
+                         # final-round requirements (29 Oct): fire level, location, frame size, workflow
+                         ("fire_level", "INTEGER"), ("fire_reasons", "TEXT"),
+                         ("frame_w", "INTEGER"), ("frame_h", "INTEGER"),
+                         ("location", "TEXT"), ("acked_at", "REAL"), ("acked_by", "TEXT"),
+                         ("closed_by", "TEXT"), ("details", "TEXT")):
             if col not in have:
                 _conn.execute(f"ALTER TABLE events ADD COLUMN {col} {typ}")
+        have = {r[1] for r in _conn.execute("PRAGMA table_info(notifications)")}
+        for col, typ in (("status", "TEXT"), ("attempts", "INTEGER"), ("provider_id", "TEXT"),
+                         ("provider_status", "TEXT"), ("error", "TEXT"), ("kind", "TEXT"),
+                         ("queued_at", "REAL"), ("sent_at", "REAL"), ("finished_at", "REAL"),
+                         ("latency_ms", "REAL")):
+            if col not in have:
+                _conn.execute(f"ALTER TABLE notifications ADD COLUMN {col} {typ}")
+        _conn.executescript("""
+        CREATE TABLE IF NOT EXISTS entrance_checks (
+            check_id TEXT PRIMARY KEY, camera_id TEXT, zone_id TEXT, at REAL, result TEXT,
+            required TEXT, items_ok TEXT, items_missing TEXT, items_uncertain TEXT, evidence TEXT,
+            confidence REAL, worker_id TEXT, worker_name TEXT, gate TEXT, snapshot_path TEXT,
+            decision_ms REAL, reason TEXT);
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, at REAL, user TEXT, role TEXT, action TEXT,
+            target TEXT, detail TEXT, ip TEXT);
+        CREATE TABLE IF NOT EXISTS assistant_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, at REAL, user TEXT, question TEXT,
+            window_from REAL, window_to REAL, n_results INTEGER, ms REAL);
+        CREATE TABLE IF NOT EXISTS locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT, device_id TEXT, lat REAL, lon REAL,
+            accuracy_m REAL, at REAL, received_at REAL);
+        CREATE INDEX IF NOT EXISTS ix_events_type ON events(type, started_at);
+        CREATE INDEX IF NOT EXISTS ix_events_zone ON events(zone_id, started_at);
+        CREATE INDEX IF NOT EXISTS ix_events_camera ON events(camera_id, started_at);
+        CREATE INDEX IF NOT EXISTS ix_events_worker ON events(worker_id, started_at);
+        CREATE INDEX IF NOT EXISTS ix_events_status ON events(status);
+        CREATE INDEX IF NOT EXISTS ix_notif_event ON notifications(event_id);
+        CREATE INDEX IF NOT EXISTS ix_entr_at ON entrance_checks(at);
+        CREATE INDEX IF NOT EXISTS ix_audit_at ON audit_log(at);
+        """)
+        _conn.execute("PRAGMA journal_mode=WAL")      # readers never block the alert writer
         _conn.commit()
+
+
+def health():
+    """Database probe for the system-health panel: a real write + read."""
+    try:
+        t = time.time()
+        with _lock:
+            _conn.execute("CREATE TABLE IF NOT EXISTS _probe (at REAL)")
+            _conn.execute("DELETE FROM _probe")
+            _conn.execute("INSERT INTO _probe VALUES (?)", (t,))
+            _conn.commit()
+            ok = _conn.execute("SELECT at FROM _probe").fetchone()[0] == t
+        return ok, f"write+read {1000 * (time.time() - t):.1f} ms"
+    except Exception as e:                        # noqa: BLE001 - reported on the dashboard
+        return False, f"database error: {e!r}"[:200]
+
+
+def audit(user, role, action, target=None, detail=None, ip=None):
+    try:
+        x("INSERT INTO audit_log (at, user, role, action, target, detail, ip) VALUES (?,?,?,?,?,?,?)",
+          (time.time(), user, role, action, target, detail, ip))
+    except Exception:                             # noqa: BLE001 - audit must never break the request
+        pass
 
 
 def q(sql, args=()):
@@ -61,6 +121,12 @@ def row_to_event(r):
     e["items_missing"] = json.loads(e["items_missing"] or "[]")
     e["bbox"] = json.loads(e["bbox"] or "null")
     e["snapshot"] = f"/snapshots/{e['event_id']}.jpg" if e.get("snapshot_path") else None
+    for k in ("location", "fire_reasons", "details"):
+        if isinstance(e.get(k), str):
+            try:
+                e[k] = json.loads(e[k])
+            except ValueError:
+                pass
     e["actions"] = q("SELECT action, by_user, at, note FROM event_actions WHERE event_id=? "
                      "ORDER BY at", (e["event_id"],))
     return e

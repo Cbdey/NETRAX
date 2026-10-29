@@ -20,3 +20,8 @@ zones:
     name: Assembly line
     required_ppe: [helmet, vest, gloves]
     risk: high
+  main_entrance:
+    name: Main entrance
+    required_ppe: [helmet, vest, boots]     # checked by the entrance camera before entry (edit as needed)
+    risk: medium
+    entrance: true                          # gate check: ACCESS APPROVED / DENIED / MANUAL CHECK

@@ -12,6 +12,7 @@ from .access import AccessGuard
 from .association import evaluate
 from .config import path
 from .detector import Detector
+from .entrance import EntranceChecker
 from .fire_verify import FireVerifier
 from .priority import GATE, RANK
 from .state_machine import PPEStateMachine
@@ -24,7 +25,8 @@ def iso(ts):
 
 
 class CameraWorker(threading.Thread):
-    def __init__(self, cam_id, cam_cfg, zones, settings, reader, outbox, publisher, identity=None):
+    def __init__(self, cam_id, cam_cfg, zones, settings, reader, outbox, publisher, identity=None,
+                 detector=None, engine=None):
         super().__init__(daemon=True, name=f"worker-{cam_id}")
         self.cam_id, self.cam_cfg, self.s = cam_id, cam_cfg, settings
         self.reader, self.outbox, self.publisher = reader, outbox, publisher
@@ -35,7 +37,8 @@ class CameraWorker(threading.Thread):
         self.zones = zones
         self.fps_target = settings["processing"]["target_fps"]
         self.fire_every = settings["processing"]["fire_every_n"]
-        self.detector = Detector(settings)
+        self.engine = engine                              # shared, batched inference (edge/engine.py)
+        self.detector = engine.det if engine is not None else (detector or Detector(settings))
         self.trusted &= self.detector.supported          # e.g. goggles only when the v3 model is loaded
         self.zonemap.trusted = self.trusted
         skipped = sorted({i for z in zones.values() for i in z["required_ppe"]} - self.trusted)
@@ -50,6 +53,17 @@ class CameraWorker(threading.Thread):
         self.running = True
         self.proc_times = deque(maxlen=30)
         self.infer_ms = deque(maxlen=30)
+        self.frame_ms = deque(maxlen=200)      # frame captured -> fully processed (latency, sec. 7)
+        self.wait_ms = deque(maxlen=200)       # waiting for the shared engine
+        self.dropped_stale = 0
+        self.max_age = float(settings["processing"].get("max_frame_age_s", 0.6))
+        # entrance camera (cameras.yaml role: entrance) -> one APPROVED / DENIED / MANUAL decision per person
+        self.role = cam_cfg.get("role", "monitor")
+        self.entrance = None
+        if self.role == "entrance":
+            ez = cam_cfg["default_zone"]
+            self.entrance = EntranceChecker(cam_id, ez, self.zonemap.required(ez), settings.get("entrance"))
+            print(f"[{cam_id}] ENTRANCE check for zone {ez}: {', '.join(self.entrance.required)}")
         self.tile_badge = None
         self.decisions = {"compliant": 0, "missing": 0, "unverifiable": 0}
         self.identity = identity
@@ -78,6 +92,9 @@ class CameraWorker(threading.Thread):
                 time.sleep(0.01)
                 continue
             last_no = frame_no
+            if time.time() - frame_ts > self.max_age:      # never judge a stale picture (camera lag)
+                self.dropped_stale += 1
+                continue
             n += 1
             try:
                 self.process(frame, frame_ts, n)
@@ -90,11 +107,20 @@ class CameraWorker(threading.Thread):
         h, w = frame.shape[:2]
         now = time.time()
         busy = bool(self.fv.regions.get(self.cam_id))       # something fire-like is being verified
-        with GATE.slot(0 if busy else self.gpu_rank):        # fire candidate anywhere = top priority
-            t_inf = time.time()                              # model time only, not the wait for the GPU
-            raw_persons, items = self.detector.ppe_detect(frame)
-            fire_dets = self.detector.fire_detect(frame) if busy or n % self.fire_every == 0 else None
-        self.infer_ms.append((time.time() - t_inf) * 1000)
+        want_fire = busy or (self.fire_every > 0 and n % self.fire_every == 0)
+        if self.engine is not None:
+            t_req = time.time()
+            r = self.engine.infer(self.cam_id, frame, "urgent" if busy else want_fire, self.gpu_rank)
+            raw_persons, items, parts, fire_dets = r["persons"], r["items"], r["parts"], r["fire"]
+            self.infer_ms.append(r["timings"]["total_ms"])
+            self.wait_ms.append((time.time() - t_req) * 1000 - r["timings"]["total_ms"])
+        else:
+            with GATE.slot(0 if busy else self.gpu_rank):    # fire candidate anywhere = top priority
+                t_inf = time.time()                          # model time only, not the wait for the GPU
+                raw_persons, items = self.detector.ppe_detect(frame)
+                parts = self.detector.last_parts
+                fire_dets = self.detector.fire_detect(frame) if want_fire else None
+            self.infer_ms.append((time.time() - t_inf) * 1000)
 
         tracks = self.tracker.update([p["bbox"] for p in raw_persons],
                                      [p["conf"] for p in raw_persons])
@@ -112,25 +138,41 @@ class CameraWorker(threading.Thread):
         required = {tid: self.zonemap.required(z) for tid, z in zone_of.items()}
         statuses, bad_items = evaluate(persons, items, required, w, h, self.s["association"],
                                        frame, self.s.get("validation", {}),
-                                       parts=self.detector.last_parts if self.detector.has_parts else None)
+                                       parts=parts if self.detector.has_parts else None)
         for st in statuses.values():
             for s, _ in st.values():
                 self.decisions[s] += 1
 
-        actions = self.sm.update(self.cam_id, persons, statuses, zone_of,
-                                 self.zonemap.risk, w, h, now)
+        if self.entrance is not None:
+            # entrance: one gate decision per person instead of zone PPE alerts
+            actions = self.entrance.update(persons, statuses, w, h, now)
+            for a in actions:
+                print(f"[{self.cam_id}] ENTRANCE {a['result'].upper()} missing={a['items_missing']} "
+                      f"unclear={a['items_uncertain']} in {a['decision_ms']} ms")
+        else:
+            actions = self.sm.update(self.cam_id, persons, statuses, zone_of,
+                                     self.zonemap.risk, w, h, now)
         fire_actions, self.tile_badge = self.fv.update(
             self.cam_id, frame, fire_dets, [p["bbox"] for p in persons], now)
         for a in fire_actions:
             a["zone_id"] = self.zonemap.zone_of(a["bbox"], w, h)
         actions += fire_actions
-        access_actions = self.access.update(self.cam_id, persons, zone_of, now)
-        actions += access_actions
+        if self.entrance is None:
+            actions += self.access.update(self.cam_id, persons, zone_of, now)
 
-        annotated = annotate.draw(frame, persons, statuses, items, self.fv.boxes(self.cam_id),
-                                  self.zonemap.polys,
-                                  self.fv.rejected.get(self.cam_id, []) + bad_items,
-                                  parts=self.detector.last_parts)
+        shown = self._smooth(statuses)                       # steady on-screen PPE list (no frame flicker)
+        publish = self.publisher.due(self.cam_id)
+        annotated = None
+        if publish or actions:                               # draw only when someone will see it
+            annotated = annotate.draw(frame, persons, shown, items, self.fv.boxes(self.cam_id),
+                                      self.zonemap.polys,
+                                      self.fv.rejected.get(self.cam_id, []) + bad_items,
+                                      parts=parts)
+            if self.entrance is not None:
+                annotate.entrance_banner(annotated, self.entrance)
+        if not self.tile_badge and self.entrance is not None and self.entrance.s and self.entrance.s.get("decided"):
+            self.tile_badge = {"approved": "ACCESS APPROVED", "denied": "ACCESS DENIED",
+                               "manual": "MANUAL CHECK REQUIRED"}[self.entrance.s["decided"]]
         if not self.tile_badge:
             intruders = sorted({v.get("name") or k[1] for k, v in self.access.visits.items()
                                 if k[0] == self.cam_id and v["event_id"]})
@@ -142,9 +184,35 @@ class CameraWorker(threading.Thread):
                 items_ = sorted({i for w_ in open_ppe for i in w_.open_items})
                 self.tile_badge = "NO " + " / ".join(i.upper() for i in items_)
         for a in actions:
+            a["frame_w"], a["frame_h"] = w, h
             self.emit(a, annotated, frame_ts, frame, persons)
-        self.publisher.frame(self.cam_id, annotated)
+        if publish:
+            self.publisher.frame(self.cam_id, annotated, frame_ts)
         self.publisher.raw(self.cam_id, frame)
+        self.frame_ms.append((time.time() - frame_ts) * 1000)
+
+    def _smooth(self, statuses, keep=8):
+        """Display only: each worker's item state = majority of the last `keep` frames (~0.7 s), so the
+        overlay does not flicker between OK / NO / ? on single frames. Alerts still come from the state
+        machine (its own N-of-M + settle rules)."""
+        from collections import Counter
+        hist = self.__dict__.setdefault("_disp", {})
+        out = {}
+        for tid, st in statuses.items():
+            h = hist.setdefault(tid, {})
+            h.pop("_gone", None)
+            out[tid] = {}
+            for item, (state, conf) in st.items():
+                q = h.setdefault(item, deque(maxlen=keep))
+                q.append(state)
+                top, n = Counter(q).most_common(1)[0]
+                out[tid][item] = (top if n * 2 > len(q) else "unverifiable", conf)
+        for tid in [t for t in hist if t not in statuses]:
+            hist[tid].setdefault("_gone", 0)
+            hist[tid]["_gone"] += 1
+            if hist[tid]["_gone"] > 60:
+                del hist[tid]
+        return out
 
     def _stable_ids(self, persons):
         """One person = one id: a recognised person always uses the same state-machine id,

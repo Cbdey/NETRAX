@@ -10,3 +10,5 @@ numpy
 requests
 reportlab
 pywin32          # Windows SAPI voice for the speaker
+tzdata           # IST time zone on Windows (fallback built in)
+# optional speed-up: tensorrt  (python -m tools.export_engines, then models.runtime: tensorrt)

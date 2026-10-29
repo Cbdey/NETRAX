@@ -14,10 +14,10 @@ import cv2
 import numpy as np
 import yaml
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import actuators, db, notify, reports
+from . import actuators, assistant, auth, db, fire_levels, location, notify, perf, reports, timeutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.environ.get("SENTINELEYE_DATA_DIR") or os.path.join(ROOT, "data")   # override: tests only
@@ -46,7 +46,11 @@ if os.environ.get("SENTINELEYE_MUTE"):
 EDGE = {"state": None, "at": 0.0}
 FRAMES = {}          # camera_id -> (annotated jpeg, time)   live tiles
 RAW = {}             # camera_id -> (clean jpeg, time)       registration photos only
-CLIENTS = set()
+CLIENTS = {}         # websocket -> role (viewer copies are masked)
+LOOP = {"loop": None}
+FIRE_CFG = dict(SETTINGS.get("fire_levels") or {})
+SIREN_FROM = int(FIRE_CFG.get("siren_from_level", 2))
+EMERGENCY_SEV = set((SETTINGS.get("incidents") or {}).get("emergency_severities") or ["Critical", "High"])
 
 # Autonomous response on this laptop: speaker calls the worker, siren for fire / smoke
 SPEAKER = actuators.Speaker(SPK)
@@ -57,13 +61,38 @@ SPOKEN = {}          # (camera, person, type) -> last time the speaker called th
 from . import hw_api  # noqa: E402  ESP32 safety station(s): telemetry, fire cross-check, RFID attendance
 
 
+def _for_viewer(kind, data):
+    if kind == "event":
+        return auth.mask_event(data)
+    if kind in ("entrance",):
+        return dict(data, worker_id=None, worker_name=None, snapshot=None) if isinstance(data, dict) else data
+    if kind in ("workers",):
+        return [{"worker_id": "W-***", "name": "(hidden)", "photos": w.get("photos")} for w in data] \
+            if isinstance(data, list) else data
+    if kind == "notification" and isinstance(data, dict):
+        return {k: data.get(k) for k in ("id", "event_id", "channel", "status", "at", "queued_at", "finished_at")}
+    return data
+
+
 async def broadcast(kind, data):
     msg = json.dumps({"kind": kind, "data": data}, default=str)
-    for ws in list(CLIENTS):
+    vmsg = None
+    for ws, role in list(CLIENTS.items()):
         try:
-            await ws.send_text(msg)
+            if role == "viewer":
+                vmsg = vmsg or json.dumps({"kind": kind, "data": _for_viewer(kind, data)}, default=str)
+                await ws.send_text(vmsg)
+            else:
+                await ws.send_text(msg)
         except Exception:
-            CLIENTS.discard(ws)
+            CLIENTS.pop(ws, None)
+
+
+def broadcast_threadsafe(kind, data):
+    """For background threads (notification dispatcher)."""
+    loop = LOOP["loop"]
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(broadcast(kind, data), loop)
 
 
 async def escalation_loop():
@@ -98,12 +127,41 @@ async def speaker_loop():
             print(f"[speaker] loop error: {ex!r}")
 
 
+async def fire_level_loop():
+    """Re-grade active fire / smoke incidents every second (duration, growth, station readings).
+    The level only goes up; a raise re-notifies immediately (no cooldown) and starts the siren at Level 2."""
+    while True:
+        await asyncio.sleep(1.0)
+        try:
+            for r in db.q("SELECT event_id FROM events WHERE type IN ('fire','smoke') AND status IN "
+                          "('open','acknowledged','escalated') AND ended_at IS NULL"):
+                await regrade_fire(db.get_event(r["event_id"]), time.time())
+        except Exception as ex:                 # noqa: BLE001
+            print(f"[fire-level] loop error: {ex!r}")
+
+
+async def health_loop():
+    while True:
+        await asyncio.sleep(3.0)
+        try:
+            await broadcast("health", system_health())
+        except Exception as ex:                 # noqa: BLE001
+            print(f"[health] loop error: {ex!r}")
+
+
 @asynccontextmanager
 async def lifespan(app):
+    LOOP["loop"] = asyncio.get_running_loop()
+    if auth.enabled():
+        auth.ensure_users()
+    notify.DISPATCHER.on_update = lambda row: broadcast_threadsafe("notification", row)
+    notify.DISPATCHER.start()
+    timeutil.set_tz(notify.load_policy().get("timezone"))
     hw_api.setup(broadcast=broadcast, respond=respond, notify_async=notify_async, announce=announce,
                  ALARM=ALARM, ZONES=ZONES, list_workers=list_workers)
     tasks = [asyncio.create_task(escalation_loop()), asyncio.create_task(speaker_loop()),
-             asyncio.create_task(retention_loop()), asyncio.create_task(hw_api.loop())]
+             asyncio.create_task(retention_loop()), asyncio.create_task(hw_api.loop()),
+             asyncio.create_task(fire_level_loop()), asyncio.create_task(health_loop())]
     yield
     for t in tasks:
         t.cancel()
@@ -111,6 +169,44 @@ async def lifespan(app):
 
 app = FastAPI(title="NETRAX API", lifespan=lifespan)
 app.include_router(hw_api.router)
+
+
+def _ip(request):
+    return request.client.host if request.client else "?"
+
+
+def current_user(request):
+    """{'user','role'} - login disabled -> everyone is 'admin' (tests, single-PC demo)."""
+    if not auth.enabled():
+        return {"user": "local", "role": "admin"}
+    return getattr(request.state, "user", None) or auth.read_token(request.cookies.get(auth.COOKIE)) or \
+        {"user": None, "role": None}
+
+
+@app.middleware("http")
+async def access_control(request: Request, call_next):
+    if not auth.enabled():
+        request.state.user = {"user": "local", "role": "admin"}
+        return await call_next(request)
+    path, method, ip = request.url.path, request.method, _ip(request)
+    need = auth.classify(method, path, ip)
+    if need in ("public", "device"):
+        request.state.user = auth.read_token(request.cookies.get(auth.COOKIE))
+        return await call_next(request)
+    if need == "local":
+        if auth.is_local(ip):
+            return await call_next(request)
+        return JSONResponse({"detail": "only available on the edge computer"}, status_code=403)
+    u = auth.read_token(request.cookies.get(auth.COOKIE))
+    if not u:
+        if method == "GET" and not path.startswith(("/api/", "/snapshots", "/workers/", "/ws")):
+            return RedirectResponse(f"/login?next={path}", status_code=303)
+        return JSONResponse({"detail": "login required"}, status_code=401)
+    if not auth.allowed(u["role"], need):
+        db.audit(u["user"], u["role"], "denied", path, f"{method} needs {need}", ip)
+        return JSONResponse({"detail": f"your role ({u['role']}) cannot do this - needs {need}"}, status_code=403)
+    request.state.user = u
+    return await call_next(request)
 
 
 # ---------- edge -> backend ----------
@@ -135,6 +231,8 @@ async def ingest_event(p: dict = Body(...)):
             announce(ok_text(p), p.get("zone_id"), None, "ppe_ok")
             await broadcast("ppe_ok", {k: p.get(k) for k in ("camera_id", "zone_id", "zone_name", "worker_id", "worker_name")})
         return {"ok": True, "info": True}
+    if p.get("type") == "entrance_check":
+        return await ingest_entrance(p, snap, now)
     if eid in ACCESS_ALIAS:              # same person already alerted by RFID / camera: one alert, not two
         return {"ok": True, "merged_into": ACCESS_ALIAS[eid]}
     if p.get("type") == "unauthorized_entry" and action == "open" and not db.get_event(eid):
@@ -159,9 +257,15 @@ async def ingest_event(p: dict = Body(...)):
               p.get("track_id"), p.get("worker_id"), p.get("confidence"), json.dumps(p.get("bbox")),
               snap, p.get("captured_at"), started, now, max(0.0, (now - captured) * 1000),
               "open", p.get("growth"), now, onset, max(0.0, (now - onset) * 1000), p.get("worker_name")))
+        db.x("UPDATE events SET frame_w=?, frame_h=?, location=? WHERE event_id=?",
+             (p.get("frame_w"), p.get("frame_h"), json.dumps(location.current(p.get("zone_id"), p.get("camera_id"), now)),
+              eid))
+        perf.add("event_e2e_ms", (now - captured) * 1000)
+        perf.add("time_to_alert_ms", (now - onset) * 1000)
         e = db.get_event(eid)
         if e["type"] in ("fire", "smoke") and action != "resolve":
             e = await hw_api.verify_new(e, now)      # wait for / ask the safety station before any siren
+            e = grade_fire(e, now)
         await respond(e, action, now)
         await broadcast("event", e)
         if action != "resolve" and e["status"] in ("open", "escalated"):
@@ -184,18 +288,142 @@ async def ingest_event(p: dict = Body(...)):
              (json.dumps(p.get("items_missing") or []), p.get("severity"), p.get("track_id"),
               p.get("confidence"), json.dumps(p.get("bbox")), snap, p.get("growth"), now,
               p.get("worker_id"), p.get("worker_name"), eid))
+        db.x("UPDATE events SET frame_w=COALESCE(?, frame_w), frame_h=COALESCE(?, frame_h) WHERE event_id=?",
+             (p.get("frame_w"), p.get("frame_h"), eid))
         e = db.get_event(eid)
+        if e["type"] in ("fire", "smoke"):
+            await regrade_fire(e, now, broadcast_always=False)
+            e = db.get_event(eid)
         await respond(e, action, now)
         await broadcast("event", e)
-        if e["severity"] == "Critical" and not was_critical:
+        if e["severity"] == "Critical" and not was_critical and e["type"] not in ("fire", "smoke"):
             await notify_async(e, "severity raised to CRITICAL")
     return {"ok": True}
 
 
+# ---------- fire / smoke severity levels (section 9) ----------
+def _other_sources(e):
+    r = db.q("SELECT COUNT(DISTINCT COALESCE(camera_id, device_id)) AS n FROM events WHERE zone_id=? AND type IN "
+             "('fire','smoke') AND event_id != ? AND status IN ('open','acknowledged','escalated') AND ended_at IS NULL",
+             (e.get("zone_id"), e["event_id"]))
+    return r[0]["n"] if r else 0
+
+
+def grade_fire(e, now):
+    """Set the level of a NEW fire / smoke incident (no notification here - ingest sends the first one)."""
+    if e.get("camera_id") and e.get("zone_id"):
+        sensors = hw_api._station_json(e["zone_id"], now)
+        if sensors:
+            db.x("UPDATE events SET sensors=? WHERE event_id=?", (sensors, e["event_id"]))
+            e = db.get_event(e["event_id"])
+    lvl, why, _ = fire_levels.update_level(e, now, FIRE_CFG, _other_sources(e))
+    sev = e["severity"] if e["status"] in ("suppressed", "verifying") else fire_levels.SEVERITY[lvl]
+    db.x("UPDATE events SET fire_level=?, fire_reasons=?, severity=?, updated_at=? WHERE event_id=?",
+         (lvl, json.dumps(why), sev, now, e["event_id"]))
+    db.add_action(e["event_id"], "fire_level", "system", f"Level {lvl} {fire_levels.NAMES[lvl]}: " + "; ".join(why))
+    return db.get_event(e["event_id"])
+
+
+async def regrade_fire(e, now, broadcast_always=False):
+    if not e or e["status"] in ("suppressed", "verifying", "resolved", "dismissed", "closed"):
+        return
+    if e.get("camera_id") and e.get("zone_id"):
+        sensors = hw_api._station_json(e["zone_id"], now)
+        if sensors:
+            db.x("UPDATE events SET sensors=? WHERE event_id=?", (sensors, e["event_id"]))
+            e = db.get_event(e["event_id"])
+    lvl, why, raised = fire_levels.update_level(e, now, FIRE_CFG, _other_sources(e))
+    if not raised:
+        if broadcast_always:
+            await broadcast("event", e)
+        return
+    db.x("UPDATE events SET fire_level=?, fire_reasons=?, severity=?, updated_at=? WHERE event_id=?",
+         (lvl, json.dumps(why), fire_levels.SEVERITY[lvl], now, e["event_id"]))
+    db.add_action(e["event_id"], "fire_level", "system", f"raised to Level {lvl} {fire_levels.NAMES[lvl]}: "
+                  + "; ".join(why))
+    e = db.get_event(e["event_id"])
+    if lvl >= SIREN_FROM:
+        await start_alarm(e, f"{e['type']} Level {lvl}")
+    await broadcast("event", e)
+    await notify_async(e, f"LEVEL RAISED to {lvl} ({fire_levels.NAMES[lvl]})")
+
+
+# ---------- entrance PPE verification (section 4) ----------
+ENTRANCE_TEXT = {"approved": "ACCESS APPROVED — All required PPE detected. You may proceed.",
+                 "denied": "ACCESS DENIED — Required PPE is incomplete. Entry is not permitted.",
+                 "manual": "Verification failed — manual check required"}
+ENTRANCE_GATE = {"controller": None}          # a real lock / turnstile controller registers here later
+
+
+async def ingest_entrance(p, snap, now):
+    eid, res = p["event_id"], p.get("result") or "manual"
+    if db.get_event(eid):
+        return {"ok": True, "duplicate": True}
+    captured = _ts(p.get("captured_at"), now)
+    started = _ts(p.get("started_at"), now)
+    details = {"result": res, "message": ENTRANCE_TEXT.get(res), "required": p.get("required") or [],
+               "items_ok": p.get("items_ok") or [], "items_uncertain": p.get("items_uncertain") or [],
+               "evidence": p.get("evidence") or {}, "reason": p.get("reason"), "decision_ms": p.get("decision_ms"),
+               "frames": p.get("frames"), "gate": p.get("gate") or "closed",
+               "controller": "connected" if p.get("controller_connected") else "no access controller connected"}
+    status = "closed" if res == "approved" else "open"
+    db.x("""INSERT INTO events (event_id, type, items_missing, severity, camera_id, camera_name, zone_id, zone_name,
+            track_id, worker_id, worker_name, confidence, bbox, snapshot_path, captured_at, started_at, received_at,
+            latency_ms, status, updated_at, onset_at, time_to_alert_ms, frame_w, frame_h, location, details, ended_at,
+            end_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+         (eid, "entrance_check", json.dumps(p.get("items_missing") or []), p.get("severity") or "Low",
+          p.get("camera_id"), p.get("camera_name"), p.get("zone_id"), p.get("zone_name"), p.get("track_id"),
+          p.get("worker_id"), p.get("worker_name"), p.get("confidence"), json.dumps(p.get("bbox")), snap,
+          p.get("captured_at"), started, now, max(0.0, (now - captured) * 1000), status, now, started,
+          p.get("decision_ms"), p.get("frame_w"), p.get("frame_h"),
+          json.dumps(location.current(p.get("zone_id"), p.get("camera_id"), now)), json.dumps(details),
+          now if status == "closed" else None, "approved" if status == "closed" else None))
+    db.x("""INSERT INTO entrance_checks (check_id, camera_id, zone_id, at, result, required, items_ok, items_missing,
+            items_uncertain, evidence, confidence, worker_id, worker_name, gate, snapshot_path, decision_ms, reason)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+         (eid, p.get("camera_id"), p.get("zone_id"), now, res, json.dumps(details["required"]),
+          json.dumps(details["items_ok"]), json.dumps(p.get("items_missing") or []),
+          json.dumps(details["items_uncertain"]), json.dumps(details["evidence"]), p.get("confidence"),
+          p.get("worker_id"), p.get("worker_name"), details["gate"], snap, p.get("decision_ms"), p.get("reason")))
+    db.add_action(eid, f"entrance_{res}", "edge", p.get("reason") or ENTRANCE_TEXT.get(res))
+    perf.add("event_e2e_ms", (now - captured) * 1000)
+    perf.add("entrance_decision_ms", p.get("decision_ms"))
+    e = db.get_event(eid)
+    who = e.get("worker_name") or ""
+    if res == "approved":
+        announce(f"{who + ', ' if who else ''}access approved. You may proceed.", e["zone_id"], eid, "ppe_ok")
+    elif res == "denied":
+        announce(f"{who + ', ' if who else ''}access denied. Please wear your {_words(e['items_missing'])}.",
+                 e["zone_id"], eid, "ppe")
+    else:
+        announce("Verification failed. Please wait for a manual check.", e["zone_id"], eid, "ppe")
+    await broadcast("event", e)
+    await broadcast("entrance", entrance_payload(e))
+    if res != "approved":
+        await notify_async(e)
+    return {"ok": True, "result": res}
+
+
+def entrance_payload(e):
+    d = e.get("details") or {}
+    return {"event_id": e["event_id"], "result": d.get("result"), "message": d.get("message"),
+            "missing": e.get("items_missing") or [], "ok": d.get("items_ok") or [],
+            "uncertain": d.get("items_uncertain") or [], "required": d.get("required") or [],
+            "reason": d.get("reason"), "camera_id": e.get("camera_id"), "zone_id": e.get("zone_id"),
+            "zone_name": e.get("zone_name"), "at": e.get("started_at"), "time": timeutil.fmt(e.get("started_at")),
+            "worker_id": e.get("worker_id"), "worker_name": e.get("worker_name"), "snapshot": e.get("snapshot"),
+            "decision_ms": d.get("decision_ms"), "gate": d.get("gate"), "controller": d.get("controller"),
+            "status": e.get("status"), "override": d.get("override")}
+
+
 # ---------- autonomous response: speaker + siren ----------
 async def notify_async(e, reason="new alert", recipient=None):
-    n = await asyncio.to_thread(notify.send, e, reason, recipient)   # Telegram must not block the loop
-    if n:
+    """Queue Telegram / call / SMS / e-mail for this incident. Never blocks detection or the dashboard:
+    the dispatcher thread delivers, retries and reports each provider result over the websocket."""
+    if not e:
+        return
+    rows = await asyncio.to_thread(notify.enqueue, e, reason, recipient)
+    for n in rows:
         await broadcast("notification", n)
 
 
@@ -271,7 +499,11 @@ def announce(text, zone, event_id, kind, priority="normal"):
 async def start_alarm(e, why):
     zone = e.get("zone_name") or e.get("zone_id")
     if ALARM.start(e["event_id"], e.get("zone_id"), why):
-        announce(f"Fire alarm. {e['type'].title()} detected in the {zone}. Evacuate the {zone} now.",
+        lvl = int(e.get("fire_level") or 2)
+        text = (f"Very critical. Major {e['type']} in the {zone}. Evacuate the {zone} immediately." if lvl >= 3 else
+                f"Critical alert. {e['type'].title()} detected in the {zone}. Emergency response required. "
+                f"Evacuate the {zone} now.")
+        announce(text,
                  e.get("zone_id"), e["event_id"], "alarm", priority="urgent")
         db.add_action(e["event_id"], "alarm_on", "system", why)
         await broadcast("response", response_payload())
@@ -291,7 +523,14 @@ async def respond(e, action, now):
         if action == "resolve":
             await stop_alarm(eid, "fire cleared")
         elif e["status"] in ("open", "escalated"):
-            await start_alarm(e, f"{e['type']} detected on {e.get('camera_id')}")
+            lvl = int(e.get("fire_level") or 2)
+            if lvl >= SIREN_FROM or not e.get("camera_id"):        # station-only hazards keep the siren
+                await start_alarm(e, f"{e['type']} Level {lvl} on {e.get('camera_id') or 'safety station'}")
+            elif eid not in CALLS:
+                zone = e.get("zone_name") or e.get("zone_id")
+                announce(f"Warning. Small {e['type']} detected in the {zone}. Immediate inspection required.",
+                         e.get("zone_id"), eid, "alarm", priority="urgent")
+                CALLS[eid] = {"n": 1, "last": now, "items": ("fire_warning",)}
         return
     if e["type"] in ("ppe_missing", "unauthorized_entry"):
         if action == "resolve":
@@ -377,9 +616,14 @@ def _worker_out(r):
             "photos": r["photos"], "badge_uid": r.get("badge_uid"), "photo": f"/workers/{r['worker_id']}.jpg?v={int(r['created_at'])}"}
 
 
-@app.get("/api/workers")
 def list_workers():
     return [_worker_out(r) for r in db.q("SELECT * FROM workers ORDER BY worker_id")]
+
+
+@app.get("/api/workers")
+def list_workers_route(request: Request):
+    ws = list_workers()
+    return _for_viewer("workers", ws) if current_user(request).get("role") == "viewer" else ws
 
 
 @app.get("/api/workers/gallery")
@@ -466,7 +710,13 @@ async def edge_health(p: dict = Body(...)):
 
 @app.post("/api/cameras/{camera_id}/frame")
 async def camera_frame(camera_id: str, request: Request):
-    FRAMES[camera_id] = (await request.body(), time.time())
+    now = time.time()
+    try:
+        cap = float(request.headers.get("x-captured-at") or now)
+    except ValueError:
+        cap = now
+    FRAMES[camera_id] = (await request.body(), now, cap)
+    perf.add("preview_edge_to_backend_ms", (now - cap) * 1000)
     return {"ok": True}
 
 
@@ -557,6 +807,12 @@ def get_zones():
 
 
 @app.get("/api/events")
+def list_events_route(request: Request, status: str = None, severity: str = None, zone: str = None,
+                      camera: str = None, limit: int = 100):
+    rows = list_events(status, severity, zone, camera, limit)
+    return [auth.mask_event(r) for r in rows] if current_user(request).get("role") == "viewer" else rows
+
+
 def list_events(status: str = None, severity: str = None, zone: str = None,
                 camera: str = None, limit: int = 100):
     sql, args = "SELECT * FROM events WHERE 1=1", []
@@ -569,14 +825,24 @@ def list_events(status: str = None, severity: str = None, zone: str = None,
     return [db.row_to_event(r) for r in db.q(sql, args)]
 
 
-async def _act(event_id, action, status, body):
+async def _act(event_id, action, status, body, request=None):
     e = db.get_event(event_id)
     if e is None:
         raise HTTPException(404, "event not found")
-    user = (body or {}).get("by_user") or "supervisor"
-    db.x("UPDATE events SET status=?, updated_at=? WHERE event_id=?", (status, time.time(), event_id))
+    u = current_user(request) if request is not None else {"user": None, "role": None}
+    user = u.get("user") or (body or {}).get("by_user") or "supervisor"
+    now = time.time()
+    if action == "resolve" and e["status"] in ("resolved", "closed", "dismissed"):
+        return e
+    db.x("UPDATE events SET status=?, updated_at=? WHERE event_id=?", (status, now, event_id))
+    if action == "ack":
+        db.x("UPDATE events SET acked_at=?, acked_by=? WHERE event_id=?", (now, user, event_id))
+    if action in ("resolve", "dismiss"):
+        db.x("UPDATE events SET ended_at=COALESCE(ended_at, ?), closed_by=?, end_reason=COALESCE(end_reason, ?) "
+             "WHERE event_id=?", (now, user, f"{action} by {user}", event_id))
     db.add_action(event_id, action, user, (body or {}).get("note"))
-    if action in ("ack", "dismiss"):
+    db.audit(user, u.get("role"), action, event_id, (body or {}).get("note"), _ip(request) if request else None)
+    if action in ("ack", "dismiss", "resolve"):
         CALLS.pop(event_id, None)                     # supervisor took over: stop repeat calls
         await stop_alarm(event_id, f"{action} by {user}")
     e = db.get_event(event_id)
@@ -587,23 +853,57 @@ async def _act(event_id, action, status, body):
 
 
 @app.post("/api/events/{event_id}/ack")
-async def ack(event_id: str, body: dict = Body(default=None)):
-    return await _act(event_id, "ack", "acknowledged", body)
+async def ack(event_id: str, request: Request, body: dict = Body(default=None)):
+    return await _act(event_id, "ack", "acknowledged", body, request)
 
 
 @app.post("/api/events/{event_id}/escalate")
-async def escalate(event_id: str, body: dict = Body(default=None)):
-    return await _act(event_id, "escalate", "escalated", body)
+async def escalate(event_id: str, request: Request, body: dict = Body(default=None)):
+    return await _act(event_id, "escalate", "escalated", body, request)
 
 
 @app.post("/api/events/{event_id}/dismiss")
-async def dismiss(event_id: str, body: dict = Body(default=None)):
-    return await _act(event_id, "dismiss", "dismissed", body)
+async def dismiss(event_id: str, request: Request, body: dict = Body(default=None)):
+    return await _act(event_id, "dismiss", "dismissed", body, request)
+
+
+@app.post("/api/events/{event_id}/resolve")
+async def resolve(event_id: str, request: Request, body: dict = Body(default=None)):
+    """Supervisor closes an incident after the hazard is gone (acknowledged != resolved)."""
+    return await _act(event_id, "resolve", "resolved", body, request)
+
+
+@app.post("/api/entrance/{event_id}/decide")
+async def entrance_override(event_id: str, request: Request, body: dict = Body(...)):
+    """Manual check result after 'Verification failed': {decision: approved|denied, note}. Recorded + audited."""
+    e = db.get_event(event_id)
+    if not e or e["type"] != "entrance_check":
+        raise HTTPException(404, "entrance check not found")
+    dec = (body or {}).get("decision")
+    if dec not in ("approved", "denied"):
+        raise HTTPException(400, "decision must be approved or denied")
+    u = current_user(request)
+    d = e.get("details") or {}
+    d["override"] = {"decision": dec, "by": u.get("user"), "at": time.time(), "note": (body or {}).get("note")}
+    now = time.time()
+    db.x("UPDATE events SET details=?, status='closed', ended_at=?, end_reason=?, closed_by=?, updated_at=? "
+         "WHERE event_id=?", (json.dumps(d), now, f"manual check: {dec}", u.get("user"), now, event_id))
+    db.x("UPDATE entrance_checks SET reason=COALESCE(reason,'') || ? WHERE check_id=?",
+         (f" | manual check by {u.get('user')}: {dec}", event_id))
+    db.add_action(event_id, f"manual_{dec}", u.get("user") or "supervisor", (body or {}).get("note"))
+    db.audit(u.get("user"), u.get("role"), f"entrance_manual_{dec}", event_id, (body or {}).get("note"), _ip(request))
+    e = db.get_event(event_id)
+    await broadcast("event", e)
+    await broadcast("entrance", entrance_payload(e))
+    return e
 
 
 @app.get("/api/notifications")
-def notifications(limit: int = 20):
-    return db.q("SELECT * FROM notifications ORDER BY at DESC LIMIT ?", (limit,))
+def notifications(request: Request, limit: int = 20):
+    rows = db.q("SELECT * FROM notifications ORDER BY id DESC LIMIT ?", (min(limit, 500),))
+    if current_user(request).get("role") == "viewer":
+        rows = [_for_viewer("notification", r) for r in rows]
+    return rows
 
 
 @app.get("/api/analytics/summary")
@@ -630,7 +930,7 @@ async def stream(camera_id: str):
     async def gen():
         last = 0.0
         while True:
-            jpg, t = FRAMES.get(camera_id, (None, 0))
+            jpg, t = FRAMES.get(camera_id, (None, 0, 0))[:2]
             if jpg and t != last:
                 last = t
                 yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
@@ -640,28 +940,272 @@ async def stream(camera_id: str):
 
 @app.get("/api/frame/{camera_id}")
 def latest_frame(camera_id: str):
-    jpg, t = FRAMES.get(camera_id, (None, 0))
+    jpg, t, cap = FRAMES.get(camera_id, (None, 0, 0))
     if not jpg or time.time() - t > 10:
         return Response(status_code=204)
-    return Response(jpg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    return Response(jpg, media_type="image/jpeg", headers={"Cache-Control": "no-store", "X-Captured-At": f"{cap:.3f}",
+                                                           "X-Server-Time": f"{time.time():.3f}"})
 
 
 @app.websocket("/ws/alerts")
 async def ws_alerts(ws: WebSocket):
+    role = "admin"
+    if auth.enabled():
+        u = auth.read_token(ws.cookies.get(auth.COOKIE))
+        if not u:
+            await ws.close(code=4401)
+            return
+        role = u["role"]
     await ws.accept()
-    CLIENTS.add(ws)
+    CLIENTS[ws] = role
     try:
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
-        CLIENTS.discard(ws)
+        CLIENTS.pop(ws, None)
     except Exception:
-        CLIENTS.discard(ws)
+        CLIENTS.pop(ws, None)
 
 
 @app.get("/")
 def index():
     return FileResponse(os.path.join(ROOT, "dashboard", "index.html"))
+
+
+@app.get("/admin")
+def admin_page():
+    """Analytics, reports, worker registration (the earlier dashboard)."""
+    return FileResponse(os.path.join(ROOT, "dashboard", "admin.html"))
+
+
+@app.get("/login")
+def login_page():
+    return FileResponse(os.path.join(ROOT, "dashboard", "login.html"))
+
+
+@app.post("/api/login")
+async def login(request: Request, body: dict = Body(...)):
+    u, err = auth.check_password((body or {}).get("username", ""), (body or {}).get("password", ""), _ip(request))
+    if not u:
+        db.audit((body or {}).get("username"), None, "login_failed", None, err, _ip(request))
+        raise HTTPException(401, err)
+    db.audit(u["user"], u["role"], "login", None, None, _ip(request))
+    r = JSONResponse({"ok": True, "user": u["user"], "role": u["role"]})
+    r.set_cookie(auth.COOKIE, auth.make_token(u["user"], u["role"]), httponly=True, samesite="lax", max_age=auth.TTL_S)
+    return r
+
+
+@app.post("/api/logout")
+async def logout(request: Request):
+    u = current_user(request)
+    if u.get("user"):
+        db.audit(u["user"], u["role"], "logout", None, None, _ip(request))
+    r = JSONResponse({"ok": True})
+    r.delete_cookie(auth.COOKIE)
+    return r
+
+
+@app.get("/api/me")
+def me(request: Request):
+    u = current_user(request)
+    return {"user": u.get("user"), "role": u.get("role"), "auth": auth.enabled()}
+
+
+# ---------- AI assistant (section 3) ----------
+@app.post("/api/assistant")
+async def ask(request: Request, body: dict = Body(...)):
+    q = ((body or {}).get("question") or "").strip()
+    if not q:
+        raise HTTPException(400, "ask a question, e.g. 'What happened yesterday at 4 PM?'")
+    u = current_user(request)
+    sec = notify.load_secrets().get("assistant") or {}
+    workers = db.q("SELECT worker_id, name FROM workers")
+    res = await asyncio.to_thread(assistant.answer, q[:500], u.get("user") or "?", u.get("role") or "viewer",
+                                  workers, ZONES, CAMERAS, None, sec.get("anthropic_api_key") or None,
+                                  sec.get("model"))
+    perf.add("assistant_ms", res["ms"])
+    db.audit(u.get("user"), u.get("role"), "assistant_query", None, q[:200], _ip(request))
+    return res
+
+
+# ---------- history search (section 10) ----------
+@app.get("/api/events/search")
+def search_events(request: Request, start: float = None, end: float = None, type: str = None, zone: str = None,
+                  camera: str = None, worker: str = None, severity: str = None, status: str = None,
+                  limit: int = 200):
+    sql, args = "SELECT * FROM events WHERE 1=1", []
+    if start:
+        sql += " AND started_at >= ?"
+        args.append(start)
+    if end:
+        sql += " AND started_at <= ?"
+        args.append(end)
+    for col, val in (("type", type), ("zone_id", zone), ("camera_id", camera), ("worker_id", worker),
+                     ("severity", severity), ("status", status)):
+        if val:
+            vals = val.split(",")
+            sql += f" AND {col} IN ({','.join('?' * len(vals))})"
+            args += vals
+    sql += " ORDER BY started_at DESC LIMIT ?"
+    args.append(min(limit, 1000))
+    rows = [db.row_to_event(r) for r in db.q(sql, args)]
+    if current_user(request).get("role") == "viewer":
+        rows = [auth.mask_event(r) for r in rows]
+    return rows
+
+
+@app.get("/api/events/{event_id}")
+def get_one_event(event_id: str, request: Request):
+    e = db.get_event(event_id)
+    if not e:
+        raise HTTPException(404, "event not found")
+    e["notifications"] = db.q("SELECT id, channel, recipient, status, attempts, provider_status, error, queued_at, "
+                              "finished_at, latency_ms FROM notifications WHERE event_id=? ORDER BY id", (event_id,))
+    return auth.mask_event(e) if current_user(request).get("role") == "viewer" else e
+
+
+@app.get("/api/entrance")
+def entrance_list(request: Request, limit: int = 30):
+    rows = [entrance_payload(db.row_to_event(r)) for r in
+            db.q("SELECT * FROM events WHERE type='entrance_check' ORDER BY started_at DESC LIMIT ?", (min(limit, 200),))]
+    if current_user(request).get("role") == "viewer":
+        rows = [dict(r, worker_id=None, worker_name=None, snapshot=None) for r in rows]
+    return rows
+
+
+# ---------- location (section 6, software side) ----------
+@app.get("/api/location")
+def get_location():
+    return location.status()
+
+
+@app.post("/api/location/device")
+async def device_location(request: Request, body: dict = Body(...)):
+    """Browser geolocation of the dashboard device (needs the user's permission in the browser)."""
+    ok, msg = location.record("device", body.get("lat"), body.get("lon"), body.get("accuracy_m"),
+                              (body.get("at") or time.time() * 1000) / 1000.0, device_id=_ip(request))
+    if not ok:
+        raise HTTPException(400, msg)
+    await broadcast("location", location.status())
+    return location.status()
+
+
+@app.post("/api/location/hardware")
+async def hardware_location(body: dict = Body(...)):
+    """Ready for the hardware GPS / GSM unit: {device_id, lat, lon, accuracy_m, fix: true, at: unix seconds}."""
+    if body.get("fix") is False:
+        raise HTTPException(400, "no GPS fix - reading not stored")
+    ok, msg = location.record("hardware", body.get("lat"), body.get("lon"), body.get("accuracy_m"), body.get("at"),
+                              device_id=body.get("device_id"))
+    if not ok:
+        raise HTTPException(400, msg)
+    await broadcast("location", location.status())
+    return {"ok": True}
+
+
+# ---------- performance (section 7) ----------
+@app.get("/api/perf")
+def get_perf(window_s: float = None):
+    st = EDGE["state"] or {}
+    return {"metrics": perf.summary(window_s), "edge": {"engine": st.get("engine"), "runtime": st.get("runtime"),
+            "cameras": {c["camera_id"]: dict(c.get("latency") or {}, fps=c.get("fps"), status=c.get("status"))
+                        for c in st.get("cameras", [])}} if time.time() - EDGE["at"] < 5 else None,
+            "notifications": notify.status()}
+
+
+@app.post("/api/perf/client")
+async def client_perf(body: dict = Body(...)):
+    """The dashboard reports what the operator actually sees: picture age and event arrival delay."""
+    for k in ("preview_age_ms", "dashboard_event_ms"):
+        for v in (body.get(k) or [])[:200]:
+            perf.add(k, v)
+    return {"ok": True}
+
+
+# ---------- notifications (section 5) ----------
+@app.get("/api/notify/status")
+def notify_status():
+    return notify.status()
+
+
+@app.post("/api/notify/test")
+async def notify_test(request: Request, body: dict = Body(default=None)):
+    """Admin: send a clearly-marked TEST message on the chosen channels and log the provider result."""
+    chans = (body or {}).get("channels") or ["telegram", "call", "sms", "email"]
+    now = time.time()
+    eid = "test_" + str(int(now))
+    db.x("INSERT INTO events (event_id, type, items_missing, severity, zone_id, zone_name, camera_id, started_at, "
+         "received_at, status, updated_at, ended_at, end_reason, location) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+         (eid, "test", "[]", "Low", None, "TEST - no incident", None, now, now, "closed", now, now, "notification test",
+          json.dumps(location.current(None, None, now))))
+    e = db.get_event(eid)
+    rows = await asyncio.to_thread(notify.enqueue, e, "TEST MESSAGE - please ignore", None, "test", chans)
+    u = current_user(request)
+    db.audit(u.get("user"), u.get("role"), "notify_test", eid, ",".join(chans), _ip(request))
+    return {"event_id": eid, "queued": rows}
+
+
+# ---------- system health (section 10) ----------
+def system_health():
+    now = time.time()
+    comps = []
+    def add(name, state, msg):
+        comps.append({"name": name, "state": state, "message": msg})
+    edge_alive = now - EDGE["at"] < 5
+    add("Edge AI computer", "ok" if edge_alive else "fail",
+        (EDGE["state"] or {}).get("runtime", "running") if edge_alive else "not reporting - live detection stopped")
+    for c in cameras_payload()["cameras"]:
+        st = c["status"]
+        add(f"Camera {c['camera_id']} ({c['name']})", "ok" if st == "ONLINE" else "off" if st in ("OFF", "STANDBY")
+            else "warn" if st == "DEGRADED" else "fail", f"{st} - {c.get('detail') or ''} {c.get('fps') or 0} fps".strip())
+    ok, msg = db.health()
+    add("Database", "ok" if ok else "fail", msg)
+    ns = notify.status()
+    for ch, v in ns["channels"].items():
+        last = v.get("last") or {}
+        if not v["configured"]:
+            add(f"Alerts: {ch}", "warn", "NOT CONFIGURED - messages are not sent on this channel")
+        elif last.get("status") == "failed":
+            add(f"Alerts: {ch}", "fail", f"last attempt failed: {last.get('error') or ''}"[:160])
+        else:
+            add(f"Alerts: {ch}", "ok", f"ready{' - last ' + last['status'] if last.get('status') else ''}")
+    if ns["queue"]:
+        add("Alert queue", "warn" if ns["queue"] > 5 else "ok", f"{ns['queue']} message(s) waiting / being retried")
+    pend = (EDGE["state"] or {}).get("outbox_pending")
+    if pend:
+        add("Edge offline buffer", "warn", f"{pend} alert(s) waiting to reach this server")
+    try:
+        for d in (hw_api.state(light=True).get("devices") or []):
+            add(f"Safety station {d.get('device_id')}", "ok" if d.get("online") else "warn",
+                "online" if d.get("online") else "offline - camera alerts go ahead without hardware check")
+    except Exception:                          # noqa: BLE001
+        pass
+    loc = location.current(now=now)
+    add("Location", "ok" if loc["valid"] else "warn", loc["note"] + ("; " + "; ".join(loc.get("warnings") or [])
+                                                                     if loc.get("warnings") else ""))
+    try:
+        import shutil
+        free = shutil.disk_usage(DATA_DIR).free / 1e9
+        add("Disk", "ok" if free > 2 else "warn", f"{free:.1f} GB free")
+    except OSError:
+        pass
+    worst = "fail" if any(c["state"] == "fail" for c in comps) else "warn" if any(c["state"] == "warn" for c in comps) else "ok"
+    return {"at": now, "state": worst, "components": comps}
+
+
+@app.get("/api/health")
+def get_health():
+    return system_health()
+
+
+@app.get("/api/audit")
+def audit_log(limit: int = 100):
+    return db.q("SELECT * FROM audit_log ORDER BY at DESC LIMIT ?", (min(limit, 1000),))
+
+
+@app.get("/api/users")
+def users_list():
+    return [{"user": n, "role": u["role"], "changed_at": u.get("changed_at")} for n, u in auth.load_users().items()]
 
 
 @app.get("/hardware")

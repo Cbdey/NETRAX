@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NETRAX Sign in</title>
+<style>
+:root{--bg:#0d1b22;--card:#13262f;--ink:#e8f1f2;--muted:#8fa6ad;--teal:#14b8a6;--line:#24414b;--red:#f87171}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);
+  font:16px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;padding:16px}
+.box{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.logo{width:44px;height:44px;border-radius:10px;background:var(--teal);color:#05201c;display:grid;place-items:center;font-weight:800;font-size:22px}
+h1{margin:0;font-size:24px;letter-spacing:.06em}
+p.tag{margin:0 0 22px;color:var(--muted);font-size:13px;letter-spacing:.12em}
+label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
+input{width:100%;padding:12px 14px;font:inherit;color:var(--ink);background:#0b171d;border:1px solid var(--line);border-radius:8px}
+input:focus{outline:2px solid var(--teal);outline-offset:1px}
+button{margin-top:22px;width:100%;padding:13px;border:0;border-radius:8px;background:var(--teal);color:#05201c;font:inherit;font-weight:700;cursor:pointer}
+button:disabled{opacity:.6}
+.err{color:var(--red);min-height:24px;margin-top:12px;font-size:14px}
+.note{color:var(--muted);font-size:12px;margin-top:10px}
+</style>
+</head>
+<body>
+<form class="box" id="f">
+  <div class="brand"><div class="logo">N</div><h1>NETRAX</h1></div>
+  <p class="tag">SEE. SENSE. SAFEGUARD.</p>
+  <label for="u">User name</label><input id="u" autocomplete="username" required autofocus>
+  <label for="p">Password</label><input id="p" type="password" autocomplete="current-password" required>
+  <button id="b" type="submit">Sign in</button>
+  <div class="err" id="e" role="alert"></div>
+  <div class="note">Roles: viewer (live view, names hidden) · supervisor (acknowledge, resolve, assistant) · admin (workers, alerts setup).</div>
+</form>
+<script>
+document.getElementById("f").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const b = document.getElementById("b"), e = document.getElementById("e");
+  b.disabled = true; e.textContent = "";
+  try {
+    const r = await fetch("/api/login", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({username: document.getElementById("u").value.trim(), password: document.getElementById("p").value})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || "Sign in failed");
+    const next = new URLSearchParams(location.search).get("next");
+    location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  } catch (x) { e.textContent = x.message; b.disabled = false; }
+});
+</script>
+</body>
+</html>

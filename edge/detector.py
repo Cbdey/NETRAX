@@ -24,21 +24,33 @@ def pick_device(pref):
     return "cpu"
 
 
+def load_model(p, runtime="pytorch"):
+    """runtime 'tensorrt': use <model>.engine next to the .pt when tools/export_engines.py made one
+    (FP32, dynamic batch - GTX 16xx safe). Anything missing -> the .pt file (always works)."""
+    if runtime == "tensorrt" and str(p).endswith(".pt"):
+        eng = str(p)[:-3] + ".engine"
+        if os.path.exists(eng):
+            print(f"[detector] TensorRT engine {os.path.basename(eng)}")
+            return YOLO(eng, task=None)
+    return YOLO(p)
+
+
 class Detector:
     def __init__(self, s):
         m = s["models"]
         self.imgsz = m["imgsz"]
         self.device = pick_device(m.get("device", "auto"))
-        self.ppe = YOLO(path(m["ppe"]))
+        self.runtime = m.get("runtime", "pytorch")
+        self.ppe = load_model(path(m["ppe"]), self.runtime)
         fire_path = self._pick(m["fire"], m.get("fire_fallback"))
-        self.fire = YOLO(fire_path)
+        self.fire = load_model(fire_path, self.runtime)
         print(f"[detector] PPE main {m['ppe']} | fire {os.path.basename(fire_path)}")
         # v3 hybrid: an auxiliary model (ppe_v3*) supplies the classes in aux_items (gloves, goggles and the
         # body parts used as evidence); the main model keeps everything else (helmet, vest, mask).
         self.aux, self.aux_items = None, set(m.get("aux_items") or [])
         aux = m.get("ppe_aux")
         if aux and os.path.exists(path(aux)):
-            self.aux = YOLO(path(aux))
+            self.aux = load_model(path(aux), self.runtime)
             print(f"[detector] aux PPE model {aux}: {sorted(self.aux_items)}")
         elif aux:
             print(f"[detector] aux PPE model {aux} not found - running main PPE model only")
@@ -65,7 +77,7 @@ class Detector:
             if pm == "pose":     # persons + 17 body keypoints in one pass (COCO-pretrained YOLOv8n-pose)
                 try:
                     local = path("models", "yolov8n-pose.pt")
-                    self.person = YOLO(local if os.path.exists(local) else "yolov8n-pose.pt")
+                    self.person = load_model(local, self.runtime) if os.path.exists(local) else YOLO("yolov8n-pose.pt")
                     self.pose = True
                 except Exception as e:
                     print(f"[detector] pose model unavailable ({e!r}) - using the COCO person detector")
@@ -167,3 +179,67 @@ class Detector:
     def fire_detect(self, frame):
         dets = self._run(self.fire, frame, self.min_fire)
         return [d for d in dets if d["conf"] >= self.fire_conf.get(d["cls"], 1.0)]
+
+    # ------------------------------------------------------------------ batched (edge/engine.py)
+    def _run_many(self, model, frames, conf, classes=None, pose=False):
+        """One predict call for the newest frame of several cameras (GPU batch) -> list per frame."""
+        if not frames:
+            return []
+        res = model.predict(list(frames), imgsz=self.imgsz, conf=conf, device=self.device,
+                            classes=classes, verbose=False)
+        out = []
+        for r in res:
+            dets = []
+            if r.boxes is not None and len(r.boxes):
+                kps = r.keypoints.data.tolist() if (pose and r.keypoints is not None) else [None] * len(r.boxes)
+                for b, c, k, kp in zip(r.boxes.xyxy.tolist(), r.boxes.conf.tolist(), r.boxes.cls.tolist(), kps):
+                    d = {"cls": "person" if pose else model.names[int(k)], "conf": float(c), "bbox": b}
+                    if pose:
+                        d["kps"] = kp
+                    dets.append(d)
+            out.append(dets)
+        return out
+
+    def detect_batch(self, frames, fire_flags):
+        """frames: list of BGR images (one per camera); fire_flags: run the fire model on that frame?
+        Returns one dict per frame: persons, items, parts, fire (None when not run), timings_ms."""
+        import time as _t
+        n = len(frames)
+        t0 = _t.perf_counter()
+        main = self._run_many(self.ppe, frames, self.min_ppe if self.person else min(self.ppe_conf.values()))
+        aux = self._run_many(self.aux, frames, self.min_ppe) if self.aux is not None else [[] for _ in range(n)]
+        t1 = _t.perf_counter()
+        if self.person is not None and self.pose:
+            persons = self._run_many(self.person, frames, self.ppe_conf["person"], classes=[0], pose=True)
+        elif self.person is not None:
+            persons = self._run_many(self.person, frames, self.ppe_conf["person"], classes=[0])
+        else:
+            persons = [[d for d in m if d["cls"] == "person" and d["conf"] >= self.ppe_conf["person"]] for m in main]
+        t2 = _t.perf_counter()
+        fire_idx = [i for i in range(n) if fire_flags[i]]
+        fire_res = self._run_many(self.fire, [frames[i] for i in fire_idx], self.min_fire)
+        fire = [None] * n
+        for i, dets in zip(fire_idx, fire_res):
+            fire[i] = [d for d in dets if d["conf"] >= self.fire_conf.get(d["cls"], 1.0)]
+        t3 = _t.perf_counter()
+        out = []
+        for i in range(n):
+            dets = main[i]
+            if self.aux is not None:
+                dets = [d for d in dets if d["cls"] not in self.aux_items] + \
+                       [d for d in aux[i] if d["cls"] in self.aux_items]
+            kept = [d for d in dets if d["cls"] != "person"
+                    and d["conf"] >= self.ppe_conf.get(d["cls"], self.default_conf)]
+            parts = [d for d in kept if d["cls"] in BODY_PARTS]
+            items = [d for d in kept if d["cls"] not in BODY_PARTS and d["cls"] != "boots"]
+            if self.shoe is not None:
+                items += self.classify_shoes(frames[i], [d for d in parts if d["cls"] == "foot"])
+            for p in persons[i]:
+                p["cls"] = "person"
+            out.append({"persons": persons[i], "items": items, "parts": parts, "fire": fire[i]})
+        t4 = _t.perf_counter()
+        tm = {"ppe_ms": (t1 - t0) * 1000, "person_ms": (t2 - t1) * 1000, "fire_ms": (t3 - t2) * 1000,
+              "shoe_ms": (t4 - t3) * 1000, "total_ms": (t4 - t0) * 1000, "batch": n}
+        for o in out:
+            o["timings"] = tm
+        return out
