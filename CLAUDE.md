@@ -204,3 +204,13 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
 - Tests: python -m tools.final_selftest -> ALL FINAL TESTS PASSED (acceptance 01-14 with fake providers, auth, engine,
   edge pipeline) and writes docs/eval/final_selftest.md. Older selftests still pass.
 - Hardware (GSM module, lock/turnstile controller) deliberately NOT done yet (user: software first).
+- 29 Oct evening (user: "new missing item got no alarm/message; detect PPE off within ~1 s; bigger cameras; better admin"):
+  backend main: update whose item list GROWS -> voice "Also missing: X" + notify_async("more PPE missing: X") (one per new
+  set); same list / items put back -> silent. SPOKEN = (time, items). edge state_machine: by_risk high 6/10 + 0.4 s grace +
+  0.4 s settle (~1.4 s after PPE off); _decide waits <= evidence_wait_s 1.5 for items PENDING/onset and (first look) unseen
+  body parts -> first alarm complete. Tests never read real secrets / never send (SENTINELEYE_SECRETS, SENTINELEYE_NO_NOTIFY).
+  Control room (index.html): live summary band (incidents, fire, cameras, RFID inside, compliance, alerts today), one-line
+  health strip + Details, acknowledged list -> one strip + "Show list", camera wall 3:1, views Grid / Focus (alarm camera
+  leads, click a small one to lead; ?view=big) / Full screen. Admin (admin.html, rewritten): sidebar app - Overview, Incidents
+  (search /api/events/search + export), Workers (cards), Alerts & channels (status, test, delivery log), Cameras & zones,
+  Users & audit, System health. Originals: _to_delete/before_ui_29oct/. Phone call/SMS still OFF in notify.yaml (team).

@@ -83,8 +83,33 @@ body.emergency header{background:var(--crit-bg);border-color:var(--crit)}
 .overlay .acts{display:flex;gap:12px;flex-wrap:wrap}
 .overlay .btn{font-size:20px;padding:14px 24px;background:#fff;color:#7f0a0a;border:0}
 .overlay .btn.ghost{background:transparent;color:#fff;border:2px solid #fff}
+/* ---------- 29 Oct: live summary band, compact strips, camera view modes ---------- */
+[hidden]{display:none!important}
+.kband{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-top:12px}
+.kb{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;position:relative;overflow:hidden;cursor:default}
+.kb::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--c,var(--teal))}
+.kb small{display:block;color:var(--muted);font-size:13px;font-weight:700}
+.kb b{display:block;font-size:28px;line-height:1.15;font-variant-numeric:tabular-nums}
+.kb span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb.hot{background:var(--crit-bg)} .kb.hot b{color:var(--crit)} .kb.warm{background:var(--warn-bg)} .kb.warm b{color:var(--warn)}
+.kb.click{cursor:pointer}.kb.click:hover{filter:brightness(1.1)}
+.strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-radius:var(--r);padding:10px 16px;border:2px solid var(--info);background:var(--info-bg);font-size:16px}
+.strip b{font-size:17px}.strip .grow{flex:1}
+.healthbar .hline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.healthbar .hdet{margin-top:6px;display:none}.healthbar.open .hdet{display:block}
+.camtools{display:flex;gap:6px;align-items:center}
+.vbtn{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:8px;padding:5px 11px;font-weight:700;font-size:13px;cursor:pointer}
+.vbtn[aria-pressed="true"]{background:var(--teal);color:#05201c;border-color:var(--teal)}
+.cams.big{grid-template-columns:repeat(3,minmax(0,1fr))}
+.cams.big .cam.lead{grid-column:1/-1}
+.cams.big .cam:not(.lead) .name{font-size:16px}.cams.big .cam:not(.lead) .badge{font-size:15px;padding:5px 9px}
+.cams.big .cam.lead .name{font-size:24px}.cams.big .cam.lead .badge{font-size:26px;padding:10px 16px}
+#camPanel:fullscreen{overflow:auto;background:var(--bg);padding:14px}
+#camPanel:fullscreen .cams:not(.big){grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:1250px){.kband{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:700px){.kband{grid-template-columns:repeat(2,minmax(0,1fr))}.cams.big{grid-template-columns:1fr}}
 /* ---------- layout ---------- */
-.main{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(380px,1fr);gap:16px;margin-top:14px;align-items:start}
+.main{display:grid;grid-template-columns:minmax(0,3fr) minmax(360px,1fr);gap:16px;margin-top:14px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
 .panel h2{margin:0 0 10px;font-size:19px;display:flex;align-items:center;gap:10px}
 .panel h2 .sp{flex:1}
@@ -197,13 +222,22 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
   <span class="chip" id="userChip">…</span>
   <button class="btn" id="logoutBtn" style="font-size:13px;padding:6px 10px">Sign out</button>
 </header>
+<section class="kband" aria-label="Live summary">
+  <div class="kb click" id="kbInc" style="--c:var(--crit)" data-tab="active"><small>▲ Active incidents</small><b id="kbIncN">–</b><span id="kbIncS">open or escalated</span></div>
+  <div class="kb" id="kbFire" style="--c:var(--warn)"><small>🔥 Fire / smoke</small><b id="kbFireN">–</b><span id="kbFireS">no fire detected</span></div>
+  <div class="kb" style="--c:var(--info)"><small>◧ Cameras live</small><b id="kbCamN">–</b><span id="kbCamS">waiting for edge</span></div>
+  <div class="kb" id="kbIn" style="--c:#a78bfa"><small>👷 In restricted zone</small><b id="kbInN">–</b><span id="kbInS">RFID check-ins</span></div>
+  <div class="kb" style="--c:var(--ok)"><small>✓ PPE compliance</small><b id="kbCompN">–</b><span>items seen worn, this session</span></div>
+  <div class="kb" id="kbMsg" style="--c:var(--teal)"><small>✉ Alerts sent today</small><b id="kbMsgN">–</b><span id="kbMsgS">provider-confirmed</span></div>
+</section>
 <div class="healthbar" id="healthbar" role="status"></div>
 <div class="alertzone" id="alertzone" aria-live="assertive"></div>
 
 <div class="main">
   <div class="stack">
-    <section class="panel" aria-label="Camera feeds">
+    <section class="panel" aria-label="Camera feeds" id="camPanel">
       <h2>Live cameras <span class="sp"></span><span class="small" id="camSummary"></span>
+        <span class="camtools" role="group" aria-label="Camera view"><button class="vbtn" data-view="grid" aria-pressed="true">▦ Grid</button><button class="vbtn" data-view="big" aria-pressed="false">▣ Focus</button><button class="vbtn" id="fsBtn">⛶ Full screen</button></span>
         <button class="btn" id="unfocus" hidden>Show all cameras</button></h2>
       <div class="cams" id="cams"></div>
     </section>
@@ -396,8 +430,9 @@ function renderAlertZone(){
     }
     h += `</div></div>`;
   }
-  if (acked.length) h += `<div class="bigpanel ack"><div><h2 style="font-size:20px">◐ ${acked.length} acknowledged violation${acked.length>1?"s":""} — awaiting resolution</h2>
-    <div class="facts">${acked.map(e => `<span>${esc(title(e))} · ${esc(e.zone_name)} · ${fmtT(e.started_at, false)}</span>`).join("")}</div></div></div>`;
+  if (acked.length) h += `<div class="strip" role="status"><b>◐ ${acked.length} acknowledged violation${acked.length>1?"s":""} — awaiting resolution</b>
+    <span class="small">newest: ${esc(title(acked.sort((a,b) => b.started_at - a.started_at)[0]))} · ${esc(acked[0].zone_name || "")} · ${fmtT(acked[0].started_at, false)}</span>
+    <span class="grow"></span><button class="btn" data-tab="ack">Show list</button></div>`;
   const az = $("alertzone"); const sig = h; if (az.dataset.sig !== sig){ az.innerHTML = h; az.dataset.sig = sig; }
   // Level 3 overlay
   const l3 = fires.find(e => (e.fire_level||0) >= 3 && e.status !== "acknowledged" && e.status !== "verifying" && !EVAC_MIN.has(e.event_id));
@@ -416,18 +451,29 @@ function renderAlertZone(){
 }
 
 /* ---------- cameras ---------- */
+let VIEW = new URLSearchParams(location.search).get("view") || (() => { try { return localStorage.getItem("netrax-cam-view") || "grid"; } catch { return "grid"; } })(), LEAD = null;
+function leadCam(cams){
+  // Focus view: the camera with an active alarm leads (fire first), else the one picked, else the first live one
+  const live = c => c.status === "ONLINE" || c.status === "DEGRADED";
+  const alarm = cams.filter(c => c.badge && !/APPROVED/.test(c.badge)).sort((a,b) => (/FIRE|SMOKE/i.test(b.badge) - /FIRE|SMOKE/i.test(a.badge)));
+  return (alarm[0] || cams.find(c => c.camera_id === LEAD) || cams.find(live) || cams[0] || {}).camera_id;
+}
 function renderCams(){
-  const cams = (CAMS.cameras || []);
+  const cams0 = (CAMS.cameras || []);
+  const lead = VIEW === "big" && !FOCUS ? leadCam(cams0) : null;
+  const cams = lead ? [cams0.find(c => c.camera_id === lead)].concat(cams0.filter(c => c.camera_id !== lead)) : cams0;
   const shown = FOCUS ? cams.filter(c => c.camera_id === FOCUS) : cams;
   $("unfocus").hidden = !FOCUS;
   $("cams").classList.toggle("focus", !!FOCUS);
+  $("cams").classList.toggle("big", !!lead);
+  document.querySelectorAll(".vbtn[data-view]").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === VIEW));
   const on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED").length;
   $("camSummary").textContent = `${on} of ${cams.filter(c => c.status !== "OFF").length} cameras live` + (CAMS.edge_online ? "" : " · EDGE OFFLINE");
-  const sig = JSON.stringify([FOCUS, shown.map(c => [c.camera_id, c.status === "ONLINE" || c.status === "DEGRADED"])]);
+  const sig = JSON.stringify([FOCUS, lead, shown.map(c => [c.camera_id, c.status === "ONLINE" || c.status === "DEGRADED"])]);
   if ($("cams").dataset.sig !== sig){
     $("cams").innerHTML = shown.map(c => {
       const live = c.status === "ONLINE" || c.status === "DEGRADED";
-      return `<div class="cam" id="cam_${c.camera_id}"><div class="screen">
+      return `<div class="cam${c.camera_id === lead ? " lead" : ""}" id="cam_${c.camera_id}" ${lead && c.camera_id !== lead ? `data-lead="${c.camera_id}" title="Click to make this the large camera" style="cursor:pointer"` : ""}><div class="screen">
         <div class="top"><div><div class="name">${esc(c.name)}${c.role === "entrance" ? " · PPE GATE" : ""}<span class="risk ${c.risk}">${esc(String(c.risk||"").toUpperCase())} RISK</span></div>
           <div class="zone">${esc(c.camera_id)} · ${esc(c.zone_name)}</div></div><span class="st" id="st_${c.camera_id}"></span></div>
         ${live ? `<img data-live="${c.camera_id}" alt="Live view ${esc(c.name)}">` : `<span id="off_${c.camera_id}"></span>`}
@@ -445,11 +491,46 @@ function renderCams(){
     const b = c.badge || "";
     bd.hidden = !b; bd.textContent = b ? (/APPROVED/.test(b) ? "✓ " : /MANUAL|verifying/i.test(b) ? "⚠ " : "▲ ") + b : "";
     bd.className = "badge" + (/APPROVED/.test(b) ? " ok" : /MANUAL|verifying/i.test(b) ? " warn" : "");
-    box.className = "cam " + (c.status === "OFFLINE" ? "off" : c.status === "OFF" || c.status === "STANDBY" ? "off" : b ? (/APPROVED/.test(b) ? "ok" : /MANUAL|verifying/i.test(b) ? "warn" : "alert") : "ok");
+    box.className = "cam " + (c.camera_id === lead ? "lead " : "") + (c.status === "OFFLINE" ? "off" : c.status === "OFF" || c.status === "STANDBY" ? "off" : b ? (/APPROVED/.test(b) ? "ok" : /MANUAL|verifying/i.test(b) ? "warn" : "alert") : "ok");
   }
 }
 document.addEventListener("click", ev => { const f = ev.target.closest("[data-focus]"); if (!f) return; FOCUS = FOCUS ? null : f.dataset.focus; renderCams(); });
 $("unfocus").onclick = () => { FOCUS = null; renderCams(); };
+document.querySelectorAll(".vbtn[data-view]").forEach(b => b.onclick = () => { VIEW = b.dataset.view; FOCUS = null;
+  try { localStorage.setItem("netrax-cam-view", VIEW); } catch {} renderCams(); });
+document.addEventListener("click", ev => { const l = ev.target.closest("[data-lead]"); if (!l || ev.target.closest("[data-focus]")) return; LEAD = l.dataset.lead; renderCams(); });
+$("fsBtn").onclick = () => { const p = $("camPanel"); if (document.fullscreenElement) document.exitFullscreen(); else if (p.requestFullscreen) p.requestFullscreen().catch(() => {}); };
+document.addEventListener("fullscreenchange", () => { $("fsBtn").textContent = document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen"; });
+/* Show list / KPI click -> incidents tab */
+document.addEventListener("click", ev => { const t = ev.target.closest("[data-tab]"); if (!t) return;
+  const tab = document.querySelector(`.tab[data-f="${t.dataset.tab}"]`); if (tab){ tab.click(); $("incidents").scrollIntoView({behavior:"smooth", block:"start"}); } });
+
+/* ---------- live summary band (29 Oct) ---------- */
+let PRESENT = [], ANALYTICS = null;
+function setKb(id, v){ const el = $(id); const s = String(v); if (el.textContent !== s) el.textContent = s; }
+function renderBand(){
+  const evs = [...EVENTS.values()];
+  const act = evs.filter(e => ACTIVE.has(e.status) && e.type !== "test" && !(e.type === "entrance_check"));
+  setKb("kbIncN", act.length); $("kbInc").classList.toggle("hot", act.length > 0);
+  $("kbIncS").textContent = act.length ? act.slice(0, 2).map(title).join(" · ") : "all clear";
+  const fires = evs.filter(e => fireActive(e) && e.status !== "verifying"), lvl = Math.max(0, ...fires.map(e => e.fire_level || 2));
+  setKb("kbFireN", fires.length ? `LEVEL ${lvl}` : "CLEAR");
+  $("kbFire").classList.toggle("hot", lvl >= 2); $("kbFire").classList.toggle("warm", lvl === 1);
+  $("kbFireS").textContent = fires.length ? fires.map(e => `${e.type} · ${e.zone_name || e.zone_id}`).join(" · ") : (evs.some(e => e.status === "verifying") ? "checking a possible fire…" : "no fire or smoke");
+  const cams = CAMS.cameras || [], on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED");
+  setKb("kbCamN", `${on.length} / ${cams.filter(c => c.status !== "OFF").length}`);
+  $("kbCamS").textContent = CAMS.edge_online ? (on.length ? on.map(c => `${c.camera_id} ${c.fps} fps`).join(" · ") : "no camera picture") : "edge computer offline";
+  setKb("kbInN", PRESENT.length);
+  const bad = PRESENT.filter(p => p.access === "DENIED");
+  $("kbIn").classList.toggle("hot", bad.length > 0);
+  $("kbInS").textContent = PRESENT.length ? PRESENT.map(p => p.name + (p.access === "DENIED" ? " ⚠" : "")).join(", ") : "nobody checked in";
+  setKb("kbCompN", ANALYTICS && ANALYTICS.compliance_rate != null ? ANALYTICS.compliance_rate + "%" : "–");
+  const day0 = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
+  const today = [...NOTIFS.values()].filter(n => (n.queued_at || n.at) >= day0 && n.event_id && !String(n.event_id).startsWith("test_"));
+  const ok = today.filter(n => n.status === "delivered" || n.status === "sent").length, failed = today.filter(n => n.status === "failed").length;
+  setKb("kbMsgN", ok); $("kbMsg").classList.toggle("warm", failed > 0);
+  $("kbMsgS").textContent = failed ? `${failed} failed today — see Alert delivery` : "Telegram + e-mail, provider-confirmed";
+}
 
 /* live pictures: one loop per camera, newest frame only; measures picture age with the server clock */
 const FRAME_AGE = {}, LOOPS = new Set();
@@ -607,8 +688,16 @@ function renderHealth(){
   const hc = $("healthChip"); hc.className = "chip " + (fails.length ? "fail" : bad.length ? "warn" : "ok");
   hc.textContent = fails.length ? `✖ ${fails.length} fault${fails.length>1?"s":""}` : bad.length ? `⚠ ${bad.length} warning${bad.length>1?"s":""}` : "✓ all systems";
   const hb = $("healthbar"); const important = bad.filter(c => c.state === "fail" || /Edge|Camera|Database|queue|offline/i.test(c.name + c.message));
-  hb.className = "healthbar" + (important.length ? " show " + (fails.length ? "fail" : "warn") : "");
-  hb.innerHTML = important.map(c => `<div><b>${c.state === "fail" ? "✖" : "⚠"} ${esc(c.name)}:</b>${esc(c.message)}</div>`).join("");
+  const open = hb.classList.contains("open");
+  hb.className = "healthbar" + (important.length ? " show " + (important.some(c => c.state === "fail") ? "fail" : "warn") : "") + (open ? " open" : "");
+  // one readable line (what is wrong), details on demand - the full list no longer pushes the cameras down
+  const short = important.slice(0, 3).map(c => `${c.state === "fail" ? "✖" : "⚠"} ${esc(c.name.replace(/^Camera /, ""))}: ${esc(c.message.split(" - ")[0])}`).join(" · ");
+  const nf = important.filter(c => c.state === "fail").length, nw = important.length - nf;
+  const cnt = [nf ? `${nf} fault${nf>1?"s":""}` : "", nw ? `${nw} warning${nw>1?"s":""}` : ""].filter(Boolean).join(" · ");
+  hb.innerHTML = important.length ? `<div class="hline"><b>${nf ? "✖" : "⚠"} ${cnt}</b><span>${short}${important.length > 3 ? ` · +${important.length - 3} more` : ""}</span>
+      <span class="sp" style="flex:1"></span><button class="btn" id="hbToggle" style="font-size:13px;padding:4px 10px">${open ? "Hide details" : "Details"}</button></div>
+    <div class="hdet">${important.map(c => `<div><b>${c.state === "fail" ? "✖" : "⚠"} ${esc(c.name)}:</b> ${esc(c.message)}</div>`).join("")}</div>` : "";
+  const tg = $("hbToggle"); if (tg) tg.onclick = () => { hb.classList.toggle("open"); tg.textContent = hb.classList.contains("open") ? "Hide details" : "Details"; };
   const chans = HEALTH.components.filter(c => c.name.startsWith("Alerts:"));
   $("chanState").textContent = chans.filter(c => c.state === "ok").length + " of " + chans.length + " channels ready";
 }
@@ -684,16 +773,17 @@ function upsert(e){
     if (cap && now - cap < 60) PERF.dashboard_event_ms.push(Math.round((now - cap) * 1000)); }
   if (isNew && SEEN.size && (isEmergencyPPE(e) || (fireActive(e) && e.status !== "verifying"))) alarmTone();
   SEEN.add(e.event_id);
-  renderIncidents(); renderAlertZone();
+  renderIncidents(); renderAlertZone(); renderBand();
 }
 function connect(){
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
   ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
     if (kind === "event") upsert(data);
-    else if (kind === "cameras"){ CAMS = data; renderCams(); }
+    else if (kind === "cameras"){ CAMS = data; renderCams(); renderBand(); }
     else if (kind === "health"){ HEALTH = data; renderHealth(); }
+    else if (kind === "attendance"){ toast(data.access === "DENIED" && data.event === "ENTERED" ? "⚠ NOT AUTHORISED (RFID)" : "RFID " + (data.event || ""), data.message || ""); refreshSlow(); }
     else if (kind === "location"){ LOC = data; renderLoc(); }
-    else if (kind === "notification"){ NOTIFS.set(data.id, Object.assign(NOTIFS.get(data.id) || {}, data)); renderNotifs();
+    else if (kind === "notification"){ NOTIFS.set(data.id, Object.assign(NOTIFS.get(data.id) || {}, data)); renderNotifs(); renderBand();
       if (data.status === "failed") toast(`${CH[data.channel] || data.channel} failed`, `${data.event_id}: ${data.error || ""}`, "crit"); }
     else if (kind === "entrance"){ ENTR = [data].concat(ENTR.filter(x => x.event_id !== data.event_id)); renderGate(); if (!data.override) showGatePopup(data); else closeGate(); }
     else if (kind === "ppe_ok") toast("✓ PPE complete", `${data.worker_name || data.worker_id || "Worker"} · ${data.zone_name || ""}`);
@@ -705,6 +795,9 @@ function connect(){
 async function refreshSlow(){
   try { ZONES = await api("/api/zones"); renderZones(); } catch {}
   try { HEALTH = await api("/api/health"); renderHealth(); } catch {}
+  try { PRESENT = await api("/api/attendance/present"); } catch {}
+  try { ANALYTICS = await api("/api/analytics/summary"); } catch {}
+  renderBand();
 }
 async function boot(){
   try { ME = await api("/api/me"); } catch { return; }
@@ -712,7 +805,7 @@ async function boot(){
   $("logoutBtn").hidden = !ME.auth;
   try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
   try { (await api("/api/events?limit=300")).forEach(e => { EVENTS.set(e.event_id, e); SEEN.add(e.event_id); }); } catch {}
-  try { (await api("/api/notifications?limit=30")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
+  try { (await api("/api/notifications?limit=100")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
   try { ENTR = await api("/api/entrance?limit=20"); renderGate(); } catch {}
   try { LOC = await api("/api/location"); renderLoc(); } catch {}
   SEEN.add("_boot");
