@@ -1,6 +1,6 @@
 # NETRAX final acceptance self-test
 
-Run: 29 Oct 2026, 21:01:46 IST - `python -m tools.final_selftest`
+Run: 29 Oct 2026, 21:34:41 IST - `python -m tools.final_selftest`
 
 Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the real services; the live-provider and camera tests are in docs/NETRAX_Final_Test_Guide.pdf.
 
@@ -34,7 +34,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 09 | SMS: first try fails (HTTP 503) -> retried -> delivered, attempts logged | PASS | attempts 2 |
 | 09 | SMS text has type, severity, location, time and recommended action | PASS |  |
 | 09 | e-mail: SMTP drop -> retried -> accepted by the mail server ('sent', never claimed 'delivered') | PASS |  |
-| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 10 ms |
+| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 15 ms |
 | 13 | Telegram failure retried (bounded) then shown as FAILED with the reason - never 'delivered' | PASS |  |
 | 13 | system health shows the failing channel | PASS |  |
 | 13 | no credentials -> NOT CONFIGURED (clearly labelled), nothing claimed as sent | PASS |  |
@@ -45,7 +45,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 10 | type filter (smoke) + whole day | PASS |  |
 | 10 | viewer role: worker names hidden in the answer | PASS |  |
 | 10 | every question logged | PASS |  |
-| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 6, "p50": 0.0, "p95": 0.0, "max": 0.0, "mean": 0.0} |
+| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 5, "p50": 0.0, "p95": 0.0, "max": 0.0, "mean": 0.0} |
 | 14 | no GPS + no configured site -> 'Location unavailable' + zone label (never invented) | PASS |  |
 | 14 | valid device GPS -> shown with source, accuracy and map link | PASS |  |
 | 14 | 1-hour-old reading -> marked STALE and not used | PASS |  |
@@ -61,7 +61,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | AUTH | assistant over HTTP returns the record with a link | PASS |  |
 | 03 | manual check result recorded (who, decision) and audited | PASS |  |
 | AUTH | health endpoint lists components | PASS |  |
-| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 42 ms for 3 cameras |
-| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1066 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
+| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 39 ms for 3 cameras |
+| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1035 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
 | 04 | edge pipeline: monitored zone, helmet off -> one PPE alert naming the helmet | PASS | items ['goggles', 'helmet'] after ? |
 | 12 | edge pipeline: per-camera latency samples recorded (capture -> processed) | PASS |  |

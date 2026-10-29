@@ -39,7 +39,7 @@ class _Item:
 class _Worker:
     __slots__ = ("tid", "last_seen", "bbox", "conf", "zone", "event_id", "open_items",
                  "opened_at", "severity", "seen_tick", "onset", "worker_id", "worker_name",
-                 "first_seen", "change_since", "looked", "id_pending")
+                 "first_seen", "change_since", "looked", "id_pending", "reopen_of")
 
     def __init__(self, tid):
         self.tid = tid
@@ -59,6 +59,7 @@ class _Worker:
         self.change_since = None    # confirmed-missing set differs from what was announced since then
         self.looked = False         # first decision for this person made
         self.id_pending = False     # face seen, name not decided yet
+        self.reopen_of = None       # supervisor resolved this person's alert while still in view
 
 
 class PPEStateMachine:
@@ -228,6 +229,8 @@ class PPEStateMachine:
             w.onset = w.onset or now
             w.severity = ppe_severity(sorted(w.open_items), risk_of(w.zone), repeated)
             actions.append(self._action("open", cam, w, now))
+            if w.reopen_of:
+                actions[-1]["reopen_of"], w.reopen_of = w.reopen_of, None
         elif not confirmed:                       # everything back on: ONE resolve
             w.open_items = set()
             actions.append(self._action("resolve", cam, w, now, reason="compliant"))
@@ -236,6 +239,19 @@ class PPEStateMachine:
             w.open_items = set(confirmed)
             w.severity = ppe_severity(sorted(w.open_items), risk_of(w.zone))
             actions.append(self._action("update", cam, w, now))
+
+    def operator_closed(self, event_ids, now=None):
+        """29 Oct: the supervisor pressed Resolve while the person is still in view. Forget that alert and take a
+        fresh look (first_look_s): still missing PPE -> a NEW alert (alarm + messages), not silence."""
+        now = time.time() if now is None else now
+        ids, n = set(event_ids), 0
+        for w in self.workers.values():
+            if w.event_id and w.event_id in ids:
+                w.reopen_of, w.event_id, w.open_items = w.event_id, None, set()
+                w.severity, w.onset, w.opened_at = None, None, None
+                w.looked, w.change_since, w.first_seen = False, None, now
+                n += 1
+        return n
 
     def _all_worn(self, cam, w, req):
         """'PPE complete' only when every required item was actually SEEN worn (not merely unverifiable)."""

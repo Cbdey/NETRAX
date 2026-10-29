@@ -36,6 +36,8 @@ class AccessGuard:
             if v["event_id"] is None and now - v["first"] >= self.confirm_s:
                 v["event_id"] = "evt_" + uuid.uuid4().hex[:10]
                 actions.append(self._action("open", cam, wid, zone, v, now))
+                if v.get("reopen_of"):
+                    actions[-1]["reopen_of"] = v.pop("reopen_of")
         for key, v in list(self.visits.items()):
             if key[0] != cam or now - v["last"] < self.leave_s:
                 continue
@@ -43,6 +45,12 @@ class AccessGuard:
                 actions.append(self._action("resolve", cam, key[1], key[2], v, now, reason="left the zone"))
             del self.visits[key]
         return actions
+
+    def operator_closed(self, event_ids, now):
+        """Supervisor resolved the alert but the person is still in the zone: a new visit (new alert after confirm_s)."""
+        for v in self.visits.values():
+            if v["event_id"] and v["event_id"] in event_ids:
+                v["reopen_of"], v["event_id"], v["first"] = v["event_id"], None, now
 
     def _action(self, action, cam, wid, zone, v, now, reason=None):
         allowed = sorted(self.allowed.get(zone, []))

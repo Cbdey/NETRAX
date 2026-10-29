@@ -214,3 +214,9 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   leads, click a small one to lead; ?view=big) / Full screen. Admin (admin.html, rewritten): sidebar app - Overview, Incidents
   (search /api/events/search + export), Workers (cards), Alerts & channels (status, test, delivery log), Cameras & zones,
   Users & audit, System health. Originals: _to_delete/before_ui_29oct/. Phone call/SMS still OFF in notify.yaml (team).
+- 29 Oct night (user: "resolved the alert while still wearing nothing -> no new alert"): backend _act(resolve) on a
+  ppe_missing / unauthorized_entry event -> OP_CLOSED; the reply to that camera's preview frame POST carries
+  {"closed": [ids]} (30 s); edge publisher.take_closed -> state_machine.operator_closed / access.operator_closed forget
+  the alert and take a fresh look (first_look_s, ~2 s) -> still missing = NEW event with field reopen_of; backend clears
+  SPOKEN for that person, voice again, notify reason "still missing after resolve" (bypasses flood control).
+  Acknowledge / False alarm (dismiss) do NOT re-check. Tests in edge.selftest + tools.access_selftest.

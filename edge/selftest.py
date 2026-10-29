@@ -622,6 +622,21 @@ for i in range(120):                                   # hand shown only after t
 u = kinds(acts, "update")
 check("29 Oct: bare hand shown later -> one update adding GLOVES (backend calls + messages it: 'also missing')",
       len(kinds(acts, "open")) == 1 and len(u) == 1 and set(u[0]["items_missing"]) == {"helmet", "gloves"})
+#    29 Oct bug: supervisor pressed Resolve but the worker still wears nothing -> a NEW alarm after a fresh look
+acts, sm, _ = simulate([], "welding_bay", 6)
+first = kinds(acts, "open")
+sm.operator_closed({first[0]["event_id"]} if first else set(), now=1006.0)
+acts2, _, _ = simulate([], "welding_bay", 6, sm=sm, t0=1006.0)
+o = kinds(acts2, "open")
+check(f"29 Oct: resolved by supervisor, PPE still missing -> NEW alarm in {(o[0]['at'] - 1006.0) if o else -1:.1f} s "
+      "(new event id, reopen_of = old id, every item)",
+      len(first) == 1 and len(o) == 1 and o[0]["event_id"] != first[0]["event_id"]
+      and o[0].get("reopen_of") == first[0]["event_id"] and o[0]["at"] - 1006.0 <= 3.0
+      and set(o[0]["items_missing"]) == set(first[0]["items_missing"]) and not kinds(acts2, "resolve"))
+acts, sm, _ = simulate([], "welding_bay", 6)
+sm.operator_closed({kinds(acts, "open")[0]["event_id"]}, now=1006.0)
+acts2, _, _ = simulate([HELMET, VEST, GLOVES, BOOTS], "welding_bay", 6, sm=sm, t0=1006.0)
+check("29 Oct: resolved by supervisor and PPE now worn -> no new alarm", not kinds(acts2, "open"))
 #    the name: while the face is still being matched, the alarm waits (max id_wait_s) so it says WHO it is
 sm, acts = PPEStateMachine(S["state_machine"]), []
 for i in range(60):

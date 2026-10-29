@@ -143,6 +143,12 @@ class CameraWorker(threading.Thread):
             for s, _ in st.values():
                 self.decisions[s] += 1
 
+        take = getattr(self.publisher, "take_closed", None)
+        closed = take(self.cam_id) if take else None
+        if closed:                                   # supervisor pressed Resolve: look at that person again
+            self.sm.operator_closed(closed, now)
+            self.access.operator_closed(closed, now)
+            print(f"[{self.cam_id}] resolved by supervisor: {', '.join(sorted(closed))} - checking again")
         if self.entrance is not None:
             # entrance: one gate decision per person instead of zone PPE alerts
             actions = self.entrance.update(persons, statuses, w, h, now)

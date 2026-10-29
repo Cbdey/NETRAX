@@ -23,6 +23,7 @@ class Publisher:
         self.cv = threading.Condition(self.lock)
         self.pending = {}                       # key -> (image, captured_ts)
         self.posted_ms = []
+        self.closed = {}                        # cam -> event ids the supervisor resolved (from the frame reply)
         threading.Thread(target=self._loop, daemon=True, name="publisher").start()
 
     def due(self, cam_id):
@@ -61,10 +62,24 @@ class Publisher:
                     continue
                 url = f"{self.base}/api/cameras/{key[1] if raw else key}/{'raw' if raw else 'frame'}"
                 try:
-                    s.post(url, data=jpg, timeout=1, headers={"Content-Type": "image/jpeg",
-                                                              "X-Captured-At": f"{ts:.3f}"})
-                except requests.RequestException:
+                    r = s.post(url, data=jpg, timeout=1, headers={"Content-Type": "image/jpeg",
+                                                                  "X-Captured-At": f"{ts:.3f}"})
+                    if not raw and r.ok and r.content and b"closed" in r.content:
+                        ids = (r.json() or {}).get("closed") or []
+                        if ids:
+                            with self.lock:
+                                self.closed.setdefault(key, set()).update(ids)
+                except (requests.RequestException, ValueError):
                     pass
+
+    def take_closed(self, cam_id):
+        """Event ids the supervisor resolved on this camera since the last call (each id handled once)."""
+        with self.lock:
+            ids = self.closed.pop(cam_id, None)
+        seen = self.__dict__.setdefault("_closed_seen", set())
+        new = set(ids or ()) - seen
+        seen |= new
+        return new
 
     def health(self, payload):
         try:

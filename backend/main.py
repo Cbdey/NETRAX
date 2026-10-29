@@ -58,6 +58,7 @@ ALARM = actuators.Alarm(ALM)
 ACCESS_ALIAS = {}    # camera 'unauthorized_entry' id -> the RFID alert for the same person (merged)
 CALLS = {}           # ppe event_id -> {"n": announcements made, "last": time, "items": (items, worker)}
 SPOKEN = {}          # (camera, person, type) -> (last time the speaker called that person, items said then)
+OP_CLOSED = {}       # event_id -> (camera_id, time): supervisor resolved it; the camera re-checks that person
 from . import hw_api  # noqa: E402  ESP32 safety station(s): telemetry, fire cross-check, RFID attendance
 
 
@@ -266,10 +267,15 @@ async def ingest_event(p: dict = Body(...)):
         if e["type"] in ("fire", "smoke") and action != "resolve":
             e = await hw_api.verify_new(e, now)      # wait for / ask the safety station before any siren
             e = grade_fire(e, now)
+        reopen = p.get("reopen_of")
+        if reopen:     # resolved by the supervisor, but the camera still sees the same violation: a NEW alarm
+            db.add_action(eid, "reopened", "edge", f"still the same violation after {reopen} was resolved")
+            SPOKEN.pop(_speech_key(e), None)
         await respond(e, action, now)
         await broadcast("event", e)
         if action != "resolve" and e["status"] in ("open", "escalated"):
-            await notify_async(e)
+            await notify_async(e, "still missing after resolve" if reopen and e["type"] == "ppe_missing" else
+                               "still in restricted zone after resolve" if reopen else "new alert")
     elif action == "resolve":
         new_status = existing["status"] if existing["status"] in ("dismissed", "suppressed") else "resolved"
         db.x("UPDATE events SET status=?, ended_at=?, end_reason=?, updated_at=? WHERE event_id=?",
@@ -728,7 +734,10 @@ async def camera_frame(camera_id: str, request: Request):
         cap = now
     FRAMES[camera_id] = (await request.body(), now, cap)
     perf.add("preview_edge_to_backend_ms", (now - cap) * 1000)
-    return {"ok": True}
+    for k in [k for k, (_, t) in OP_CLOSED.items() if now - t > 30]:
+        del OP_CLOSED[k]
+    closed = [k for k, (c, _) in OP_CLOSED.items() if c == camera_id]
+    return {"ok": True, "closed": closed} if closed else {"ok": True}
 
 
 @app.post("/api/cameras/{camera_id}/raw")
@@ -853,6 +862,8 @@ async def _act(event_id, action, status, body, request=None):
              "WHERE event_id=?", (now, user, f"{action} by {user}", event_id))
     db.add_action(event_id, action, user, (body or {}).get("note"))
     db.audit(user, u.get("role"), action, event_id, (body or {}).get("note"), _ip(request) if request else None)
+    if action == "resolve" and e["type"] in ("ppe_missing", "unauthorized_entry") and e.get("camera_id"):
+        OP_CLOSED[event_id] = (e["camera_id"], now)   # the camera looks again; still missing -> new alert
     if action in ("ack", "dismiss", "resolve"):
         CALLS.pop(event_id, None)                     # supervisor took over: stop repeat calls
         await stop_alarm(event_id, f"{action} by {user}")

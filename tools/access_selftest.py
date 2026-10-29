@@ -141,6 +141,28 @@ async def run_voice():
     await m.ingest_event(ppe_evt("info_cam_01_7_2", "info", [], "W-001", type="ppe_ok",
                                  captured_at="2026-01-01T00:00:00Z"))
     check("old 'PPE complete' replayed from the offline buffer -> not spoken", said(kind="ppe_ok") == n0 + 1)
+    # 29 Oct bug: supervisor pressed Resolve, the worker still wears nothing -> the camera is told, looks again,
+    # and the NEW alert gets the full alarm + messages (no 'same person' silence, no flood-control hold)
+    m.SPOKEN.clear()
+    await m.ingest_event(ppe_evt("evt_rs1", "open", ["helmet", "vest", "goggles"], "W-001"))
+    await m.ingest_event(ppe_evt("evt_rs1", "update", ["helmet", "vest", "goggles", "gloves"], "W-001"))
+    await m._act("evt_rs1", "ack", "acknowledged", {})
+    await m._act("evt_rs1", "resolve", "resolved", {})
+
+    class _Req:
+        headers = {}
+
+        async def body(self):
+            return b"jpg"
+    reply = await m.camera_frame("cam_01", _Req())
+    reply2 = await m.camera_frame("cam_02", _Req())
+    check("29 Oct: Resolve -> the camera's next frame reply tells it (closed: evt_rs1); other cameras not told",
+          "evt_rs1" in (reply.get("closed") or []) and "closed" not in reply2)
+    await m.ingest_event(ppe_evt("evt_rs2", "open", ["helmet", "vest", "goggles", "gloves"], "W-001", reopen_of="evt_rs1"))
+    k2 = [r["kind"] for r in db.q("SELECT kind FROM notifications WHERE event_id='evt_rs2'")]
+    check("29 Oct: still no PPE after Resolve -> NEW alert spoken again + Telegram/e-mail 'still missing after resolve'",
+          said("evt_rs2", "ppe") == 1 and db.get_event("evt_rs2")["status"] == "open"
+          and any(k.startswith("still missing after resolve") for k in k2))
 
 
 m.SPK.update(repeat_after_s=60, max_repeats=1)
