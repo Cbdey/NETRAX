@@ -6,6 +6,8 @@ import time
 
 os.environ.setdefault("SENTINELEYE_MUTE", "1")
 os.environ["SENTINELEYE_DB"] = os.path.join(tempfile.mkdtemp(), "access_test.db")
+os.environ["SENTINELEYE_NO_NOTIFY"] = "1"                    # never send real Telegram / e-mail from a test
+os.environ["SENTINELEYE_SECRETS"] = os.path.join(tempfile.mkdtemp(), "none.yaml")
 import backend.main as m            # noqa: E402
 from backend import actuators, db, hw_api   # noqa: E402
 
@@ -105,16 +107,24 @@ async def run_voice():
     await m.ingest_event(ppe_evt("evt_voice1", "update", ["helmet", "vest"], "W-001", track_id=5))
     check("update with the SAME items (handover / new snapshot / name) -> no second call", said("evt_voice1") == 1)
     await m.ingest_event(ppe_evt("evt_voice1", "update", ["helmet", "vest", "goggles"], "W-001"))
-    check("goggles confirmed 3 s later (same person) -> dashboard updated, NO second call within 20 s",
-          said("evt_voice1", "ppe") == 1 and db.get_event("evt_voice1")["items_missing"] == ["helmet", "vest", "goggles"])
+    last = db.q("SELECT text FROM announcements WHERE event_id='evt_voice1' ORDER BY id DESC LIMIT 1")[0]["text"]
+    check("29 Oct: goggles found missing later on the same person -> NEW call 'Also missing: safety goggles'",
+          said("evt_voice1", "ppe") == 2 and "Also missing: safety goggles" in last
+          and db.get_event("evt_voice1")["items_missing"] == ["helmet", "vest", "goggles"])
+    kinds_ = [r["kind"] for r in db.q("SELECT kind FROM notifications WHERE event_id='evt_voice1'")]
+    check("29 Oct: ... and ONE Telegram/e-mail 'more PPE missing: GOGGLES' per channel",
+          any(k.startswith("more PPE missing: GOGGLES") for k in kinds_))
+    await m.ingest_event(ppe_evt("evt_voice1", "update", ["helmet", "vest", "goggles"], "W-001", track_id=9))
+    check("same list again (tracker handover) -> no extra call, no extra message",
+          said("evt_voice1", "ppe") == 2 and len(db.q("SELECT kind FROM notifications WHERE event_id='evt_voice1'")) == len(kinds_))
     await m.ingest_event(ppe_evt("evt_voice2", "open", ["helmet"], "V-002", worker_name=None))
     await m.ingest_event(ppe_evt("evt_voice3", "open", ["helmet"], "V-003", worker_name=None))
     check("tracker slip: same unregistered face opens 2 records (V-002, V-003) -> called once, not twice",
           said("evt_voice2", "ppe") + said("evt_voice3", "ppe") == 1)
     m.SPOKEN.clear()                                   # 20 s later
     await m.ingest_event(ppe_evt("evt_voice1", "update", ["helmet"], "W-001"))
-    check("decided set changed later (vest + goggles back on, helmet still off) -> one new call",
-          said("evt_voice1", "ppe") == 2)
+    check("vest + goggles put back on (helmet still off) -> dashboard updated, no new alarm (nothing NEW missing)",
+          said("evt_voice1", "ppe") == 2 and db.get_event("evt_voice1")["items_missing"] == ["helmet"])
     m.CALLS.pop("evt_voice2", None); m.CALLS.pop("evt_voice3", None)
     t = time.time()
     await m.repeat_calls(t + 61)

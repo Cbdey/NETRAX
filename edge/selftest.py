@@ -593,6 +593,35 @@ check("helmet and vest taken off 0.3 s apart -> still ONE alarm with both, not t
 acts3, _, _ = simulate([HELMET, VEST, GLOVES, BOOTS], "welding_bay", 8, sm=sm, t0=1015.3)
 check("puts everything back on -> ONE resolve, no extra alarm",
       len(kinds(acts3, "resolve")) == 1 and not kinds(acts3, "open") + kinds(acts3, "update"))
+#    29 Oct: PPE taken off is caught fast (~1.4 s in a high-risk zone), a flickering detector never alarms,
+#    and a hand that appears during the first look is in the FIRST alarm (not a second one a moment later)
+acts, sm, _ = simulate([HELMET, VEST, GLOVES, BOOTS], "welding_bay", 6)
+acts2, _, _ = simulate([VEST, GLOVES, BOOTS], "welding_bay", 5, sm=sm, t0=1006.0)
+o = kinds(acts2, "open")
+check(f"29 Oct: helmet taken off -> alarm within 1.6 s ({(o[0]['at'] - 1006.0) if o else -1:.1f} s)",
+      len(o) == 1 and o[0]["at"] - 1006.0 <= 1.6 and o[0]["items_missing"] == ["helmet"])
+sm, acts = PPEStateMachine(S["state_machine"]), []
+for i in range(300):                                   # helmet missed in 1 of every 3 frames for 30 s
+    its = [VEST, GLOVES, BOOTS] if i % 3 == 0 else [HELMET, VEST, GLOVES, BOOTS]
+    st, _ = evaluate([PERSON], its, {7: ["helmet", "vest", "gloves"]}, W, H, S["association"])
+    acts += sm.update("cam_01", [PERSON], st, {7: "welding_bay"}, risk, W, H, now=1000 + i / 10)
+check("29 Oct: detector misses the helmet in 1 of 3 frames for 30 s -> NO false alarm", not alarms(acts))
+sm, acts = PPEStateMachine(S["state_machine"]), []
+for i in range(80):                                    # hands hidden until 1.6 s, then a bare hand is shown
+    st = {7: {"helmet": ("missing", 0.9), "vest": ("compliant", 0.9),
+              "gloves": ("unverifiable", 0.0) if i < 16 else ("missing", 0.8)}}
+    acts += sm.update("cam_01", [PERSON], st, {7: "welding_bay"}, risk, W, H, now=1000 + i / 10)
+o = kinds(acts, "open")
+check("29 Oct: bare hand shown during the first look -> ONE first alarm with helmet AND gloves, no 2nd alarm",
+      len(o) == 1 and set(o[0]["items_missing"]) == {"helmet", "gloves"} and not kinds(acts, "update"))
+sm, acts = PPEStateMachine(S["state_machine"]), []
+for i in range(120):                                   # hand shown only after the first alarm (6 s)
+    st = {7: {"helmet": ("missing", 0.9), "vest": ("compliant", 0.9),
+              "gloves": ("unverifiable", 0.0) if i < 60 else ("missing", 0.8)}}
+    acts += sm.update("cam_01", [PERSON], st, {7: "welding_bay"}, risk, W, H, now=1000 + i / 10)
+u = kinds(acts, "update")
+check("29 Oct: bare hand shown later -> one update adding GLOVES (backend calls + messages it: 'also missing')",
+      len(kinds(acts, "open")) == 1 and len(u) == 1 and set(u[0]["items_missing"]) == {"helmet", "gloves"})
 #    the name: while the face is still being matched, the alarm waits (max id_wait_s) so it says WHO it is
 sm, acts = PPEStateMachine(S["state_machine"]), []
 for i in range(60):

@@ -71,7 +71,9 @@ def _e164(x):
 
 def load_secrets():
     """config/secrets.local.yaml (git-ignored), environment variables override."""
-    s = _load_yaml("secrets.local.yaml")
+    alt = os.environ.get("SENTINELEYE_SECRETS")          # tests: own secrets file, never the real one
+    s = (yaml.safe_load(open(alt, encoding="utf-8")) or {}) if alt and os.path.exists(alt) else \
+        ({} if alt else _load_yaml("secrets.local.yaml"))
     tg, tw, em = s.get("telegram") or {}, s.get("twilio") or {}, s.get("email") or {}
     env = os.environ.get
     out = {

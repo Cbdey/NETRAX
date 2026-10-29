@@ -17,6 +17,7 @@ os.environ["SENTINELEYE_DB"] = os.path.join(TMP, "final_test.db")
 os.environ["SENTINELEYE_DATA_DIR"] = TMP
 os.environ["SENTINELEYE_AUTH"] = "0"           # HTTP auth is switched on per test below
 os.environ["NETRAX_CHANNELS"] = "telegram,call,sms,email"   # test every channel even if the site disabled some
+os.environ["SENTINELEYE_SECRETS"] = os.path.join(TMP, "no_secrets.yaml")   # never the real keys of this laptop
 for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM",
           "ALERT_PHONE_TO", "SMTP_USER", "SMTP_PASSWORD", "ALERT_EMAIL_TO"):
     os.environ.pop(k, None)

@@ -68,12 +68,16 @@ state_machine:                    # plan section 7.2
   first_look_s: 2.5
   settle_s: 1.0
   id_wait_s: 1.5        # face being matched: wait up to this much longer so the alarm says the right name
+  evidence_wait_s: 1.5  # 29 Oct: first alarm waits up to this long for body parts not seen yet (hands for gloves,
+                        # face for goggles) so it lists everything at once; found later -> "also missing" alarm
   announce_compliant: true   # "PPE complete" once, only when every required item was SEEN worn
   ok_repeat_s: 600           # ... at most once per person per 10 minutes
   by_risk:              # zone-wise priority: high-risk zones decide first (12 Oct)
-    high:   {confirm_n: 5, grace_s: 1.0, first_look_s: 2.0, settle_s: 0.8}   # decision ~2.2 s
-    medium: {confirm_n: 7, grace_s: 1.5, first_look_s: 2.5, settle_s: 1.0}   # ~3.1 s
-    low:    {confirm_n: 7, grace_s: 2.0, first_look_s: 3.0, settle_s: 1.2}   # ~3.8 s
+    # 29 Oct: PPE taken off is caught faster - 6 of the last 10 frames (a majority, so one missed frame never
+    # alarms) + short grace + short settle: high ~1.4 s, medium ~1.9 s after the item comes off.
+    high:   {confirm_n: 6, grace_s: 0.4, first_look_s: 2.0, settle_s: 0.4}
+    medium: {confirm_n: 6, grace_s: 0.7, first_look_s: 2.5, settle_s: 0.6}
+    low:    {confirm_n: 7, grace_s: 1.0, first_look_s: 3.0, settle_s: 0.8}
   location_grid: 4
 
 fire:                             # plan section 7.4

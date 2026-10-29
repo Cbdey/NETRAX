@@ -83,6 +83,7 @@ class PPEStateMachine:
         self.first_look = cfg.get("first_look_s", 2.5)   # watch a new person this long, then decide once
         self.settle = cfg.get("settle_s", 1.0)           # after a change, watch this long, then decide once
         self.id_wait = cfg.get("id_wait_s", 1.5)         # extra wait for the name while the face is matched
+        self.evidence_wait = cfg.get("evidence_wait_s", 1.5)   # first alarm: wait for unseen hands / face / feet
         self.ok_info = cfg.get("announce_compliant", True)
         self.ok_repeat = cfg.get("ok_repeat_s", 600)     # "PPE complete" at most once per person per 10 min
         self.ok_said = {}                                # worker id / track -> when "PPE complete" was sent
@@ -201,6 +202,14 @@ class PPEStateMachine:
             return
         if now < due or (w.id_pending and now < due + self.id_wait):
             return
+        if now < due + self.evidence_wait:
+            # 29 Oct: decide once, completely - wait (max evidence_wait_s) while an item is still being confirmed
+            # (PENDING), and before the FIRST alarm also for body parts not seen yet (hands, face, feet)
+            sts = [self.items.get((cam, w.tid, i)) for i in req]
+            if any(st is not None and (st.state == "PENDING" or (st.state == "OK" and st.onset is not None))
+                   for st in sts) or \
+                    (not w.looked and any(st is None or not st.hist for st in sts)):
+                return
         w.looked, w.change_since = True, None
         if confirmed == w.open_items:
             if not confirmed and self.ok_info and self._all_worn(cam, w, req):

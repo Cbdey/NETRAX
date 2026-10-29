@@ -57,7 +57,7 @@ SPEAKER = actuators.Speaker(SPK)
 ALARM = actuators.Alarm(ALM)
 ACCESS_ALIAS = {}    # camera 'unauthorized_entry' id -> the RFID alert for the same person (merged)
 CALLS = {}           # ppe event_id -> {"n": announcements made, "last": time, "items": (items, worker)}
-SPOKEN = {}          # (camera, person, type) -> last time the speaker called that person (one call per quiet_s)
+SPOKEN = {}          # (camera, person, type) -> (last time the speaker called that person, items said then)
 from . import hw_api  # noqa: E402  ESP32 safety station(s): telemetry, fire cross-check, RFID attendance
 
 
@@ -282,6 +282,7 @@ async def ingest_event(p: dict = Body(...)):
         await broadcast("event", db.get_event(eid))
     else:  # update: new items / higher severity / tracker handover
         was_critical = existing["severity"] == "Critical"
+        added = [i for i in (p.get("items_missing") or []) if i not in (existing.get("items_missing") or [])]
         db.x("""UPDATE events SET items_missing=?, severity=?, track_id=?, confidence=?, bbox=?,
                 snapshot_path=COALESCE(?, snapshot_path), growth=?, updated_at=?,
                 worker_id=COALESCE(?, worker_id), worker_name=COALESCE(?, worker_name) WHERE event_id=?""",
@@ -298,6 +299,9 @@ async def ingest_event(p: dict = Body(...)):
         await broadcast("event", e)
         if e["severity"] == "Critical" and not was_critical and e["type"] not in ("fire", "smoke"):
             await notify_async(e, "severity raised to CRITICAL")
+        elif added and e["type"] == "ppe_missing" and e["status"] in ("open", "escalated", "acknowledged"):
+            # more PPE found missing on the same person = a new finding: one message per new item set
+            await notify_async(e, "more PPE missing: " + ", ".join(i.upper() for i in added))
     return {"ok": True}
 
 
@@ -445,7 +449,9 @@ def ppe_text(e):
     else:
         who = f"unregistered person in the {zone}"
     items = e.get("items_missing") or []
-    return f"Attention {who}. Please wear your {_words(items)} now." if items else ""
+    added = [i for i in (e.get("_added") or []) if i in items]
+    also = f" Also missing: {_words(added)}." if added else ""
+    return f"Attention {who}.{also} Please wear your {_words(items)} now." if items else ""
 
 
 def ok_text(e):
@@ -540,19 +546,24 @@ async def respond(e, action, now):
         # handover or a new snapshot is not a new alarm (12 Oct: "one alarm, not continuous")
         key = tuple(e["items_missing"])
         c = CALLS.get(eid)
-        if e["status"] in ("open", "escalated") and (c is None or c["items"] != key):
+        if e["status"] in ("open", "escalated", "acknowledged") and (c is None or c["items"] != key):
             kind = "access" if e["type"] == "unauthorized_entry" else "ppe"
-            # one call per person per camera per quiet_s: an item confirmed a moment later (goggles need the
-            # face) or a tracker slip that opens a second record for the same person updates the dashboard
-            # silently; the one reminder later says the full list
             sk = _speech_key(e)
-            if now - SPOKEN.get(sk, -1e9) < SPK.get("same_person_quiet_s", 20):
-                db.add_action(eid, "voice_merged", "system", "same person was called less than "
-                              f"{SPK.get('same_person_quiet_s', 20)} s ago - dashboard updated, no extra call")
-                CALLS[eid] = {"n": 1, "last": c["last"] if c else now, "items": key}
+            last_t, last_items = SPOKEN.get(sk, (-1e9, ()))
+            heard = set(c["items"]) if c else set(last_items)
+            added = [i for i in key if i not in heard]
+            quiet = SPK.get("same_person_quiet_s", 20)
+            # silent: items only put back on / same list again, or a tracker slip re-opened the same person
+            # (inside quiet_s with nothing new). A NEW missing item is always called out (29 Oct).
+            if not added or \
+                    (c is None and now - last_t < quiet and set(key) <= set(last_items)):
+                why = ("same person was called less than " + str(quiet) + " s ago" if c is None
+                       else "no new missing item")
+                db.add_action(eid, "voice_merged", "system", why + " - dashboard updated, no extra call")
+                CALLS[eid] = {"n": c["n"] if c else 1, "last": c["last"] if c else now, "items": key}
             else:
-                announce(alert_text(e), e.get("zone_id"), eid, kind)
-                SPOKEN[sk] = now
+                announce(alert_text(dict(e, _added=added if c is not None else [])), e.get("zone_id"), eid, kind)
+                SPOKEN[sk] = (now, key)
                 CALLS[eid] = {"n": 1, "last": now, "items": key}
 
 
@@ -574,11 +585,11 @@ async def repeat_calls(now):
             continue
         sk = _speech_key(e)
         c["n"], c["last"] = c["n"] + 1, now
-        if now - SPOKEN.get(sk, -1e9) < every:       # another record of the same person was just called
+        if now - SPOKEN.get(sk, (-1e9, ()))[0] < every:   # another record of the same person was just called
             continue
         announce(alert_text(e), e.get("zone_id"), eid,
                  "access_repeat" if e["type"] == "unauthorized_entry" else "ppe_repeat")
-        SPOKEN[sk] = now
+        SPOKEN[sk] = (now, tuple(e.get("items_missing") or ()))
 
 
 def response_payload():
