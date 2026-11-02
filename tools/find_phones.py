@@ -59,10 +59,7 @@ def current_sources():
 
 
 def set_source(txt, cam, ip):
-    txt = re.sub(rf"(^  {cam}:?
-(?:    .*
-)*?)    enabled:\s*false.*?
-", r"", txt, count=1, flags=re.M)   # switch it on
+    txt = re.sub(rf"(^  {cam}:\n(?:    .*\n)*?)    enabled:\s*false.*\n", r"\1", txt, count=1, flags=re.M)   # switch it on
     return re.sub(rf"(^  {cam}:\n(?:    .*\n)*?    source:\s*)\S+", rf"\g<1>http://{ip}:8080/video", txt,
                   count=1, flags=re.M)
 
@@ -98,7 +95,7 @@ def main():
     found = [ip for ip, _ in hits]
     assign = {}
     for cam, src in cur.items():                         # e.g. 192.0.0.4: the hotspot phone is outside the scanned range
-        ip = re.sub(r"^http://([\d.]+):.*$", r"", src or "")
+        ip = re.sub(r"^http://([\d.]+):.*$", r"\1", src or "")
         if ip and ip not in found and is_phone(ip):
             assign[cam] = ip
     for cam, src in cur.items():                         # keep a phone on the camera it already has
