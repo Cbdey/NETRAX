@@ -205,8 +205,10 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 @media (max-width:1250px){.main{grid-template-columns:1fr}.three{grid-template-columns:1fr}.two{grid-template-columns:1fr}}
 @media (max-width:700px){.cams{grid-template-columns:1fr}.bigpanel,.bigpanel.withfeed{grid-template-columns:1fr}.bigpanel .acts,.bigpanel .feed{grid-column:auto;grid-row:auto;width:100%}.overlay .grid{grid-template-columns:1fr}.kv{grid-template-columns:1fr}}
 </style>
+<link rel="stylesheet" href="/static/nx.css">
 </head>
 <body>
+<div class="nxvig" aria-hidden="true"></div>
 <div class="wrap">
 <header>
   <div class="logo" aria-hidden="true">N</div>
@@ -216,8 +218,7 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
   <span class="chip" id="locChip" title="Location source">📍 …</span>
   <span class="hgrow"></span>
   <span class="clock" id="clock" aria-label="Current time">--:--:--</span>
-  <a class="navl" href="/hardware">Hardware</a>
-  <a class="navl" href="/admin">Admin &amp; analytics</a>
+  <nav class="nxnav" aria-label="Pages"><a href="/" aria-current="page">Control room</a><a href="/entrance">Entrance</a><a href="/admin">Admin</a><a href="/hardware">Hardware</a></nav>
   <button class="btn" id="themeBtn" aria-label="Switch day / night" style="font-size:13px;padding:6px 10px">☀/☾</button>
   <span class="chip" id="userChip">…</span>
   <button class="btn" id="logoutBtn" style="font-size:13px;padding:6px 10px">Sign out</button>
@@ -226,7 +227,7 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
   <div class="kb click" id="kbInc" style="--c:var(--crit)" data-tab="active"><small>▲ Active incidents</small><b id="kbIncN">–</b><span id="kbIncS">open or escalated</span></div>
   <div class="kb" id="kbFire" style="--c:var(--warn)"><small>🔥 Fire / smoke</small><b id="kbFireN">–</b><span id="kbFireS">no fire detected</span></div>
   <div class="kb" style="--c:var(--info)"><small>◧ Cameras live</small><b id="kbCamN">–</b><span id="kbCamS">waiting for edge</span></div>
-  <div class="kb" id="kbIn" style="--c:#a78bfa"><small>👷 In restricted zone</small><b id="kbInN">–</b><span id="kbInS">RFID check-ins</span></div>
+  <div class="kb" id="kbIn" style="--c:#a78bfa"><small>👷 On site today</small><b id="kbInN">–</b><span id="kbInS">RFID check-ins</span></div>
   <div class="kb" style="--c:var(--ok)"><small>✓ PPE compliance</small><b id="kbCompN">–</b><span>items seen worn, this session</span></div>
   <div class="kb" id="kbMsg" style="--c:var(--teal)"><small>✉ Alerts sent today</small><b id="kbMsgN">–</b><span id="kbMsgS">provider-confirmed</span></div>
 </section>
@@ -262,11 +263,6 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
       </div>
       <div class="list" id="incidents"></div>
     </section>
-    <section class="panel" aria-label="Entrance PPE check">
-      <h2>🚪 Entrance PPE check <span class="sp"></span><span class="small" id="gateCtl"></span></h2>
-      <div id="gateLast"></div>
-      <table style="margin-top:8px"><thead><tr><th>Time</th><th>Result</th><th>Details</th></tr></thead><tbody id="gateList"></tbody></table>
-    </section>
   </div>
 </div>
 
@@ -290,12 +286,11 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
   <div class="grid"><img id="evacImg" alt="Affected camera live view"><div class="facts" id="evacFacts"></div></div>
   <div class="acts" id="evacActs"></div>
 </div>
-<!-- entrance decision popup (section 4) -->
-<div class="popup" id="gatePop" role="alertdialog" aria-labelledby="gpTitle"><div class="card" id="gpCard"></div></div>
 <!-- incident details -->
 <div class="modal" id="modal" role="dialog" aria-labelledby="mTitle"><div class="box" id="mBox"></div></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
+<script src="/static/alerts.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -338,7 +333,7 @@ function title(e){
   if (e.type === "unauthorized_entry") return "Unauthorised entry — restricted zone";
   if (e.type === "fire") return "FIRE DETECTED";
   if (e.type === "smoke") return "SMOKE DETECTED";
-  if (e.type === "entrance_check"){ const d = e.details||{}; return d.message || "Entrance check"; }
+  if (e.type === "entrance_check"){ const d = e.details||{}; return d.verdict || d.message || "Entrance check"; }
   return String(e.type || "event").replace(/_/g," ").toUpperCase();
 }
 const camName = id => ((CAMS.cameras||[]).find(c => c.camera_id === id) || {}).name || id || "safety station";
@@ -458,8 +453,15 @@ function leadCam(cams){
   const alarm = cams.filter(c => c.badge && !/APPROVED/.test(c.badge)).sort((a,b) => (/FIRE|SMOKE/i.test(b.badge) - /FIRE|SMOKE/i.test(a.badge)));
   return (alarm[0] || cams.find(c => c.camera_id === LEAD) || cams.find(live) || cams[0] || {}).camera_id;
 }
+const monitors = () => (CAMS.cameras || []).filter(c => c.role !== "entrance");
+const entranceCam = () => (CAMS.cameras || []).find(c => c.role === "entrance");
+function gateTile(ent, live){
+  return `<a class="gatecell" id="gateCell" href="/entrance" title="Open the entrance dashboard"><div class="gtop">🚪 Entrance check<span class="sp"></span><span class="small">Open dashboard ›</span></div>
+    <div class="gbody"><div class="gfeed">${live ? `<img data-live="${ent.camera_id}" alt="Live entrance camera">` : `<span class="small">USB camera ${ent ? "offline" : "not set up"}</span>`}</div><div class="gres" id="gateLast"></div></div></a>`;
+}
 function renderCams(){
-  const cams0 = (CAMS.cameras || []);
+  const cams0 = monitors(), ent = entranceCam();
+  const entLive = !!ent && (ent.status === "ONLINE" || ent.status === "DEGRADED");
   const lead = VIEW === "big" && !FOCUS ? leadCam(cams0) : null;
   const cams = lead ? [cams0.find(c => c.camera_id === lead)].concat(cams0.filter(c => c.camera_id !== lead)) : cams0;
   const shown = FOCUS ? cams.filter(c => c.camera_id === FOCUS) : cams;
@@ -469,7 +471,7 @@ function renderCams(){
   document.querySelectorAll(".vbtn[data-view]").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === VIEW));
   const on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED").length;
   $("camSummary").textContent = `${on} of ${cams.filter(c => c.status !== "OFF").length} cameras live` + (CAMS.edge_online ? "" : " · EDGE OFFLINE");
-  const sig = JSON.stringify([FOCUS, lead, shown.map(c => [c.camera_id, c.status === "ONLINE" || c.status === "DEGRADED"])]);
+  const sig = JSON.stringify([FOCUS, lead, entLive, shown.map(c => [c.camera_id, c.status === "ONLINE" || c.status === "DEGRADED"])]);
   if ($("cams").dataset.sig !== sig){
     $("cams").innerHTML = shown.map(c => {
       const live = c.status === "ONLINE" || c.status === "DEGRADED";
@@ -478,8 +480,9 @@ function renderCams(){
           <div class="zone">${esc(c.camera_id)} · ${esc(c.zone_name)}</div></div><span class="st" id="st_${c.camera_id}"></span></div>
         ${live ? `<img data-live="${c.camera_id}" alt="Live view ${esc(c.name)}">` : `<span id="off_${c.camera_id}"></span>`}
         <span class="badge" id="bd_${c.camera_id}" hidden></span>
-        <button class="fbtn" data-focus="${c.camera_id}">${FOCUS ? "Exit full view" : "Enlarge"}</button></div></div>`; }).join("") || `<div class="empty">No cameras configured.</div>`;
+        <button class="fbtn" data-focus="${c.camera_id}">${FOCUS ? "Exit full view" : "Enlarge"}</button></div></div>`; }).join("") + (FOCUS ? "" : gateTile(ent, entLive));
     $("cams").dataset.sig = sig;
+    renderGate();
   }
   for (const c of shown){
     const st = $("st_" + c.camera_id), bd = $("bd_" + c.camera_id), box = $("cam_" + c.camera_id), off = $("off_" + c.camera_id);
@@ -487,7 +490,8 @@ function renderCams(){
     const icon = {ONLINE:"●", DEGRADED:"◐", OFFLINE:"✖", OFF:"○", STANDBY:"○"}[c.status] || "?";
     const age = FRAME_AGE[c.camera_id];
     st.textContent = `${icon} ${c.status}${c.status === "ONLINE" || c.status === "DEGRADED" ? ` · ${c.fps} fps${age != null ? ` · ${age} ms` : ""}` : ""}`;
-    if (off) off.textContent = c.detail || "No signal";
+    if (off) off.innerHTML = c.status === "OFF" ? `<div class="offmsg"><b>Camera not connected</b><span>Connect a phone with IP Webcam to the same Wi-Fi, then run tools.find_phones --write.</span></div>`
+      : `<div class="offmsg"><b>No picture</b><span>${esc(c.detail || "No signal")}</span></div>`;
     const b = c.badge || "";
     bd.hidden = !b; bd.textContent = b ? (/APPROVED/.test(b) ? "✓ " : /MANUAL|verifying/i.test(b) ? "⚠ " : "▲ ") + b : "";
     bd.className = "badge" + (/APPROVED/.test(b) ? " ok" : /MANUAL|verifying/i.test(b) ? " warn" : "");
@@ -517,13 +521,14 @@ function renderBand(){
   setKb("kbFireN", fires.length ? `LEVEL ${lvl}` : "CLEAR");
   $("kbFire").classList.toggle("hot", lvl >= 2); $("kbFire").classList.toggle("warm", lvl === 1);
   $("kbFireS").textContent = fires.length ? fires.map(e => `${e.type} · ${e.zone_name || e.zone_id}`).join(" · ") : (evs.some(e => e.status === "verifying") ? "checking a possible fire…" : "no fire or smoke");
-  const cams = CAMS.cameras || [], on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED");
+  const cams = monitors(), on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED");
   setKb("kbCamN", `${on.length} / ${cams.filter(c => c.status !== "OFF").length}`);
   $("kbCamS").textContent = CAMS.edge_online ? (on.length ? on.map(c => `${c.camera_id} ${c.fps} fps`).join(" · ") : "no camera picture") : "edge computer offline";
-  setKb("kbInN", PRESENT.length);
-  const bad = PRESENT.filter(p => p.access === "DENIED");
+  const dayS = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
+  const here = PRESENT.filter(p => p.since >= dayS), bad = here.filter(p => p.access === "DENIED");
+  setKb("kbInN", here.length);
   $("kbIn").classList.toggle("hot", bad.length > 0);
-  $("kbInS").textContent = PRESENT.length ? PRESENT.map(p => p.name + (p.access === "DENIED" ? " ⚠" : "")).join(", ") : "nobody checked in";
+  $("kbInS").textContent = here.length ? here.map(p => p.name + (p.access === "DENIED" ? " ⚠" : "")).join(", ") : "nobody checked in";
   setKb("kbCompN", ANALYTICS && ANALYTICS.compliance_rate != null ? ANALYTICS.compliance_rate + "%" : "–");
   const day0 = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
   const today = [...NOTIFS.values()].filter(n => (n.queued_at || n.at) >= day0 && n.event_id && !String(n.event_id).startsWith("test_"));
@@ -593,7 +598,6 @@ document.addEventListener("click", async ev => {
   if (a === "view") return openEvent(id);
   if (a === "evac"){ EVAC_MIN.delete(id); return renderAlertZone(); }
   if (a === "evacmin"){ EVAC_MIN.add(id); return renderAlertZone(); }
-  if (a === "gate"){ el.disabled = true; try { await post(`/api/entrance/${id}/decide`, {decision: el.dataset.d, note: "manual check at the entrance"}); closeGate(); } catch(x){ toast("Not saved", x.message, "crit"); el.disabled = false; } return; }
   el.disabled = true;
   try { upsert(await post(`/api/events/${id}/${a}`, {})); toast(`${a === "ack" ? "Acknowledged" : a[0].toUpperCase() + a.slice(1) + "d"}`, id); }
   catch (x){ toast("Action failed", x.message, "crit"); el.disabled = false; }
@@ -615,7 +619,7 @@ async function openEvent(id){
       <div>Camera</div><div>${esc(e.camera_id || "—")} ${esc(camName(e.camera_id))}</div><div>Zone</div><div>${esc(e.zone_name || e.zone_id || "—")}</div>
       <div>Location</div><div>${locText(e)}</div>${who(e) ? `<div>Worker</div><div>${esc(who(e))}</div>` : ""}
       ${e.items_missing && e.items_missing.length ? `<div>Missing</div><div>${e.items_missing.map(iname).join(", ")}</div>` : ""}
-      ${d.result ? `<div>Entrance</div><div>${esc(d.message)}${d.items_uncertain && d.items_uncertain.length ? " · not verified: " + d.items_uncertain.join(", ") : ""}${d.reason ? " · " + esc(d.reason) : ""} · decided in ${d.decision_ms} ms · gate ${esc(d.gate)} (${esc(d.controller)})${d.override ? ` · manual check: ${esc(d.override.decision)} by ${esc(d.override.by)}` : ""}</div>` : ""}
+      ${d.result ? `<div>Entrance</div><div>${d.verdict ? `<b>${esc(d.verdict)}</b><br>` : ""}${esc(d.message)}${d.items_uncertain && d.items_uncertain.length ? " · not verified: " + d.items_uncertain.join(", ") : ""}${d.reason ? " · " + esc(d.reason) : ""} · decided in ${d.decision_ms} ms · gate ${esc(d.gate)} (${esc(d.controller)})${d.override ? ` · manual check: ${esc(d.override.decision)} by ${esc(d.override.by)}` : ""}</div>` : ""}
       ${e.fire_reasons ? `<div>Level evidence</div><div>${esc((e.fire_reasons||[]).join("; "))}</div>` : ""}
       ${e.type === "fire" || e.type === "smoke" ? `<div>Sensors</div><div>${sensorsHtml(e)}</div>` : ""}
       <div>Confidence</div><div>${e.confidence != null ? Number(e.confidence).toFixed(2) : "—"}</div>
@@ -627,40 +631,18 @@ async function openEvent(id){
 }
 function closeModal(){ $("modal").classList.remove("show"); if (location.hash.startsWith("#event=")) history.replaceState(null, "", "/"); }
 $("modal").onclick = ev => { if (ev.target.id === "modal") closeModal(); };
-document.addEventListener("keydown", ev => { if (ev.key === "Escape"){ closeModal(); closeGate(); } });
+document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeModal(); });
 
 /* ---------- entrance ---------- */
-let gateTimer = null;
-function closeGate(){ $("gatePop").classList.remove("show"); clearTimeout(gateTimer); }
-function gateHtml(g, big){
-  const head = {approved:"✓ ACCESS APPROVED", denied:"✖ ACCESS DENIED", manual:"⚠ VERIFICATION FAILED"}[g.result] || g.result;
-  const msg = {approved:"All required PPE detected. You may proceed.", denied:"Required PPE is incomplete. Entry is not permitted.", manual:"Manual check required."}[g.result];
-  const items = (g.required||[]).map(i => (g.missing||[]).includes(i) ? `<span class="item">✖ ${iname(i)}</span>` : (g.ok||[]).includes(i) ? `<span class="item ok">✓ ${iname(i)}</span>` : `<span class="item unk">? ${iname(i)}</span>`).join("");
-  const manual = g.result === "manual" && !g.override && canAct() ? `<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap"><button class="btn pri${big ? " big" : ""}" data-a="gate" data-d="approved" data-id="${g.event_id}">Checked — approve</button><button class="btn red${big ? " big" : ""}" data-a="gate" data-d="denied" data-id="${g.event_id}">Checked — deny</button></div>` : "";
-  return {head, msg, items, manual};
-}
-function showGatePopup(g){
-  const x = gateHtml(g, true);
-  $("gpCard").className = "card " + g.result;
-  $("gpCard").innerHTML = `<h1 id="gpTitle">${x.head}</h1><p>${x.msg}</p><div class="items" style="margin:12px 0">${x.items}</div>
-    ${g.result === "denied" && g.missing.length ? `<p><b>Missing:</b> ${g.missing.map(iname).join(", ")}</p>` : ""}
-    ${g.reason && g.result !== "approved" ? `<p class="small">${esc(g.reason)}</p>` : ""}
-    <p class="small">${esc(g.zone_name || g.zone_id)} · ${esc(g.camera_id)} · ${esc(g.time)}${g.worker_name ? " · " + esc(g.worker_name) : ""} · decided in ${g.decision_ms} ms · gate: ${esc(g.gate)} (${esc(g.controller)})</p>
-    ${x.manual}<div style="margin-top:12px"><button class="btn" onclick="closeGate()">Close</button></div>`;
-  $("gatePop").classList.add("show");
-  clearTimeout(gateTimer);
-  if (g.result === "approved") gateTimer = setTimeout(closeGate, 5000);
-  else if (g.result === "denied") gateTimer = setTimeout(closeGate, 12000);
-}
 function renderGate(){
+  const box = $("gateLast"), cell = $("gateCell"); if (!box) return;
   const g = ENTR[0];
-  $("gateCtl").textContent = g ? `gate: ${g.gate} · ${g.controller}` : "";
-  if (!g){ $("gateLast").innerHTML = `<div class="empty">No entrance checks yet. The entrance camera decides when a person stands in front of it.</div>`; $("gateList").innerHTML = ""; return; }
-  const x = gateHtml(g, false);
-  $("gateLast").innerHTML = `<div class="gate ${g.result}"><div class="res">${x.head}</div><div>${x.msg}${g.override ? ` · manual check: <b>${esc(g.override.decision)}</b> by ${esc(g.override.by)}` : ""}</div>
-    <div class="items">${x.items}</div><div class="small">${esc(g.time)} · ${esc(g.camera_id)}${g.worker_name ? " · " + esc(g.worker_name) : ""} · ${g.decision_ms} ms</div>${x.manual}</div>`;
-  $("gateList").innerHTML = ENTR.slice(0, 8).map(r => `<tr><td>${fmtT(r.at, false)}</td><td><span class="pill ${r.result === "approved" ? "p-ok" : r.result === "denied" ? "p-crit" : "p-warn"}">${r.result === "approved" ? "✓" : r.result === "denied" ? "✖" : "⚠"} ${r.result.toUpperCase()}</span></td>
-    <td class="small">${r.missing && r.missing.length ? "missing " + r.missing.map(iname).join(", ") : r.result === "manual" ? esc(r.reason || "") : "all PPE seen"}${r.override ? " · manual: " + esc(r.override.decision) : ""}</td></tr>`).join("");
+  if (!g){ cell.className = "gatecell"; box.innerHTML = `<div class="small">No checks yet. The USB camera decides when a person stands in front of it.</div>`; return; }
+  const r = g.override ? g.override.decision : g.result, w = NetraxAlerts.who(g);
+  const age = Date.now()/1000 - g.at;
+  cell.className = "gatecell" + (age < 120 || (r === "manual" && !g.override) ? " " + r : "");
+  box.innerHTML = `<div class="nx-display gh ${r}">${{approved:"✓ VERIFIED — MAY ENTER", denied:"✖ DO NOT ENTER", manual:"⚠ MANUAL CHECK"}[r]}</div>
+    <div class="gw">${esc(w.name)}</div><div class="items">${NetraxAlerts.chips(g)}</div><div class="small">${esc(g.time)}${g.decision_ms != null ? ` · ${g.decision_ms} ms` : ""}</div>`;
 }
 
 /* ---------- zones, notifications, health, perf, location ---------- */
@@ -773,8 +755,8 @@ function upsert(e){
   EVENTS.set(e.event_id, e);
   if (isNew && SEEN.size && e.captured_at){ const cap = Date.parse(e.captured_at) / 1000; const now = Date.now()/1000 + CLOCK_OFF;
     if (cap && now - cap < 60) PERF.dashboard_event_ms.push(Math.round((now - cap) * 1000)); }
-  if (isNew && SEEN.size && (isEmergencyPPE(e) || (fireActive(e) && e.status !== "verifying"))) alarmTone();
   SEEN.add(e.event_id);
+  NetraxAlerts.offer(e);                       // new or worse incident -> popup + tone (alerts.js)
   renderIncidents(); renderAlertZone(); renderBand();
 }
 function connect(){
@@ -787,7 +769,7 @@ function connect(){
     else if (kind === "location"){ LOC = data; renderLoc(); }
     else if (kind === "notification"){ NOTIFS.set(data.id, Object.assign(NOTIFS.get(data.id) || {}, data)); renderNotifs(); renderBand();
       if (data.status === "failed") toast(`${CH[data.channel] || data.channel} failed`, `${data.event_id}: ${data.error || ""}`, "crit"); }
-    else if (kind === "entrance"){ ENTR = [data].concat(ENTR.filter(x => x.event_id !== data.event_id)); renderGate(); if (!data.override) showGatePopup(data); else closeGate(); }
+    else if (kind === "entrance"){ ENTR = [data].concat(ENTR.filter(x => x.event_id !== data.event_id)); renderGate(); NetraxAlerts.gate(data, {compact:true}); }
     else if (kind === "ppe_ok") toast("✓ PPE complete", `${data.worker_name || data.worker_id || "Worker"} · ${data.zone_name || ""}`);
   };
   ws.onopen = () => { $("sysChip").dataset.ws = "1"; };
@@ -806,7 +788,8 @@ async function boot(){
   $("userChip").textContent = `👤 ${ME.user || "local"} · ${String(ME.role).toUpperCase()}`;
   $("logoutBtn").hidden = !ME.auth;
   try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
-  try { (await api("/api/events?limit=300")).forEach(e => { EVENTS.set(e.event_id, e); SEEN.add(e.event_id); }); } catch {}
+  NetraxAlerts.init({canAct, onEvent: upsert, view: openEvent, tone: alarmTone, skipL3: true});
+  try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs); evs.forEach(e => { EVENTS.set(e.event_id, e); SEEN.add(e.event_id); }); } catch {}
   try { (await api("/api/notifications?limit=100")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
   try { ENTR = await api("/api/entrance?limit=20"); renderGate(); } catch {}
   try { LOC = await api("/api/location"); renderLoc(); } catch {}

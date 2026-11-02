@@ -139,8 +139,10 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
   nav{display:flex;flex-wrap:wrap;gap:4px}.sidefoot{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:14px 16px}
   nav a[aria-current="page"]::before{display:none}.kv{grid-template-columns:1fr}}
 </style>
+<link rel="stylesheet" href="/static/nx.css">
 </head>
 <body>
+<div class="nxvig" aria-hidden="true"></div>
 <div class="app">
 <aside>
   <div class="brand"><div class="logo" aria-hidden="true">N</div><div><b>NETRAX</b><small>ADMIN CONSOLE</small></div></div>
@@ -152,9 +154,11 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
     <a href="#cameras" data-p="cameras"><span class="ic">◧</span>Cameras &amp; zones</a>
     <a href="#users" data-p="users"><span class="ic">🔐</span>Users &amp; audit</a>
     <a href="#system" data-p="system"><span class="ic">🩺</span>System health<span class="cnt" id="navHealth"></span></a>
+    <a href="#acceptance" data-p="acceptance"><span class="ic">✔</span>Acceptance tests<span class="cnt" id="navAcc" style="background:var(--info)"></span></a>
   </nav>
   <div class="sidefoot">
     <a href="/">◀ Control room</a>
+    <a href="/entrance">🚪 Entrance dashboard</a>
     <a href="/hardware">⚙ Hardware &amp; RFID</a>
     <a href="/static/roi.html">₹ Cost &amp; payback</a>
     <div id="userInfo"></div>
@@ -283,12 +287,19 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
       </div>
     </div>
   </section>
+
+  <section class="page" id="p-acceptance">
+    <div class="panel"><h2>Live end-to-end run <span class="grow"></span><small id="accSum"></small><a class="btn sm" href="/api/acceptance/report.md">⬇ Export results</a></h2>
+      <p class="small" style="margin:0 0 10px">Brief section 11. The automatic tests use fake providers; this list is the real run. Do the test, then record the result and attach a screenshot. The evidence line is read from the database. Nothing is marked passed automatically.</p>
+      <div id="accList" class="grid" style="gap:10px"></div></div>
+  </section>
 </main>
 </div>
 
 <div class="modal" id="modal" role="dialog" aria-modal="true"><div class="box" id="mBox"></div></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
+<script src="/static/alerts.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -317,13 +328,14 @@ setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-I
 const PAGES = {overview:["Overview","Live picture of safety across all zones"], incidents:["Incidents","Search, review and export every incident"],
   workers:["Workers","Registration, face ID and RFID cards"], alerts:["Alerts & channels","Telegram, e-mail, phone and SMS — status and delivery log"],
   cameras:["Cameras & zones","Live feeds, zone rules and the speaker / siren"], users:["Users & audit","Who can do what, and who did what"],
-  system:["System health","Edge computer, cameras, database, channels and measured speed"]};
+  system:["System health","Edge computer, cameras, database, channels and measured speed"],
+  acceptance:["Acceptance tests","Brief section 11, tests 01-14: result, evidence and screenshot"]};
 function show(){
   const p = (location.hash.slice(1) || "overview").split("=")[0]; const page = PAGES[p] ? p : "overview";
   document.querySelectorAll("section.page").forEach(s => s.classList.toggle("on", s.id === "p-" + page));
   document.querySelectorAll("nav a").forEach(a => { if (a.dataset.p === page) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
   $("pgTitle").textContent = PAGES[page][0]; $("pgSub").textContent = PAGES[page][1];
-  ({incidents: search, alerts: loadAlerts, users: loadUsers, system: loadSystem, workers: loadWorkers, cameras: loadCameras}[page] || (() => {}))();
+  ({incidents: search, alerts: loadAlerts, users: loadUsers, system: loadSystem, workers: loadWorkers, cameras: loadCameras, acceptance: loadAcceptance}[page] || (() => {}))();
 }
 window.addEventListener("hashchange", show);
 $("logoutBtn").onclick = async () => { await post("/api/logout").catch(()=>{}); location.href = "/login"; };
@@ -593,13 +605,39 @@ async function loadSystem(){
 }
 
 /* ---------- live data ---------- */
-function upsert(e){ if (!e || !e.event_id) return; EVENTS.set(e.event_id, e); renderKpis(); renderActivity(); }
+function upsert(e){ if (!e || !e.event_id) return; EVENTS.set(e.event_id, e); renderKpis(); renderActivity(); NetraxAlerts.offer(e); }
+/* ---------- live acceptance checklist ---------- */
+let ACC = [];
+function accRow(t){
+  const ans = v => `<button class="btn sm${t.result === v ? " pri" : ""}" data-acc="${t.id}" data-res="${v}">${{pass:"✓ Pass", fail:"✖ Fail", na:"N/A"}[v]}</button>`;
+  return `<div style="border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:8px 12px;align-items:start;background:var(--panel2)">
+    <b class="nx-display" style="font-size:22px">${t.id}</b>
+    <div><b>${esc(t.name)}</b><div class="small"><b>Do:</b> ${esc(t.how)}</div><div class="small"><b>Expected:</b> ${esc(t.expect)}</div>
+      <div class="small" style="margin-top:4px"><b>Database:</b> ${esc(t.evidence.text)}${t.evidence.event_id ? ` · <a href="/#event=${encodeURIComponent(t.evidence.event_id)}">open latest record</a>` : ""}</div>
+      <input aria-label="Note for test ${t.id}" data-note="${t.id}" value="${esc(t.note || "")}" placeholder="Note (what you saw)" style="width:100%;margin-top:6px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel)">
+      ${t.by ? `<div class="small" style="margin-top:4px">Recorded by ${esc(t.by)} · ${fmtT(t.at)}</div>` : ""}</div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch">${ans("pass")}${ans("fail")}${ans("na")}
+      <label class="btn sm" style="text-align:center;cursor:pointer">📷 Screenshot<input type="file" accept="image/*" data-photo="${t.id}" hidden></label>
+      ${t.photo ? `<a href="${t.photo}" target="_blank" rel="noopener"><img src="${t.photo}" alt="Screenshot for test ${t.id}" style="width:120px;border-radius:8px;display:block"></a>` : ""}</div></div>`;
+}
+function renderAcc(){
+  $("accList").innerHTML = ACC.map(accRow).join("");
+  const n = r => ACC.filter(t => t.result === r).length, todo = ACC.filter(t => !t.result).length;
+  $("accSum").textContent = `${n("pass")} pass · ${n("fail")} fail · ${n("na")} n/a · ${todo} not run`;
+  $("navAcc").textContent = todo || "";
+}
+async function loadAcceptance(){ try { ACC = await api("/api/acceptance"); renderAcc(); } catch {} }
+document.addEventListener("click", async ev => { const b = ev.target.closest("[data-acc]"); if (!b) return; const id = b.dataset.acc;
+  const note = (document.querySelector(`[data-note="${id}"]`) || {}).value || "";
+  try { const r = await post(`/api/acceptance/${id}`, {result: b.dataset.res, note}); ACC = ACC.map(t => t.id === id ? r : t); renderAcc(); } catch (x) { toast("Not saved", x.message, true); } });
+document.addEventListener("change", async ev => { const f = ev.target.closest("[data-photo]"); if (!f || !f.files[0]) return; const id = f.dataset.photo;
+  try { const r = await api(`/api/acceptance/${id}/photo`, {method:"POST", headers:{"Content-Type": f.files[0].type || "image/jpeg"}, body: f.files[0]}); ACC = ACC.map(t => t.id === id ? r : t); renderAcc(); } catch (x) { toast("Not saved", x.message, true); } });
 function connect(){
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
   ws.onopen = () => { const lc = $("liveChip"); lc.dataset.ws = "1"; lc.className = "chip live ok"; lc.querySelector("span:last-child").textContent = "LIVE"; renderHealth(); };
   ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
-    if (kind === "event"){ const isNew = !EVENTS.has(data.event_id); upsert(data);
-      if (isNew && ["open","escalated"].includes(data.status) && data.type !== "entrance_check") toast("▲ New incident", `${title(data)} · ${data.zone_name || ""}`, true); }
+    if (kind === "event") upsert(data);
+    else if (kind === "entrance") NetraxAlerts.gate(data, {compact:true});
     else if (kind === "cameras"){ CAMS = data; renderCams(); renderKpis(); }
     else if (kind === "health"){ HEALTH = data; renderHealth(); }
     else if (kind === "notification"){ NOTIFS.set(data.id, Object.assign(NOTIFS.get(data.id) || {}, data)); renderNotifs(); renderKpis();
@@ -621,7 +659,8 @@ async function boot(){
   $("userInfo").innerHTML = `Signed in as <b>${esc(ME.user || "local")}</b> · ${esc(String(ME.role).toUpperCase())}`;
   $("logoutBtn").hidden = !ME.auth;
   try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
-  try { (await api("/api/events?limit=300")).forEach(e => EVENTS.set(e.event_id, e)); } catch {}
+  NetraxAlerts.init({canAct, onEvent: upsert});
+  try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs); evs.forEach(e => EVENTS.set(e.event_id, e)); } catch {}
   try { (await api("/api/notifications?limit=150")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
   await loadWorkers(); await refreshSlow(); renderActivity(); renderKpis();
   try { HEALTH = await api("/api/health"); renderHealth(); } catch {}

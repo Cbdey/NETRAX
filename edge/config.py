@@ -21,14 +21,15 @@ def load_yaml(name):
         return yaml.safe_load(f) or {}
 
 
-def load_cameras():
+def load_cameras(include_off=False):
     alt = os.environ.get("SENTINELEYE_CAMERAS")
     if alt:
         with open(alt if os.path.isabs(alt) else path(alt), "r", encoding="utf-8") as f:
             cams = (yaml.safe_load(f) or {})["cameras"]
     else:
         cams = load_yaml("cameras.yaml")["cameras"]
-    return {k: v for k, v in cams.items() if v.get("enabled", True)}
+    # the dashboard still shows a switched-off camera's zone (include_off); the edge does not start it
+    return {k: v for k, v in cams.items() if include_off or v.get("enabled", True)}
 
 
 def _redirect(p, data_dir):
@@ -51,6 +52,7 @@ def load_all():
             settings[key] = _redirect(settings[key], data_dir)
         settings["fire"]["debug_log"] = _redirect(settings["fire"].get("debug_log"), data_dir)
         settings["identity"]["cache"] = _redirect(settings["identity"]["cache"], data_dir)
+        settings.setdefault("clips", {})["dir"] = _redirect(settings["clips"].get("dir", "data/clips"), data_dir)
     if os.environ.get("SENTINELEYE_BACKEND"):
         settings["backend"]["url"] = os.environ["SENTINELEYE_BACKEND"]
     for cam_id, cam in cameras.items():

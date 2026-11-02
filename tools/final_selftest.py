@@ -468,6 +468,14 @@ async def main():
           and (not loc["valid"] or loc["source"] == "configured"))
     bad, _ = location.record("hardware", 0, 0, None, time.time())
     check("14", "0,0 / invalid coordinates rejected", bad is False)
+    # ---------------- every Python file compiles (2 Nov: a damaged tool went unnoticed because no test imported it)
+    import compileall
+    check("BUILD", "backend, edge and tools all compile", all(compileall.compile_dir(d, quiet=2, force=False) for d in ("backend", "edge", "tools")))
+    from tools import find_phones
+    y = "cameras:\n  cam_02:\n    name: A\n    source: http://192.0.0.4:8080/video\n  cam_03:\n    name: B\n    enabled: false   # no phone\n    source: http://1.1.1.1:8080/video\n    rotate: 90\n"
+    n3 = find_phones.set_source(y, "cam_03", "172.24.255.50")
+    check("BUILD", "find_phones: sets the 2nd phone and switches its camera on, the first phone is untouched",
+          "http://172.24.255.50:8080/video" in n3 and "enabled" not in n3 and "http://192.0.0.4:8080/video" in n3 and "rotate: 90" in n3)
     # ---------------- entrance: WHO + WHAT (guide's request, 2 Nov): face / RFID identity with the PPE check
     def look(ec, st, t0, n=8, dt=0.15, **who):
         acts = []

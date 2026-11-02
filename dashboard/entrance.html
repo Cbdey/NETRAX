@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NETRAX Entrance</title>
+<style>
+:root{--bg:#060b16;--panel:#111a2d;--panel2:#1c2840;--ink:#f2f6ff;--muted:#a2b3cc;--line:#26344f;--ok:#2fe6a0;--ok-bg:#0d3a2c;--warn:#ffc53d;--warn-bg:#3b2d0a;--crit:#ff5468;--crit-bg:#431421;--info:#58c8ff;--info-bg:#0f3049;--grey:#7c8ea8;--teal:#1fe5cc;--r:18px}
+*{box-sizing:border-box}[hidden]{display:none!important}
+html,body{margin:0;color:var(--ink);font:16px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--info)}
+.wrap{padding:14px 18px 30px;max-width:1920px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--line)}
+.logo{width:44px;height:44px;display:grid;place-items:center;font-weight:800;font-size:22px;flex:none}
+header h1{margin:0}.tag{margin:0;color:var(--muted)}.grow{flex:1}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;font-weight:700;font-size:14px;border:1px solid var(--line);white-space:nowrap}
+.chip.ok{color:var(--ok);border-color:var(--ok)}.chip.warn{color:var(--warn);border-color:var(--warn)}.chip.crit{color:var(--crit);border-color:var(--crit)}
+.btn{border:1px solid var(--line);background:var(--panel2);border-radius:11px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:14px}
+.btn:disabled{opacity:.5;cursor:default}.btn.pri{background:var(--teal);color:#04161c}.btn.red{background:var(--crit);color:#fff}.btn.sm{padding:4px 11px;font-size:13px}
+.btn:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--info);outline-offset:2px}
+.kband{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.kb{border:1px solid var(--line);position:relative;overflow:hidden}.kb::before{content:"";position:absolute;left:0;top:0}
+.kb small{display:block;color:var(--muted);font-size:13px;font-weight:700}.kb b{display:block;line-height:1.15}
+.kb span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.main{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(330px,1fr);gap:14px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel{border:1px solid var(--line);padding:14px 16px}
+.panel h2{margin:0 0 10px;display:flex;align-items:center;gap:10px}.panel h2 .grow{flex:1}.small{font-size:13px;color:var(--muted)}
+.feed{position:relative;aspect-ratio:16/9;background:#02060e;border-radius:16px;overflow:hidden;display:grid;place-items:center;text-align:center;border:1px solid var(--line);transition:box-shadow .3s}
+.feed img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.feed.approved{border-color:var(--ok);box-shadow:0 0 40px -12px var(--ok)}.feed.denied{border-color:var(--crit);box-shadow:0 0 40px -12px var(--crit)}.feed.manual{border-color:var(--warn);box-shadow:0 0 40px -12px var(--warn)}
+.feed .tagL,.feed .tagR{position:absolute;top:12px;z-index:2;font-weight:800;font-size:13px;letter-spacing:.05em;padding:5px 12px;border-radius:999px;background:rgba(4,10,20,.66);color:#fff;backdrop-filter:blur(5px)}
+.feed .tagL{left:12px}.feed .tagR{right:12px}
+.scan{position:absolute;left:0;right:0;height:90px;z-index:1;pointer-events:none;background:linear-gradient(rgba(31,229,204,0),rgba(31,229,204,.17) 88%,rgba(31,229,204,.75));animation:nxscan 3.2s linear infinite}
+@keyframes nxscan{from{top:-90px}to{top:100%}}
+.feedmsg{padding:0 28px;display:grid;gap:8px;color:var(--muted);max-width:600px}.feedmsg b{font:700 26px/1.15 var(--display,inherit);color:#e8effa}.feedmsg code{color:#9fe9dc}
+.hero{border-radius:18px;padding:18px 20px;border:1px solid var(--line);display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:16px;align-items:center;transition:background .3s}
+.hero .big{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;font-size:38px;font-weight:900;background:var(--panel2);color:var(--muted)}
+.hero h3{margin:0;font-size:clamp(23px,2.8vw,33px);line-height:1.1;font-weight:700}
+.hero p{margin:4px 0 8px;font-size:17px}
+.hero img{height:96px;border-radius:12px;background:#000}
+.hero.approved{background:linear-gradient(115deg,var(--ok-bg),transparent);border-color:var(--ok)}.hero.approved .big{background:var(--ok);color:#03210f}.hero.approved h3{color:var(--ok)}
+.hero.denied{background:linear-gradient(115deg,var(--crit-bg),transparent);border-color:var(--crit)}.hero.denied .big{background:var(--crit);color:#fff}.hero.denied h3{color:var(--crit)}
+.hero.manual{background:linear-gradient(115deg,var(--warn-bg),transparent);border-color:var(--warn)}.hero.manual .big{background:var(--warn);color:#2a1c00}.hero.manual h3{color:var(--warn)}
+.items{display:flex;flex-wrap:wrap;gap:6px}.item{font-weight:700;font-size:14px;padding:4px 11px;background:var(--crit);color:#fff}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.steps li{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:start;font-size:15px}
+.steps i{font-style:normal;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--panel2);border:1px solid var(--line)}
+.kvs{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 14px;font-size:15px}.kvs div:nth-child(odd){color:var(--muted);font-size:14px}.kvs div:nth-child(even){font-weight:700}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:800;white-space:nowrap}
+.p-ok{background:var(--ok-bg);color:var(--ok)}.p-warn{background:var(--warn-bg);color:var(--warn)}.p-crit{background:var(--crit-bg);color:var(--crit)}.p-info{background:var(--info-bg);color:var(--info)}.p-grey{background:var(--panel2);color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{text-align:left;color:var(--muted);font-weight:600;font-size:13px;padding:7px;border-bottom:1px solid var(--line)}
+td{padding:8px 7px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr{transition:background .15s;cursor:pointer}tbody tr:hover{background:var(--panel2)}
+td img{width:78px;height:50px;object-fit:cover;border-radius:8px;display:block;background:#000}
+.tscroll{overflow:auto;max-height:520px}
+.filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.tab{border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:5px 13px;font-weight:700;font-size:13.5px;cursor:pointer}
+.tab[aria-pressed="true"]{background:var(--teal);color:#04161c}
+.search{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);min-width:170px}
+.empty{color:var(--muted);text-align:center;padding:18px}
+.toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:99;max-width:420px}
+.toast{border:1px solid var(--line);border-left:5px solid var(--info);padding:10px 14px;font-size:14px}.toast b{display:block;font-size:15px}
+@media (max-width:1150px){.main{grid-template-columns:1fr}.kband{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:640px){.kband{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:auto minmax(0,1fr)}.hero img{grid-column:1/-1;height:auto;width:100%}}
+</style>
+<link rel="stylesheet" href="/static/nx.css">
+</head>
+<body>
+<div class="nxvig" aria-hidden="true"></div>
+<div class="wrap">
+<header>
+  <div class="logo" aria-hidden="true">N</div>
+  <div><h1>NETRAX ENTRANCE</h1><p class="tag">IDENTITY + PPE VERIFICATION</p></div>
+  <span class="chip" id="camChip">… camera</span>
+  <span class="chip" id="rfidChip">… RFID</span>
+  <span class="grow"></span>
+  <span class="clock" id="clock" aria-label="Current time">--:--:--</span>
+  <nav class="nxnav" aria-label="Pages"><a href="/">Control room</a><a href="/entrance" aria-current="page">Entrance</a><a href="/admin">Admin</a><a href="/hardware">Hardware</a></nav>
+  <button class="btn sm" id="themeBtn" aria-label="Switch day / night">☀/☾</button>
+  <span class="chip" id="userChip">…</span>
+</header>
+
+<section class="kband" aria-label="Today at the entrance">
+  <div class="kb" style="--c:var(--info)"><small>Checks today</small><b id="kAll">–</b><span>people at the door</span></div>
+  <div class="kb" style="--c:var(--ok)"><small>✓ Verified, may enter</small><b id="kOk">–</b><span id="kOkS">all required PPE worn</span></div>
+  <div class="kb" id="kbNo" style="--c:var(--crit)"><small>✖ Entry refused</small><b id="kNo">–</b><span id="kNoS">PPE missing</span></div>
+  <div class="kb" id="kbMan" style="--c:var(--warn)"><small>⚠ Manual checks</small><b id="kMan">–</b><span id="kManS">none waiting</span></div>
+  <div class="kb" style="--c:var(--violet)"><small>Unregistered workers</small><b id="kUn">–</b><span>not in the worker list</span></div>
+  <div class="kb" style="--c:var(--teal)"><small>👷 Inside the site</small><b id="kIn">–</b><span id="kInS">RFID check-ins</span></div>
+</section>
+
+<div class="main">
+  <div class="stack">
+    <section class="panel" aria-label="Entrance camera">
+      <h2>USB entrance camera <span class="grow"></span><span class="small" id="camInfo"></span></h2>
+      <div class="feed" id="feed"><span class="tagL" id="tagL">ENTRANCE</span><span class="tagR" id="tagR"></span><div class="feedmsg" id="feedMsg"></div></div>
+    </section>
+    <section class="hero" id="hero" aria-live="polite" aria-label="Latest decision"></section>
+  </div>
+  <div class="stack">
+    <section class="panel" aria-label="How a person is verified"><h2>How verification works</h2>
+      <ol class="steps">
+        <li><i>1</i><div><b>Tap the RFID card</b> or look at the camera<br><span class="small">Registered face or card = the worker's name. Neither = unregistered worker.</span></div></li>
+        <li><i>2</i><div><b>Stand in front of the camera</b> for about 2 s<br><span class="small">Whole body in the picture, head to shoes, one person at a time.</span></div></li>
+        <li><i>3</i><div><b>Green = enter, red = do not enter</b><br><span class="small">Unclear picture or a card that does not match the face = manual check, never automatic approval.</span></div></li>
+      </ol>
+      <h2 style="margin-top:14px">Required PPE</h2><div class="items" id="req"></div>
+    </section>
+    <section class="panel" aria-label="Entrance devices"><h2>Devices</h2><div class="kvs" id="dev"></div></section>
+    <section class="panel" aria-label="Inside the site"><h2>Inside the site now <span class="grow"></span><span class="small">by RFID</span></h2><div id="inside"></div></section>
+  </div>
+</div>
+
+<section class="panel" aria-label="Entrance log">
+  <h2>Entrance log <span class="grow"></span>
+    <span class="filters" role="group" aria-label="Filter"><button class="tab" data-f="all" aria-pressed="true">All</button><button class="tab" data-f="approved" aria-pressed="false">Verified</button><button class="tab" data-f="denied" aria-pressed="false">Refused</button><button class="tab" data-f="manual" aria-pressed="false">Manual</button><button class="tab" data-f="unreg" aria-pressed="false">Unregistered</button>
+      <label class="sr" style="position:absolute;width:1px;height:1px;overflow:hidden" for="q">Search</label><input class="search" id="q" placeholder="Search name or ID"></span></h2>
+  <div class="tscroll"><table><thead><tr><th>Photo</th><th>Time</th><th>Who</th><th>Identified by</th><th>PPE</th><th>Result</th><th></th></tr></thead><tbody id="log"></tbody></table></div>
+</section>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="/static/alerts.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const TZ = "Asia/Kolkata", NA = NetraxAlerts;
+const fmtT = t => t ? new Date(t*1000).toLocaleString("en-IN", {timeZone:TZ, day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false}) : "–";
+const dayStart = () => new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
+let ME = {role:"viewer"}, LOG = [], STATUS = null, PRESENT = [], FILTER = "all", loopOn = false;
+const canAct = () => ME.role === "supervisor" || ME.role === "admin";
+async function api(p, o){ const r = await fetch(p, o); if (r.status === 401){ location.href = "/login?next=/entrance"; throw new Error("login"); } if (!r.ok) throw new Error(r.status); return r.json(); }
+const post = (p, b) => api(p, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(b||{})});
+setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-IN", {timeZone:TZ, hour12:false}) + " IST"; }, 500);
+$("themeBtn").onclick = () => { const r = document.documentElement; r.dataset.theme = r.dataset.theme === "light" ? "dark" : "light"; try { localStorage.setItem("netrax-cr-theme", r.dataset.theme); } catch {} };
+try { const t = localStorage.getItem("netrax-cr-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+function toast(h, b){ const t = document.createElement("div"); t.className = "toast"; t.innerHTML = `<b>${esc(h)}</b>${esc(b)}`; $("toasts").prepend(t); setTimeout(() => t.remove(), 7000); }
+
+const shown = g => (g.override ? g.override.decision : g.result);
+function renderKpis(){
+  const d0 = dayStart(), td = LOG.filter(g => g.at >= d0);
+  $("kAll").textContent = td.length;
+  const ok = td.filter(g => shown(g) === "approved"), no = td.filter(g => shown(g) === "denied");
+  $("kOk").textContent = ok.length; $("kNo").textContent = no.length;
+  const wait = LOG.filter(g => g.result === "manual" && !g.override);
+  $("kMan").textContent = td.filter(g => g.result === "manual").length;
+  $("kManS").textContent = wait.length ? `${wait.length} waiting for a supervisor` : "none waiting";
+  $("kbMan").classList.toggle("warm", wait.length > 0);
+  $("kUn").textContent = td.filter(g => (g.identity||{}).kind === "unregistered").length;
+  $("kNoS").textContent = no.length ? "latest: " + (no[0].missing||[]).map(NA.iname).join(", ") : "PPE missing";
+  $("kIn").textContent = PRESENT.length; $("kInS").textContent = PRESENT.length ? PRESENT.map(p => p.name).slice(0,3).join(", ") : "nobody checked in";
+  $("inside").innerHTML = PRESENT.length ? `<table><tbody>${PRESENT.map(p => `<tr style="cursor:default"><td><b>${esc(p.worker_id)} ${esc(p.name)}</b></td><td class="small">since ${esc(fmtT(p.since))}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">Nobody has tapped in.</div>`;
+}
+function renderHero(){
+  const g = LOG[0], h = $("hero");
+  if (!g){ h.className = "hero"; h.innerHTML = `<div class="big">🚪</div><div><h3 class="nx-display">Ready for the next person</h3><p>No entrance checks yet.</p></div>`; $("feed").className = "feed"; return; }
+  const r = shown(g), w = NA.who(g);
+  h.className = "hero " + r;
+  h.innerHTML = `<div class="big" aria-hidden="true">${{approved:"✓", denied:"✖", manual:"!"}[r] || "?"}</div>
+    <div><h3 class="nx-display">${esc({approved:"VERIFIED — MAY ENTER", denied:"DO NOT ENTER", manual:"MANUAL CHECK REQUIRED"}[r])}</h3>
+      <p><b>${esc(w.name)}</b> · ${esc(g.verdict || g.message || "")}${g.override ? ` · decided by ${esc(g.override.by)}` : ""}</p>
+      <div class="items">${NA.chips(g)}</div>
+      <div class="small" style="margin-top:6px">${esc(g.time)} · ${esc(w.how.toLowerCase())}${g.decision_ms != null ? ` · decided in ${g.decision_ms} ms` : ""}${g.reason && r !== "approved" ? " · " + esc(g.reason) : ""}</div>
+      ${g.result === "manual" && !g.override && canAct() ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn pri" data-d="approved" data-id="${esc(g.event_id)}">Checked — allow entry</button><button class="btn red" data-d="denied" data-id="${esc(g.event_id)}">Checked — refuse</button></div>` : ""}</div>
+    ${g.snapshot ? `<img src="${esc(g.snapshot)}" alt="Snapshot of this check">` : ""}`;
+  const recent = Date.now()/1000 - g.at < 15;
+  $("feed").className = "feed" + (recent ? " " + r : "");
+}
+function renderLog(){
+  const q = $("q").value.trim().toLowerCase();
+  const rows = LOG.filter(g => FILTER === "all" || (FILTER === "unreg" ? (g.identity||{}).kind === "unregistered" : shown(g) === FILTER))
+    .filter(g => !q || `${(g.identity||{}).worker_id||""} ${(g.identity||{}).name||""}`.toLowerCase().includes(q));
+  $("log").innerHTML = rows.length ? rows.slice(0, 120).map(g => { const r = shown(g), w = NA.who(g), by = (g.identity||{}).by;
+    return `<tr data-open="${esc(g.event_id)}"><td>${g.snapshot ? `<img src="${esc(g.snapshot)}" alt="" loading="lazy">` : `<span class="small">no image</span>`}</td><td style="white-space:nowrap">${esc(fmtT(g.at))}</td>
+      <td><b>${esc(w.name)}</b></td><td>${by ? `<span class="pill p-info">${esc({face:"Face", rfid:"RFID", "face+rfid":"Face + RFID"}[by] || by)}</span>` : `<span class="pill p-grey">Not identified</span>`}</td>
+      <td><div class="items">${NA.chips(g)}</div></td>
+      <td><span class="pill ${r === "approved" ? "p-ok" : r === "denied" ? "p-crit" : "p-warn"}">${{approved:"✓ VERIFIED", denied:"✖ REFUSED", manual:"⚠ MANUAL"}[r]}</span>${g.override ? `<div class="small">by ${esc(g.override.by)}</div>` : ""}</td>
+      <td style="white-space:nowrap">${g.result === "manual" && !g.override && canAct() ? `<button class="btn sm pri" data-d="approved" data-id="${esc(g.event_id)}">Allow</button> <button class="btn sm red" data-d="denied" data-id="${esc(g.event_id)}">Refuse</button>` : ""}</td></tr>`; }).join("")
+    : `<tr style="cursor:default"><td colspan="7" class="empty">No checks in this list.</td></tr>`;
+}
+function renderDevices(){
+  const s = STATUS; if (!s) return;
+  const c = s.camera || {}, live = c.status === "ONLINE" || c.status === "DEGRADED";
+  $("camChip").className = "chip " + (live ? "ok" : "crit"); $("camChip").textContent = live ? `● USB camera live · ${c.fps} fps` : "✖ USB camera offline";
+  $("camInfo").textContent = c.camera_id ? `${c.camera_id} · ${c.zone_name}` : "";
+  $("feedMsg").hidden = live;
+  $("tagL").textContent = "● LIVE"; $("tagL").hidden = !live;
+  $("tagR").textContent = c.badge || (live ? "READY" : "");
+  const f = $("feed"); let img = f.querySelector("img"), sc = f.querySelector(".scan");
+  if (live && !img){ img = document.createElement("img"); img.alt = "Live entrance camera"; img.id = "liveImg"; f.prepend(img); sc = document.createElement("div"); sc.className = "scan"; f.append(sc); startLoop(c.camera_id); }
+  if (!live){ if (img) img.remove(); if (sc) sc.remove();
+    $("feedMsg").innerHTML = `<b>USB webcam not connected</b><span>${esc(c.detail || "No picture from the entrance camera.")}</span><span class="small">Plug in the USB webcam, then restart the edge (<code>python -m edge.run_edge</code>). If it still stays offline, try <code>source: 2</code> for cam_04 in config/cameras.yaml.</span>`; }
+  const rd = (s.readers||[])[0];
+  const rOk = rd && rd.online;
+  $("rfidChip").className = "chip " + (rOk ? "ok" : "warn"); $("rfidChip").textContent = rOk ? "● RFID reader linked" : "○ RFID reader waiting";
+  $("dev").innerHTML = `<div>Camera</div><div>${esc(c.name || "–")} · ${esc(c.status || "–")}</div>
+    <div>RFID reader</div><div>${rd ? `${esc(rd.device_id)} · ${rd.online ? "contact " + esc(fmtT(rd.last_seen)) : (rd.last_seen ? "last contact " + esc(fmtT(rd.last_seen)) : "no scan received yet")}` : "none mapped to the entrance"}</div>
+    <div>Last card</div><div>${s.card ? `${esc(s.card.worker_id)} ${esc(s.card.name)} · ${esc(fmtT(s.card.at))}` : "–"}</div>
+    <div>Gate</div><div>${s.controller_connected ? "Lock controller connected" : "Advisory: no lock connected yet"}</div>`;
+  $("req").innerHTML = (s.required||[]).map(i => `<span class="item ok">${esc(NA.iname(i))}</span>`).join("");
+}
+async function startLoop(cam){
+  if (loopOn) return; loopOn = true; let url = null;
+  while (true){
+    const img = $("liveImg");
+    if (!img || document.hidden){ await new Promise(r => setTimeout(r, 400)); continue; }
+    const t0 = performance.now();
+    try { const r = await fetch(`/api/frame/${cam}?t=${Date.now()}`, {cache:"no-store"});
+      if (r.status === 200){ const u = URL.createObjectURL(await r.blob()); img.src = u; if (url) URL.revokeObjectURL(url); url = u; } } catch {}
+    await new Promise(r => setTimeout(r, Math.max(15, 90 - (performance.now() - t0))));
+  }
+}
+document.addEventListener("click", async ev => {
+  const d = ev.target.closest("[data-d]");
+  if (d){ ev.stopPropagation(); d.disabled = true; try { await post(`/api/entrance/${d.dataset.id}/decide`, {decision:d.dataset.d, note:"manual check at the entrance"}); } catch { d.disabled = false; toast("Not saved", "Try again"); } return; }
+  const o = ev.target.closest("[data-open]"); if (o) location.href = "/#event=" + encodeURIComponent(o.dataset.open);
+  const f = ev.target.closest(".tab"); if (f){ FILTER = f.dataset.f; document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-pressed", x === f)); renderLog(); }
+});
+$("q").oninput = renderLog;
+function renderAll(){ renderKpis(); renderHero(); renderLog(); }
+async function slow(){
+  try { STATUS = await api("/api/entrance/status"); renderDevices(); } catch {}
+  try { PRESENT = (await api("/api/attendance/present")).filter(p => !STATUS || !STATUS.camera || p.zone_id === STATUS.camera.zone_id); renderKpis(); } catch {}
+}
+function connect(){
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
+  ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
+    if (kind === "entrance"){ LOG = [data].concat(LOG.filter(g => g.event_id !== data.event_id)); renderAll(); NA.gate(data); slow(); }
+    else if (kind === "event") NA.offer(data);
+    else if (kind === "attendance"){ toast(`RFID ${data.event || data.status || ""}`, data.message || ""); slow(); }
+    else if (kind === "cameras" && STATUS){ STATUS.camera = (data.cameras||[]).find(c => c.role === "entrance") || STATUS.camera; renderDevices(); }
+  };
+  ws.onclose = ev => { if (ev.code === 4401){ location.href = "/login?next=/entrance"; return; } setTimeout(connect, 2000); };
+  setInterval(() => ws.readyState === 1 && ws.send("ping"), 20000);
+}
+(async function boot(){
+  try { ME = await api("/api/me"); } catch { return; }
+  $("userChip").textContent = `👤 ${ME.user || "local"} · ${String(ME.role).toUpperCase()}`;
+  NA.init({canAct, role: () => ME.role, tone: () => {}, view: id => { location.href = "/#event=" + encodeURIComponent(id); }});
+  try { NA.seed(await api("/api/events?limit=300")); } catch {}
+  try { LOG = await api("/api/entrance?limit=200"); } catch {}
+  renderAll(); await slow(); connect();
+  setInterval(slow, 5000); setInterval(renderHero, 5000);
+})();
+</script>
+</body>
+</html>

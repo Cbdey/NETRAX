@@ -227,3 +227,23 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   events.clip_path, event field `clip` (/clips/<id>.mp4, supervisor+, viewer masked), retention = snapshot_retention_days.
   Shown in control-room + admin incident details (video + snapshot side by side), assistant cards "▶ clip". settings.yaml clips:.
   Tests: final_selftest [CLIP] x6. Phone call / SMS: user decided NOT now (Telegram + e-mail only; future work).
+
+## 2 Nov 2026: guide's review (entrance = who + what, popups, separate entrance dashboard)
+- Cameras: laptop is on the phone's own hotspot "OPPO Reno14" (laptop 172.24.255.235, phone gateway 172.24.255.85). cam_02 = http://192.0.0.4:8080/video
+  (address the IP Webcam app shows; rotate 90). cam_03 enabled:false until a 2nd phone (tools.find_phones --write sets + enables it; keeps a phone that still answers
+  even outside the scanned subnet). backend load_cameras(include_off=True) so its zone tile still shows. cam_04 USB entrance: index 1, not plugged in at last check.
+- Entrance (edge/entrance.py + main.ingest_entrance / entrance_scan): identity from face (waits id_wait_s) or RFID; verdict sentences in main.entrance_verdict:
+  "W-001 Chinmaya verified - all required PPE worn. You may enter." / "Unregistered worker - PPE verified. You may enter." / "... missing. Entry not permitted.".
+  details.verdict + verdict_public (viewer role) + identity{kind,by,worker_id,name,face,card}; details.message keeps the brief's exact text. One decision per person: a re-check
+  sends a new one only when the verdict changes. Card != face -> manual, never auto-approved. Card valid rfid_window_s 15 before the decision, rfid_after_s 6 after it (only
+  a decision with no recognised face). Refused person is taken out of attendance again, back in once approved (main._attendance_fix). Tap-out names nobody.
+- hardware.yaml: reader esp32-rfid-01 -> main_entrance (DECISION: the one reader stands at the site entrance; welding bay stays guarded by face ID, edge/access.py. A 2nd reader
+  -> map it to welding_bay). ESP32 sketch DASHBOARD_URL still has the OLD laptop IP (172.20.163.235) and Wi-Fi: must be changed + reflashed to work on the hotspot.
+- UI: dashboard/nx.css (aurora + glass look, Bahnschrift, offline; loaded after each page's style on index, entrance, admin, login), dashboard/alerts.js NetraxAlerts: alert popup per new /
+  worse incident ("1 of 3", Acknowledge / Resolve / Details / Later, snapshot or live feed), entrance popup green VERIFIED / red DO NOT ENTER / amber MANUAL; control room + admin show
+  approved as a small corner card. Page /entrance = dashboard/entrance.html: USB feed, latest decision, today's counts, devices, inside now, searchable log, manual approve / refuse;
+  /api/entrance/status. Control room wall: 3 zone cameras + entrance tile (link to /entrance). Violation panel = compact strip.
+- Acceptance: backend/acceptance.py, admin page #acceptance: tests 01-14, pass / fail / n/a, note, screenshot, evidence read from the DB (never marks a pass itself), export .md.
+- Latency: docs/eval/latency_report.md has 1 REAL run (1 camera, nobody in view). Multi-camera + incident numbers still to measure with phone + USB live.
+- Tests: final_selftest [ENT] + [BUILD] (all .py compile). UI checked with headless Edge over DevTools on a scratch backend (no JS errors).
+- REMINDER: shell heredocs mangle backslashes AND apostrophes here: write patch scripts with the Write tool. One such patch silently broke tools/find_phones.py.

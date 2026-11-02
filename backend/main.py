@@ -39,7 +39,7 @@ def load_cfg(name):
 
 ZONES = load_cfg("zones.yaml")["zones"]
 from edge.config import load_cameras                      # honours enabled: false + test override
-CAMERAS = load_cameras()
+CAMERAS = load_cameras(include_off=True)
 SETTINGS = load_cfg("settings.yaml")
 RESP = SETTINGS.get("response") or {}
 SPK = dict(RESP.get("speaker") or {})
@@ -63,6 +63,7 @@ CALLS = {}           # ppe event_id -> {"n": announcements made, "last": time, "
 SPOKEN = {}          # (camera, person, type) -> (last time the speaker called that person, items said then)
 OP_CLOSED = {}       # event_id -> (camera_id, time): supervisor resolved it; the camera re-checks that person
 from . import hw_api  # noqa: E402  ESP32 safety station(s): telemetry, fire cross-check, RFID attendance
+from . import acceptance  # noqa: E402  live acceptance checklist (brief section 11)
 
 
 def _for_viewer(kind, data):
@@ -176,6 +177,8 @@ async def lifespan(app):
 
 app = FastAPI(title="NETRAX API", lifespan=lifespan)
 app.include_router(hw_api.router)
+app.include_router(acceptance.router)
+ACCEPT_DIR = acceptance.setup(DATA_DIR)
 
 
 def _ip(request):
@@ -1404,5 +1407,6 @@ def hardware_page():
 
 app.mount("/snapshots", StaticFiles(directory=SNAP_DIR), name="snapshots")
 app.mount("/clips", StaticFiles(directory=CLIP_DIR), name="clips")
+app.mount("/acceptance_photos", StaticFiles(directory=ACCEPT_DIR), name="acceptance_photos")
 app.mount("/workers", StaticFiles(directory=WORKER_DIR), name="workers")
 app.mount("/static", StaticFiles(directory=os.path.join(ROOT, "dashboard")), name="static")

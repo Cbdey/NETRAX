@@ -7,7 +7,7 @@
 <style>
 :root{--bg:#0d1b22;--card:#13262f;--ink:#e8f1f2;--muted:#8fa6ad;--teal:#14b8a6;--line:#24414b;--red:#f87171}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);
+body{margin:0;min-height:100vh;display:grid;place-items:center;color:var(--ink);
   font:16px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;padding:16px}
 .box{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px}
 .brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
@@ -21,7 +21,9 @@ button{margin-top:22px;width:100%;padding:13px;border:0;border-radius:8px;backgr
 button:disabled{opacity:.6}
 .err{color:var(--red);min-height:24px;margin-top:12px;font-size:14px}
 .note{color:var(--muted);font-size:12px;margin-top:10px}
+.box{backdrop-filter:blur(16px);border-radius:22px}.logo{border-radius:14px}
 </style>
+<link rel="stylesheet" href="/static/nx.css">
 </head>
 <body>
 <form class="box" id="f">

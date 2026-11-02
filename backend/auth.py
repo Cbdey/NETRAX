@@ -179,7 +179,7 @@ def classify(method, path, ip):
         return "device"                                     # tools/latency_report.py on the edge computer
     if path.startswith(LOCAL_ONLY):
         return "local"
-    if path.startswith(("/snapshots", "/clips", "/workers/")):
+    if path.startswith(("/snapshots", "/clips", "/acceptance_photos", "/workers/")):
         return "supervisor"
     if path.startswith(("/api/users", "/api/audit")):
         return "admin"
