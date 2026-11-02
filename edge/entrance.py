@@ -1,13 +1,18 @@
-"""Automatic PPE verification at the entrance (final-round section 4).
+"""Automatic PPE verification at the entrance (final-round section 4 + guide's request, 2 Nov).
 
-A camera with `role: entrance` in cameras.yaml checks the person in front of it against the required PPE
-of its zone (zones.yaml) and gives ONE decision per person:
+A camera with `role: entrance` in cameras.yaml checks WHO stands in front of it and WHAT they wear, against the
+required PPE of its zone (zones.yaml), and gives ONE decision per person:
   APPROVED  every required item seen worn in most frames of the look window
   DENIED    a required item clearly missing (its body part seen bare) in most frames -> names the item(s)
   MANUAL    'Verification failed - manual check required': view unclear / occluded / too far / too many
             people / items that cannot be judged within max_look_s. Never an automatic approval.
 A single frame is never proof: the decision needs >= min_frames frames AND >= min_look_s of looking.
-A DENIED or MANUAL person who fixes their PPE is checked again after recheck_s (new decision).
+
+Who: the registered face (edge/identity.py) is waited for up to id_wait_s, otherwise the person is 'unregistered'.
+The RFID card is added by the backend (it receives the scans): main.ingest_entrance + entrance_scan.
+
+A DENIED or MANUAL person keeps being looked at. A new decision is sent only when the verdict CHANGES (they put the
+item on), so one person standing at the door gets one popup, one voice line and one message - not one every 3 s.
 The gate is never opened by software alone: 'gate' is 'closed' unless APPROVED, and without an access
 controller connected the decision is advisory ('no controller connected')."""
 import uuid
@@ -22,6 +27,7 @@ class EntranceChecker:
         self.min_frames = int(c.get("min_frames", 6))
         self.min_look_s = float(c.get("min_look_s", 1.0))
         self.max_look_s = float(c.get("max_look_s", 4.0))
+        self.id_wait_s = float(c.get("id_wait_s", 2.0))  # extra wait for the name while the face is being matched
         self.share = float(c.get("share", 0.6))         # majority needed per item
         self.min_votes = int(c.get("min_votes", 3))
         self.min_height_frac = float(c.get("min_height_frac", 0.35))   # person must fill >= 35 % of the height
@@ -54,13 +60,14 @@ class EntranceChecker:
         if s is None or (s["tid"] != subj["tid"] and now - s["last_seen"] > 0.5):
             s = self.s = {"tid": subj["tid"], "start": now, "last_seen": now, "frames": 0, "votes": {},
                           "decided": None, "decided_at": None, "bbox": subj["bbox"], "conf": [], "crowd": 0,
-                          "worker_id": None, "worker_name": None, "id": "ent_" + uuid.uuid4().hex[:10]}
+                          "worker_id": None, "worker_name": None, "id": "ent_" + uuid.uuid4().hex[:10],
+                          "shown": None, "said": None}
         s["last_seen"], s["bbox"] = now, subj["bbox"]
         s["frames"] += 1
         s["conf"].append(subj.get("conf", 0.0))
         if crowd_or_far:
             s["crowd"] += 1
-        if subj.get("worker_id"):
+        if subj.get("identity") == "worker" and subj.get("worker_id"):
             s["worker_id"], s["worker_name"] = subj["worker_id"], subj.get("worker_name")
         st = statuses.get(subj["tid"], {})
         for item in self.required:
@@ -68,7 +75,7 @@ class EntranceChecker:
             v = s["votes"].setdefault(item, {"compliant": 0, "missing": 0, "unverifiable": 0})
             v[status] += 1
         if s["decided"]:
-            # re-check a denied / manual person who keeps standing there (they may have put the item on)
+            # keep looking at a denied / manual person (they may put the item on); approved people need nothing more
             if s["decided"] != "approved" and now - s["decided_at"] >= self.recheck_s:
                 s.update(start=now, frames=0, votes={}, decided=None, conf=[], crowd=0,
                          id="ent_" + uuid.uuid4().hex[:10])
@@ -77,7 +84,14 @@ class EntranceChecker:
         if s["frames"] >= self.min_frames and looked >= self.min_look_s:
             res = self._verdicts()
             if res["result"] in ("approved", "denied") or looked >= self.max_look_s:
-                out.append(self._decide(now, res))
+                # the name first: no "unregistered" verdict while the face is still being matched
+                pending = "identity" in subj and subj.get("identity") is None and not s["worker_id"]
+                if pending and looked < self.min_look_s + self.id_wait_s:
+                    return out
+                if (res["result"], tuple(sorted(res["missing"]))) == s["said"]:
+                    s["decided"], s["decided_at"] = res["result"], now      # nothing changed: no second popup / call
+                else:
+                    out.append(self._decide(now, res))
         return out
 
     def _verdicts(self):
@@ -113,6 +127,7 @@ class EntranceChecker:
             reason = ("two or more people in front of the camera - one at a time" if res["crowded"] else
                       "could not see clearly: " + ", ".join(res["unclear"]))
         s["decided"], s["decided_at"] = res["result"], now
+        s["shown"], s["said"] = res["result"], (res["result"], tuple(sorted(res["missing"])))
         self.last_result = res["result"]
         conf = sum(s["conf"]) / len(s["conf"]) if s["conf"] else 0.0
         gate = "open_requested" if (res["result"] == "approved" and self.controller) else "closed"
@@ -121,7 +136,8 @@ class EntranceChecker:
                 "required": list(self.required), "evidence": res["evidence"], "reason": reason,
                 "severity": {"approved": "Low", "denied": "Medium", "manual": "Medium"}[res["result"]],
                 "camera_id": self.cam, "zone_id": self.zone, "track_id": s["tid"], "worker_id": s["worker_id"],
-                "worker_name": s["worker_name"], "confidence": round(conf, 3),
+                "worker_name": s["worker_name"], "identity": "worker" if s["worker_id"] else "unregistered",
+                "confidence": round(conf, 3),
                 "bbox": [round(float(x), 1) for x in s["bbox"]], "at": now, "started_at": s["start"],
                 "onset_at": s["start"], "decision_ms": round((now - s["start"]) * 1000), "frames": s["frames"],
                 "gate": gate, "controller_connected": self.controller}

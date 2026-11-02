@@ -177,9 +177,10 @@ class CameraWorker(threading.Thread):
                                       parts=parts)
             if self.entrance is not None:
                 annotate.entrance_banner(annotated, self.entrance)
-        if not self.tile_badge and self.entrance is not None and self.entrance.s and self.entrance.s.get("decided"):
-            self.tile_badge = {"approved": "ACCESS APPROVED", "denied": "ACCESS DENIED",
-                               "manual": "MANUAL CHECK REQUIRED"}[self.entrance.s["decided"]]
+        if not self.tile_badge and self.entrance is not None and self.entrance.s and \
+                (self.entrance.s.get("decided") or self.entrance.s.get("shown")):
+            self.tile_badge = {"approved": "ACCESS APPROVED", "denied": "ACCESS DENIED", "manual": "MANUAL CHECK REQUIRED"}[
+                self.entrance.s.get("decided") or self.entrance.s["shown"]]
         if not self.tile_badge:
             intruders = sorted({v.get("name") or k[1] for k, v in self.access.visits.items()
                                 if k[0] == self.cam_id and v["event_id"]})

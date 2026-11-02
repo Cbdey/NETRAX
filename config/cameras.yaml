@@ -19,12 +19,13 @@ cameras:
     zones: []
   cam_02:
     name: Warehouse
-    source: http://172.20.163.173:8080/video     # PHONE 1 (yours), IP Webcam app - set by tools.find_phones
+    source: http://192.0.0.4:8080/video     # PHONE 1 (OPPO Reno14, laptop is on its hotspot), IP Webcam app
     rotate: 90
     default_zone: warehouse
     zones: []
   cam_03:
     name: Assembly line
+    enabled: false                          # no second phone yet: python -m tools.find_phones --write turns it on
     source: http://172.20.163.114:8080/video       # PHONE 2 (friend's), IP Webcam app - set by tools.find_phones
     rotate: 90
     default_zone: assembly_line

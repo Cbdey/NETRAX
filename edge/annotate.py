@@ -147,12 +147,13 @@ def entrance_banner(img, checker):
     h, w = img.shape[:2]
     if not s:
         text, col = "ENTRANCE PPE CHECK - step in front of the camera", (90, 90, 90)
-    elif not s.get("decided"):
+    elif not (s.get("decided") or s.get("shown")):
         text, col = f"CHECKING PPE... {', '.join(checker.required)}", (30, 160, 230)
     else:
-        text, col = {"approved": ("ACCESS APPROVED - all required PPE detected", (60, 160, 60)),
-                     "denied": ("ACCESS DENIED - required PPE incomplete", (40, 40, 220)),
-                     "manual": ("VERIFICATION FAILED - manual check required", (0, 140, 255))}[s["decided"]]
+        who = f"{s['worker_id']} {s.get('worker_name') or ''}".strip() + ": " if s.get("worker_id") else ""
+        text, col = {"approved": (who + "ACCESS APPROVED - all required PPE detected", (60, 160, 60)),
+                     "denied": (who + "ACCESS DENIED - required PPE incomplete", (40, 40, 220)),
+                     "manual": (who + "VERIFICATION FAILED - manual check required", (0, 140, 255))}[s.get("decided") or s["shown"]]
     bar = max(28, h // 14)
     cv2.rectangle(img, (0, h - bar), (w, h), col, -1)
     scale = max(0.5, bar / 48)

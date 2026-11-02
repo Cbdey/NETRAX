@@ -1,6 +1,6 @@
 # NETRAX final acceptance self-test
 
-Run: 29 Oct 2026, 21:50:04 IST - `python -m tools.final_selftest`
+Run: 02 Nov 2026, 16:11:58 IST - `python -m tools.final_selftest`
 
 Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the real services; the live-provider and camera tests are in docs/NETRAX_Final_Test_Guide.pdf.
 
@@ -34,13 +34,13 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 09 | SMS: first try fails (HTTP 503) -> retried -> delivered, attempts logged | PASS | attempts 2 |
 | 09 | SMS text has type, severity, location, time and recommended action | PASS |  |
 | 09 | e-mail: SMTP drop -> retried -> accepted by the mail server ('sent', never claimed 'delivered') | PASS |  |
-| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 27 ms |
+| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 10 ms |
 | 13 | Telegram failure retried (bounded) then shown as FAILED with the reason - never 'delivered' | PASS |  |
 | 13 | system health shows the failing channel | PASS |  |
 | 13 | no credentials -> NOT CONFIGURED (clearly labelled), nothing claimed as sent | PASS |  |
 | 13 | health lists unconfigured channels as warnings | PASS |  |
 | 05 | same continuous incident is not sent twice on a channel | PASS |  |
-| 10 | 'What happened yesterday at 4:00 PM?' -> the saved record at 16:02 yesterday, nothing else | PASS | Between 28 Oct 2026, 15:30:00 IST to 16:30:00 IST: 1 incident - 1 ppe violation. |
+| 10 | 'What happened yesterday at 4:00 PM?' -> the saved record at 16:02 yesterday, nothing else | PASS | Between 01 Nov 2026, 15:30:00 IST to 16:30:00 IST: 1 incident - 1 ppe violation. |
 | 10 | no record in the window -> says 'No matching record was found' (no invented events) | PASS |  |
 | 10 | type filter (smoke) + whole day | PASS |  |
 | 10 | viewer role: worker names hidden in the answer | PASS |  |
@@ -50,6 +50,24 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 14 | valid device GPS -> shown with source, accuracy and map link | PASS |  |
 | 14 | 1-hour-old reading -> marked STALE and not used | PASS |  |
 | 14 | 0,0 / invalid coordinates rejected | PASS |  |
+| ENT | denied person keeps standing there -> ONE decision (one popup / call / message), not one every 3 s | PASS | 1 decisions in 30 s |
+| ENT | ... puts the vest on -> a NEW decision: approved | PASS |  |
+| ENT | face still being matched -> waits for the name instead of saying 'unregistered' | PASS |  |
+| ENT | ... registered face found -> decision carries W-077 Chinmaya | PASS |  |
+| ENT | visitor id is not a worker -> identity 'unregistered' | PASS |  |
+| ENT | registered + all PPE -> 'W-077 Chinmaya verified - all required PPE worn. You may enter.' (popup + voice) | PASS | W-077 Chinmaya verified - all required PPE worn. You may enter. |
+| ENT | registered + vest missing -> names the worker and the item, 'Entry not permitted' | PASS | W-077 Chinmaya - safety vest missing. Entry not permitted. |
+| ENT | unregistered + all PPE -> 'Unregistered worker - PPE verified. You may enter.' | PASS | Unregistered worker - PPE verified. You may enter. |
+| ENT | unregistered + helmet missing -> 'Unregistered worker - ... Entry not permitted.' | PASS | Unregistered worker - helmet missing. Entry not permitted. |
+| ENT | viewer copy of the verdict hides the worker's name (event + entrance payload) | PASS |  |
+| ENT | a card tapped right after ANOTHER person's face-checked decision does not rename that person | PASS |  |
+| ENT | card tapped, face not recognised -> identified by RFID | PASS | W-077 Chinmaya verified - all required PPE worn. You may enter. |
+| ENT | tap + approved -> counted inside the site | PASS |  |
+| ENT | tap out -> no longer inside; names nobody at the check | PASS |  |
+| ENT | tap + PPE missing -> entry refused AND not counted as inside | PASS |  |
+| ENT | same person puts the vest on -> approved with the same card, counted inside again | PASS |  |
+| ENT | camera faster than the hand: card tapped just AFTER the decision -> 'Unregistered' corrected to the card's owner | PASS | W-077 Chinmaya verified - all required PPE worn. You may enter. |
+| ENT | somebody else's card (face W-077, card W-078) -> NEVER auto-approved: manual check with the reason | PASS | card belongs to W-078 Bibhu but the face matches W-077 - check the person |
 | AUTH | no login -> API refuses (401) and the page redirects to /login | PASS |  |
 | AUTH | edge / ESP32 posts work without login (devices) | PASS |  |
 | AUTH | but actions on events need a login (POST /api/events/<id>/ack -> 401) | PASS |  |
@@ -67,7 +85,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | CLIP | viewer role: clip hidden (no link, file 403) | PASS |  |
 | CLIP | supervisor: dashboard record has the clip and it downloads (video/mp4) | PASS |  |
 | CLIP | retention: clips older than snapshot_retention_days are deleted like snapshots | PASS |  |
-| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 42 ms for 3 cameras |
-| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1113 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
+| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 58 ms for 3 cameras |
+| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1065 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
 | 04 | edge pipeline: monitored zone, helmet off -> one PPE alert naming the helmet | PASS | items ['goggles', 'helmet'] after ? |
 | 12 | edge pipeline: per-camera latency samples recorded (capture -> processed) | PASS |  |

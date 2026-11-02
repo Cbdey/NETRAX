@@ -69,7 +69,8 @@ def _for_viewer(kind, data):
     if kind == "event":
         return auth.mask_event(data)
     if kind in ("entrance",):
-        return dict(data, worker_id=None, worker_name=None, snapshot=None, clip=None) if isinstance(data, dict) else data
+        return dict(data, worker_id=None, worker_name=None, snapshot=None, clip=None, identity=None,
+                    verdict=data.get("verdict_public")) if isinstance(data, dict) else data
     if kind in ("workers",):
         return [{"worker_id": "W-***", "name": "(hidden)", "photos": w.get("photos")} for w in data] \
             if isinstance(data, list) else data
@@ -164,7 +165,7 @@ async def lifespan(app):
     notify.DISPATCHER.start()
     timeutil.set_tz(notify.load_policy().get("timezone"))
     hw_api.setup(broadcast=broadcast, respond=respond, notify_async=notify_async, announce=announce,
-                 ALARM=ALARM, ZONES=ZONES, list_workers=list_workers)
+                 ALARM=ALARM, ZONES=ZONES, list_workers=list_workers, entrance_scan=entrance_scan)
     tasks = [asyncio.create_task(escalation_loop()), asyncio.create_task(speaker_loop()),
              asyncio.create_task(retention_loop()), asyncio.create_task(hw_api.loop()),
              asyncio.create_task(fire_level_loop()), asyncio.create_task(health_loop())]
@@ -371,6 +372,76 @@ ENTRANCE_TEXT = {"approved": "ACCESS APPROVED — All required PPE detected. You
                  "denied": "ACCESS DENIED — Required PPE is incomplete. Entry is not permitted.",
                  "manual": "Verification failed — manual check required"}
 ENTRANCE_GATE = {"controller": None}          # a real lock / turnstile controller registers here later
+ENTRANCE_CARD = {}    # last card tapped at the entrance reader: worker_id, name, uid, device_id, zone_id, at, track, undone
+
+
+def _ent_cfg(key, default):
+    return (SETTINGS.get("entrance") or {}).get(key, default)
+
+
+def _item_list(items):
+    names = [SPK.get("item_names", {}).get(i, i) for i in items]
+    return (names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]) if names else ""
+
+
+def entrance_verdict(result, wid, name, missing):
+    """The sentence the guide asked for, e.g. 'W-001 Chinmaya verified - all required PPE worn. You may enter.'
+    Returns (with the name, without the name: viewer role)."""
+    def line(who, registered):
+        if result == "approved":
+            return f"{who} verified - all required PPE worn. You may enter." if registered else \
+                f"{who} - PPE verified. You may enter."
+        if result == "denied":
+            return f"{who} - {_item_list(missing)} missing. Entry not permitted." if missing else \
+                f"{who} - refused at the manual check. Entry not permitted."
+        return f"{who} - verification failed. Manual check required."
+    reg = bool(wid and str(wid).startswith("W-"))
+    return line(f"{wid} {name or ''}".strip() if reg else "Unregistered worker", reg), \
+        line("Registered worker" if reg else "Unregistered worker", reg)
+
+
+def _card_valid(track, now):
+    """A card names the next decision within rfid_window_s; a re-check of that same person keeps it for a minute."""
+    c = ENTRANCE_CARD
+    if not c:
+        return None
+    if (c.get("track") is None or c.get("corrected")) and abs(now - c["at"]) <= _ent_cfg("rfid_window_s", 15):
+        return c
+    return c if c.get("track") == track and now - c["at"] <= 60 else None
+
+
+def _apply_card(res, face_id, face_name, card):
+    """(result, worker_id, name, by, reason) from what the face says and what the card says. Disagreeing face and
+    card are never approved automatically - somebody may be using another person's card."""
+    if card and face_id and card["worker_id"] != face_id:
+        return "manual", card["worker_id"], card["name"], "face+rfid", \
+            f"card belongs to {card['worker_id']} {card['name']} but the face matches {face_id} - check the person"
+    if card:
+        return res, card["worker_id"], card["name"], ("face+rfid" if face_id == card["worker_id"] else "rfid"), None
+    return res, face_id, face_name, ("face" if face_id else None), None
+
+
+def _attendance_fix(card, res, now):
+    """The tap counted as ENTERED; a person refused at the PPE check is not inside (and is again once approved)."""
+    if not card or not card.get("uid"):
+        return
+    event = {"denied": "EXITED", "approved": "ENTERED"}.get(res)
+    if (event == "EXITED" and not card.get("undone")) or (event == "ENTERED" and card.get("undone")):
+        card["undone"] = event == "EXITED"
+        db.x("INSERT INTO attendance (at, uid, worker_id, name, zone_id, event, status, device_id, message) "
+             "VALUES (?,?,?,?,?,?,?,?,?)", (now, card["uid"], card["worker_id"], card["name"], card["zone_id"], event, "OK",
+                                            card.get("device_id"), f"entrance PPE check: {res}"))
+
+
+def _entrance_say(e, res, wid, name):
+    who = f"worker {spoken_id(wid)}, {name or ''}".rstrip(", ") if wid else "Unregistered worker"
+    if res == "approved":
+        text = f"{who}, verified. All P P E worn. You may enter." if wid else f"{who}, P P E verified. You may enter."
+        announce(text, e["zone_id"], e["event_id"], "ppe_ok")
+    elif res == "denied":
+        announce(f"{who}, entry not permitted. Please wear your {_words(e['items_missing'])}.", e["zone_id"], e["event_id"], "ppe")
+    else:
+        announce(f"{who}, verification failed. Please wait for a manual check.", e["zone_id"], e["event_id"], "ppe")
 
 
 async def ingest_entrance(p, snap, now):
@@ -379,7 +450,19 @@ async def ingest_entrance(p, snap, now):
         return {"ok": True, "duplicate": True}
     captured = _ts(p.get("captured_at"), now)
     started = _ts(p.get("started_at"), now)
-    details = {"result": res, "message": ENTRANCE_TEXT.get(res), "required": p.get("required") or [],
+    face_id = p.get("worker_id") if str(p.get("worker_id") or "").startswith("W-") else None
+    card = _card_valid(p.get("track_id"), now)
+    res, wid, name, by, why = _apply_card(res, face_id, p.get("worker_name"), card)
+    if card:
+        card["track"] = p.get("track_id")
+    p["worker_id"], p["worker_name"] = wid, name
+    if why:
+        p["reason"] = why
+    verdict, public = entrance_verdict(res, wid, name, p.get("items_missing") or [])
+    details = {"result": res, "message": ENTRANCE_TEXT.get(res), "verdict": verdict, "verdict_public": public,
+               "identity": {"kind": "registered" if wid else "unregistered", "by": by, "worker_id": wid, "name": name,
+                            "face": face_id, "card": card["worker_id"] if card else None},
+               "required": p.get("required") or [],
                "items_ok": p.get("items_ok") or [], "items_uncertain": p.get("items_uncertain") or [],
                "evidence": p.get("evidence") or {}, "reason": p.get("reason"), "decision_ms": p.get("decision_ms"),
                "frames": p.get("frames"), "gate": p.get("gate") or "closed",
@@ -407,14 +490,8 @@ async def ingest_entrance(p, snap, now):
     perf.add("event_e2e_ms", (now - captured) * 1000)
     perf.add("entrance_decision_ms", p.get("decision_ms"))
     e = db.get_event(eid)
-    who = e.get("worker_name") or ""
-    if res == "approved":
-        announce(f"{who + ', ' if who else ''}access approved. You may proceed.", e["zone_id"], eid, "ppe_ok")
-    elif res == "denied":
-        announce(f"{who + ', ' if who else ''}access denied. Please wear your {_words(e['items_missing'])}.",
-                 e["zone_id"], eid, "ppe")
-    else:
-        announce("Verification failed. Please wait for a manual check.", e["zone_id"], eid, "ppe")
+    _attendance_fix(card, res, now)
+    _entrance_say(e, res, wid, name)
     await broadcast("event", e)
     await broadcast("entrance", entrance_payload(e))
     if res != "approved":
@@ -422,9 +499,50 @@ async def ingest_entrance(p, snap, now):
     return {"ok": True, "result": res}
 
 
+async def entrance_scan(r, now):
+    """A card was tapped at the entrance reader. Before the decision: remembered for it. Just after it (the camera was
+    faster than the hand): the latest decision is corrected - 'unregistered' becomes the card's owner."""
+    ENTRANCE_CARD.clear()
+    if r.get("event") != "ENTERED":              # tapping out on the way home names nobody at the check
+        return
+    ENTRANCE_CARD.update(worker_id=r.get("worker_id"), name=r.get("name"), uid=r.get("uid"), device_id=r.get("device_id"),
+                         zone_id=r.get("zone_id"), at=now, track=None, undone=False)
+    rows = db.q("SELECT event_id FROM events WHERE type='entrance_check' AND received_at >= ? ORDER BY received_at DESC LIMIT 1",
+                (now - _ent_cfg("rfid_after_s", 6),))
+    e = db.get_event(rows[0]["event_id"]) if rows else None
+    d = (e or {}).get("details") or {}
+    who = d.get("identity") or {}
+    # only a decision that has no name yet: a recognised face belongs to somebody else's check, so that card waits
+    # for its own decision (the face / card comparison happens there)
+    if not e or d.get("override") or who.get("card") or who.get("face"):
+        return
+    res, wid, name, by, why = _apply_card(d.get("result"), None, None, ENTRANCE_CARD)
+    ENTRANCE_CARD.update(track=e.get("track_id"), corrected=True)
+    d["result"], d["message"] = res, ENTRANCE_TEXT.get(res)
+    d["verdict"], d["verdict_public"] = entrance_verdict(res, wid, name, e.get("items_missing") or [])
+    d["identity"] = dict(who, kind="registered", by=by, worker_id=wid, name=name, card=wid)
+    if why:
+        d["reason"] = why
+    status = "closed" if res == "approved" else "open"
+    db.x("UPDATE events SET details=?, worker_id=?, worker_name=?, status=?, ended_at=?, updated_at=? WHERE event_id=?",
+         (json.dumps(d), wid, name, status, now if status == "closed" else None, now, e["event_id"]))
+    db.x("UPDATE entrance_checks SET worker_id=?, worker_name=?, result=?, reason=? WHERE check_id=?",
+         (wid, name, res, why or d.get("reason"), e["event_id"]))
+    db.add_action(e["event_id"], "entrance_card", "reader", f"card {wid} {name}" + (f" - {why}" if why else ""))
+    e = db.get_event(e["event_id"])
+    _attendance_fix(ENTRANCE_CARD, res, now)
+    _entrance_say(e, res, wid, name)
+    await broadcast("event", e)
+    await broadcast("entrance", entrance_payload(e))
+
+
 def entrance_payload(e):
     d = e.get("details") or {}
     return {"event_id": e["event_id"], "result": d.get("result"), "message": d.get("message"),
+            "verdict": d.get("verdict") or d.get("message"), "verdict_public": d.get("verdict_public") or d.get("message"),
+            "identity": d.get("identity") or {"kind": "registered" if str(e.get("worker_id") or "").startswith("W-")
+                                              else "unregistered", "worker_id": e.get("worker_id"), "name": e.get("worker_name")},
+            "clip": e.get("clip"),
             "missing": e.get("items_missing") or [], "ok": d.get("items_ok") or [],
             "uncertain": d.get("items_uncertain") or [], "required": d.get("required") or [],
             "reason": d.get("reason"), "camera_id": e.get("camera_id"), "zone_id": e.get("zone_id"),
@@ -800,7 +918,7 @@ def cameras_payload():
             "detail": "Camera switched off" if cam.get("enabled", True) is False else
                       h.get("detail", "edge not running" if not edge_alive else "no data"),
             "fps": h.get("fps", 0), "badge": _hw_badge(cam["default_zone"], h.get("badge")),
-            "infer_ms": h.get("infer_ms"), "share": cam.get("share"),
+            "infer_ms": h.get("infer_ms"), "share": cam.get("share"), "role": cam.get("role", "monitor"),
         })
     st = EDGE["state"] or {}
     return {"edge_online": edge_alive, "cameras": out,
@@ -934,6 +1052,9 @@ async def entrance_override(event_id: str, request: Request, body: dict = Body(.
     d = e.get("details") or {}
     d["override"] = {"decision": dec, "by": u.get("user"), "at": time.time(), "note": (body or {}).get("note")}
     now = time.time()
+    d["verdict"], d["verdict_public"] = entrance_verdict(dec, e.get("worker_id"), e.get("worker_name"), [])
+    if ENTRANCE_CARD.get("worker_id") and ENTRANCE_CARD["worker_id"] == e.get("worker_id"):
+        _attendance_fix(ENTRANCE_CARD, dec, now)
     db.x("UPDATE events SET details=?, status='closed', ended_at=?, end_reason=?, closed_by=?, updated_at=? "
          "WHERE event_id=?", (json.dumps(d), now, f"manual check: {dec}", u.get("user"), now, event_id))
     db.x("UPDATE entrance_checks SET reason=COALESCE(reason,'') || ? WHERE check_id=?",
@@ -1112,12 +1233,27 @@ def get_one_event(event_id: str, request: Request):
     return auth.mask_event(e) if current_user(request).get("role") == "viewer" else e
 
 
+@app.get("/api/entrance/status")
+def entrance_status(request: Request):
+    """Everything the entrance dashboard shows besides the log: camera, required PPE, reader, gate."""
+    cam = next((c for c in cameras_payload()["cameras"] if c.get("role") == "entrance"), None)
+    zone = ZONES.get((cam or {}).get("zone_id")) or {}
+    viewer = current_user(request).get("role") == "viewer"
+    card = dict(ENTRANCE_CARD) if ENTRANCE_CARD and time.time() - ENTRANCE_CARD["at"] < 120 else None
+    readers = [r for r in hw_api.readers(time.time()) if r.get("zone_name") == zone.get("name")]
+    return {"camera": cam, "required": zone.get("required_ppe") or [], "zone_name": zone.get("name"),
+            "controller_connected": bool(_ent_cfg("controller_connected", False)), "readers": readers,
+            "card": None if viewer or not card else {k: card.get(k) for k in ("worker_id", "name", "at")},
+            "rfid_window_s": _ent_cfg("rfid_window_s", 15)}
+
+
 @app.get("/api/entrance")
 def entrance_list(request: Request, limit: int = 30):
     rows = [entrance_payload(db.row_to_event(r)) for r in
             db.q("SELECT * FROM events WHERE type='entrance_check' ORDER BY started_at DESC LIMIT ?", (min(limit, 200),))]
     if current_user(request).get("role") == "viewer":
-        rows = [dict(r, worker_id=None, worker_name=None, snapshot=None, clip=None) for r in rows]
+        rows = [dict(r, worker_id=None, worker_name=None, snapshot=None, clip=None, identity=None,
+                     verdict=r.get("verdict_public")) for r in rows]
     return rows
 
 
@@ -1254,6 +1390,11 @@ def audit_log(limit: int = 100):
 @app.get("/api/users")
 def users_list():
     return [{"user": n, "role": u["role"], "changed_at": u.get("changed_at")} for n, u in auth.load_users().items()]
+
+
+@app.get("/entrance")
+def entrance_page():
+    return FileResponse(os.path.join(ROOT, "dashboard", "entrance.html"))
 
 
 @app.get("/hardware")

@@ -468,6 +468,94 @@ async def main():
           and (not loc["valid"] or loc["source"] == "configured"))
     bad, _ = location.record("hardware", 0, 0, None, time.time())
     check("14", "0,0 / invalid coordinates rejected", bad is False)
+    # ---------------- entrance: WHO + WHAT (guide's request, 2 Nov): face / RFID identity with the PPE check
+    def look(ec, st, t0, n=8, dt=0.15, **who):
+        acts = []
+        for i in range(n):
+            acts += ec.update([dict(persons((100, 40, 300, 700))[0], **who)], {1: st}, 1280, 720, t0 + i * dt)
+        return acts
+    full = {"helmet": ("compliant", .9), "vest": ("compliant", .9), "boots": ("compliant", .8)}
+    novest = dict(full, vest=("missing", .9))
+    ec = EntranceChecker("cam_04", "main_entrance", ["helmet", "vest", "boots"], {})
+    a = look(ec, novest, 1000, n=200)                    # stands at the door without a vest for 30 s
+    check("ENT", "denied person keeps standing there -> ONE decision (one popup / call / message), not one every 3 s",
+          len(a) == 1 and a[0]["result"] == "denied", f"{len(a)} decisions in 30 s")
+    a = look(ec, full, 1030, n=60)
+    check("ENT", "... puts the vest on -> a NEW decision: approved", len(a) == 1 and a[0]["result"] == "approved")
+    ec = EntranceChecker("cam_04", "main_entrance", ["helmet", "vest", "boots"], {})
+    a = look(ec, full, 1000, n=8, identity=None)
+    check("ENT", "face still being matched -> waits for the name instead of saying 'unregistered'", not a)
+    a = look(ec, full, 1001.2, n=4, identity="worker", worker_id="W-077", worker_name="Chinmaya")
+    check("ENT", "... registered face found -> decision carries W-077 Chinmaya",
+          len(a) == 1 and a[0]["worker_id"] == "W-077" and a[0]["identity"] == "worker")
+    ec = EntranceChecker("cam_04", "main_entrance", ["helmet", "vest", "boots"], {})
+    a = look(ec, full, 1000, n=30, identity="visitor", worker_id="V-009", worker_name=None)
+    check("ENT", "visitor id is not a worker -> identity 'unregistered'", a and a[0]["identity"] == "unregistered" and not a[0]["worker_id"])
+    from backend import hw_api, hardware as hw
+    hw_api.setup(broadcast=m.broadcast, respond=m.respond, notify_async=m.notify_async, announce=m.announce, ALARM=m.ALARM,
+                 ZONES=m.ZONES, list_workers=m.list_workers, entrance_scan=m.entrance_scan)
+    for wid, nm, uid in (("W-077", "Chinmaya", "AA000077"), ("W-078", "Bibhu", "AA000078")):
+        db.x("INSERT OR REPLACE INTO workers (worker_id, name, embeddings, photos, created_at, badge_uid, active) VALUES (?,?,?,?,?,?,1)",
+             (wid, nm, "[]", 0, 0, uid))
+    hw_api.CFG.setdefault("attendance", {})["readers"] = {"esp32-rfid-01": "main_entrance"}
+
+    async def decide(eid, res, wid=None, name=None, missing=(), track=500):
+        await m.ingest_event({"event_id": eid, "action": "open", "type": "entrance_check", "result": res,
+                              "items_missing": list(missing), "items_ok": [], "items_uncertain": [], "required": ["helmet", "vest", "boots"],
+                              "severity": "Low", "camera_id": "cam_04", "zone_id": "main_entrance", "zone_name": "Main entrance",
+                              "track_id": track, "worker_id": wid, "worker_name": name, "identity": "worker" if wid else "unregistered",
+                              "confidence": .9, "bbox": [1, 2, 3, 4], "decision_ms": 1200, "gate": "closed",
+                              "captured_at": timeutil.local(time.time()).isoformat(), "started_at": timeutil.local(time.time()).isoformat()})
+        return db.get_event(eid), m.entrance_payload(db.get_event(eid))
+    said = lambda eid: (db.q("SELECT text FROM announcements WHERE event_id=? ORDER BY id DESC LIMIT 1", (eid,)) or [{"text": ""}])[0]["text"]
+    m.ENTRANCE_CARD.clear()
+    e, g = await decide("ent_w1", "approved", "W-077", "Chinmaya")
+    check("ENT", "registered + all PPE -> 'W-077 Chinmaya verified - all required PPE worn. You may enter.' (popup + voice)",
+          g["verdict"].startswith("W-077 Chinmaya verified") and "You may enter" in g["verdict"] and g["result"] == "approved"
+          and g["identity"]["by"] == "face" and "Chinmaya" in said("ent_w1") and "may enter" in said("ent_w1"), g["verdict"])
+    e, g = await decide("ent_w2", "denied", "W-077", "Chinmaya", ["vest"])
+    check("ENT", "registered + vest missing -> names the worker and the item, 'Entry not permitted'",
+          "W-077 Chinmaya" in g["verdict"] and "missing" in g["verdict"] and "Entry not permitted" in g["verdict"], g["verdict"])
+    e, g = await decide("ent_u1", "approved")
+    check("ENT", "unregistered + all PPE -> 'Unregistered worker - PPE verified. You may enter.'",
+          g["verdict"] == "Unregistered worker - PPE verified. You may enter." and g["identity"]["kind"] == "unregistered", g["verdict"])
+    e, g = await decide("ent_u2", "denied", missing=["helmet"])
+    check("ENT", "unregistered + helmet missing -> 'Unregistered worker - ... Entry not permitted.'",
+          g["verdict"].startswith("Unregistered worker") and "Entry not permitted" in g["verdict"], g["verdict"])
+    check("ENT", "viewer copy of the verdict hides the worker's name (event + entrance payload)",
+          "Chinmaya" not in m._for_viewer("entrance", m.entrance_payload(db.get_event("ent_w1")))["verdict"]
+          and "Chinmaya" not in auth.mask_event(db.get_event("ent_w1"))["details"]["verdict"])
+    t = time.time()
+    r = await hw_api.handle_rfid({"uid": "AA000077", "device_id": "esp32-rfid-01"}, t)
+    u2_before = m.entrance_payload(db.get_event("ent_w2"))["verdict"]
+    e, g = await decide("ent_c1", "approved", track=501)
+    check("ENT", "a card tapped right after ANOTHER person's face-checked decision does not rename that person",
+          m.entrance_payload(db.get_event("ent_w2"))["verdict"] == u2_before)
+    check("ENT", "card tapped, face not recognised -> identified by RFID", g["identity"]["by"] == "rfid" and g["identity"]["worker_id"] == "W-077"
+          and "W-077 Chinmaya verified" in g["verdict"], g["verdict"])
+    check("ENT", "tap + approved -> counted inside the site", any(p["worker_id"] == "W-077" for p in hw.present("main_entrance")))
+    await hw_api.handle_rfid({"uid": "AA000077", "device_id": "esp32-rfid-01"}, t + 5)     # tap out
+    check("ENT", "tap out -> no longer inside; names nobody at the check", not hw.present("main_entrance") and not m.ENTRANCE_CARD)
+    await hw_api.handle_rfid({"uid": "AA000077", "device_id": "esp32-rfid-01"}, t + 10)
+    e, g = await decide("ent_c2", "denied", missing=["vest"], track=502)
+    check("ENT", "tap + PPE missing -> entry refused AND not counted as inside", g["identity"]["worker_id"] == "W-077" and not hw.present("main_entrance"))
+    e, g = await decide("ent_c3", "approved", track=502)
+    check("ENT", "same person puts the vest on -> approved with the same card, counted inside again",
+          g["identity"]["worker_id"] == "W-077" and any(p["worker_id"] == "W-077" for p in hw.present("main_entrance")))
+    await hw_api.handle_rfid({"uid": "AA000077", "device_id": "esp32-rfid-01"}, t + 20)    # tap out
+    m.ENTRANCE_CARD.clear()
+    e, g = await decide("ent_c4", "approved", track=503)
+    db.x("UPDATE events SET received_at=? WHERE event_id='ent_c4'", (t + 24,))    # 1 s before the tap below
+    await hw_api.handle_rfid({"uid": "AA000077", "device_id": "esp32-rfid-01"}, t + 25)
+    g = m.entrance_payload(db.get_event("ent_c4"))
+    check("ENT", "camera faster than the hand: card tapped just AFTER the decision -> 'Unregistered' corrected to the card's owner",
+          g["identity"]["worker_id"] == "W-077" and g["verdict"].startswith("W-077 Chinmaya verified"), g["verdict"])
+    await hw_api.handle_rfid({"uid": "AA000077", "device_id": "esp32-rfid-01"}, t + 30)
+    await hw_api.handle_rfid({"uid": "AA000078", "device_id": "esp32-rfid-01"}, t + 12)
+    e, g = await decide("ent_m1", "approved", "W-077", "Chinmaya", track=504)
+    check("ENT", "somebody else's card (face W-077, card W-078) -> NEVER auto-approved: manual check with the reason",
+          g["result"] == "manual" and e["status"] == "open" and "W-078" in (g["reason"] or "") and "W-077" in (g["reason"] or ""), g["reason"])
+    m.ENTRANCE_CARD.clear()
     # ---------------- login, roles, masking (section 10)
     from fastapi.testclient import TestClient
     os.environ["SENTINELEYE_AUTH"] = "1"

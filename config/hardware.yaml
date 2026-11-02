@@ -30,9 +30,10 @@ attendance:
   cooldown_s: 3                 # same card held at the reader -> ignored for 3 s
   announce: true                # speaker: "Welcome Chinmaya, Welding bay"
   readers:                      # stand-alone RFID readers (no sensors) -> the zone they guard
-    esp32-rfid-01: welding_bay  # firmware/rfid_reader/rfid_reader.ino; restricted zone (zones.yaml allowed_workers)
+    esp32-rfid-01: main_entrance # 2 Nov: the reader stands at the SITE ENTRANCE (identity for the PPE check). The welding
+                                # bay stays guarded by face ID (edge/access.py). A second reader -> map it to welding_bay.
   default_reader: esp32-rfid-01 # a reader that sends no device id is treated as this one
-  default_zone: welding_bay     # zone for scans from a reader that is not listed anywhere
+  default_zone: main_entrance   # zone for scans from a reader that is not listed anywhere
   trust_reader_event: false     # false = the laptop decides ENTERED / EXITED (survives ESP32 reboots);
                                 # true only for the Google-Sheets sketch whose sheet decides
   # every scan is ALSO sent to the team's Google Sheet (same ?name=..&uid=.. request the reader used before)

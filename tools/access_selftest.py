@@ -23,6 +23,7 @@ def check(name, cond):
 hw_api.setup(broadcast=m.broadcast, respond=m.respond, notify_async=m.notify_async, announce=m.announce,
              ALARM=m.ALARM, ZONES=m.ZONES, list_workers=m.list_workers)
 hw_api._sheets_mirror = lambda r: SENT.append(r["uid"])
+hw_api.CFG.setdefault("attendance", {})["readers"] = {"esp32-rfid-01": "welding_bay"}   # restricted-zone reader tests
 SENT = []
 allowed = m.ZONES["welding_bay"].get("allowed_workers") or []
 for wid, name, uid in [(allowed[0] if allowed else "W-001", "Allowed", "11110001"), ("W-090", "Other", "22220002")]:

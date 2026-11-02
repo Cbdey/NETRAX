@@ -354,6 +354,8 @@ async def handle_rfid(p, now=None, ip=None):
         if rn and rn.upper() != "UNKNOWN":       # reader knows the name, laptop has no badge for it yet
             r["message"] += f" (reader says {rn} - link the card on the Workers page)"
     await CTX["broadcast"]("attendance", r)
+    if r["status"] == "OK" and CTX.get("entrance_scan") and ((CTX.get("ZONES") or {}).get(zone) or {}).get("entrance"):
+        await CTX["entrance_scan"](r, now)       # the card names the person at the entrance PPE check
     if not forced:                               # the sketch already wrote this scan to its Google Sheet
         _sheets_mirror(r)
     # result = one keyword line for simple sketches: STUDENT ENTERED / STUDENT EXITED / ACCESS DENIED / ERROR

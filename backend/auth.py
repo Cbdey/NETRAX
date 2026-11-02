@@ -153,7 +153,7 @@ def read_token(tok):
 # ------------------------------------------------------------------ path rules
 DEVICE_EXACT = {"/api/events", "/api/edge/health", "/api/sensors", "/api/rfid", "/api/location/hardware",
                 "/api/hw/telemetry", "/api/hw/rfid"}
-PUBLIC = ("/login", "/api/login", "/api/logout", "/static/theme.css", "/static/theme.js", "/static/login.js",
+PUBLIC = ("/login", "/api/login", "/api/logout", "/static/theme.css", "/static/theme.js", "/static/login.js", "/static/nx.css",
           "/favicon.ico")
 LOCAL_ONLY = ("/api/workers/gallery",)
 ADMIN_PREFIX = ("/api/workers", "/api/notify/test", "/api/users", "/api/cameras/")
@@ -206,4 +206,6 @@ def mask_event(e):
     e["worker_name"] = None
     e["snapshot"] = None
     e["clip"] = None
+    if isinstance(e.get("details"), dict) and e["details"].get("verdict_public"):
+        e["details"] = dict(e["details"], verdict=e["details"]["verdict_public"], identity=None)
     return e

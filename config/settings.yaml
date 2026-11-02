@@ -157,6 +157,9 @@ entrance:                         # final-round section 4 (edge/entrance.py), ca
   min_frames: 6                   # never decide on one frame
   min_look_s: 1.0                 # ... and look at least 1 s
   max_look_s: 4.0                 # still unclear after 4 s -> "Verification failed - manual check required"
+  id_wait_s: 2.0                  # wait this long for the registered face before calling someone "unregistered"
+  rfid_window_s: 15               # a card tapped at the entrance reader up to 15 s BEFORE the decision names that person
+  rfid_after_s: 6                 # ... or up to 6 s AFTER it, when the camera recognised no face (the camera was faster)
   share: 0.6                      # an item counts as worn / missing when >= 60 % of the frames agree
   min_votes: 3
   min_height_frac: 0.35           # person must fill >= 35 % of the picture height (closer = clearer)
