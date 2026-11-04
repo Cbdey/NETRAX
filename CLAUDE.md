@@ -247,3 +247,22 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
 - Latency: docs/eval/latency_report.md has 1 REAL run (1 camera, nobody in view). Multi-camera + incident numbers still to measure with phone + USB live.
 - Tests: final_selftest [ENT] + [BUILD] (all .py compile). UI checked with headless Edge over DevTools on a scratch backend (no JS errors).
 - REMINDER: shell heredocs mangle backslashes AND apostrophes here: write patch scripts with the Write tool. One such patch silently broke tools/find_phones.py.
+
+## 4 Nov 2026: smooth video with all cameras ("video hangs / not continuous", ChatGPT plan reviewed)
+- Evidence (data/edge_run.log, 2 Nov): 1 camera, nobody in view = 11.9 fps AI (latency_report). 2 cameras with people = AI fell
+  to 3 fps then 0.7-1.7 fps; the dashboard picture was drawn by the AI worker, so the VIDEO ran at the AI rate (= "hangs").
+  GPU batch only ~57 ms -> the time went to CPU work: face detection (YuNet on the full 1920 px phone frame, one lock for all
+  cameras), phone MJPEG decoding at 1080p/30 fps, plus the load manager slowing cameras although the GPU was idle.
+- edge/live.py LiveView (processing.live_view/live_fps 12/live_width 800): newest camera frame + latest AI result (worker.overlay)
+  drawn at 12 fps, independent of the AI; corner label "AI x fps"; clips fed from it. live_view: false = old behaviour.
+- identity.detect_max_side 960: YuNet on a scaled copy, boxes/landmarks mapped back; embeddings still full resolution;
+  backend registration (FaceEngine default) unchanged.
+- worker stage profiler (ai_engine, tracker, face_id, ppe_match, decisions_fire, draw_emit) -> health stages_ms + [perf] lines
+  in the edge window every 10 s (also GPU busy share, face detect ms, live draw ms).
+- engine.busy_share; LoadManager slows a camera only if GPU busy >= load.gpu_busy_min 0.85. Missing USB camera retried every 30 s.
+- tools/camdiag.py: all cameras together, NO AI -> fps, longest freeze, freezes > 0.5 s, verdict -> docs/eval/camdiag.md.
+- tools/phone_tune.py: reads IP Webcam /status.json?show_avail=1, --apply sets video_size ~960x540 + quality 55 (read back).
+- Rejected from the ChatGPT plan: FP16 (GTX 16xx issue, rule above), switching to YOLOv8n / retraining (GPU is not the
+  bottleneck, accuracy loss), rebuilding a separate pipeline (ours already has per-camera reader threads + latest frame +
+  one shared engine). Kept: raw-vs-AI split (as overlay), lower phone resolution/fps, dedicated network, camera-only test.
+- Tests: final_selftest [LIVE] x4. Backups of replaced files: _to_delete/before_live_view_4nov/.

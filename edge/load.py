@@ -20,6 +20,8 @@ class LoadManager:
         self.ok_steps = c.get("recover_steps", 10)       # all healthy this long -> give FPS back
         self._lag, self._ok = 0, 0
         self.note = None
+        self.gpu_busy = None                             # callable -> 0..1 (set by run_edge with the shared engine)
+        self.gpu_busy_min = c.get("gpu_busy_min", 0.85)
 
     @staticmethod
     def _achievable(w):
@@ -34,6 +36,12 @@ class LoadManager:
             return None
         live = {c: w for c, w in workers.items() if w.reader.frame_ts and w.processed_fps() > 0}
         lagging = [c for c, w in live.items() if w.processed_fps() < self.lag_ratio * self._achievable(w)]
+        busy = getattr(self, "gpu_busy", None)
+        if lagging and busy is not None and busy() < self.gpu_busy_min:
+            # 4 Nov: cameras were slowed to 4 fps although the GPU was idle (the time went to the CPU: face
+            # detection, phone video decoding). Slowing the AI then only makes alerts later - do nothing.
+            lagging = []
+            self.note = None
         if lagging:
             self._lag, self._ok = self._lag + 1, 0
         else:

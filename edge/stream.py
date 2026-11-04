@@ -97,7 +97,8 @@ class StreamReader(threading.Thread):
             cap = self._open()
             if cap is None:
                 time.sleep(backoff)
-                backoff = min(backoff * 2, 10.0)
+                local = isinstance(self.source, int) or (isinstance(self.source, str) and self.source.isdigit())
+                backoff = min(backoff * 2, 30.0 if local else 10.0)
                 continue
             backoff = 1.0
             self.detail = "ok"

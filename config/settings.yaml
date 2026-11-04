@@ -26,6 +26,7 @@ load:                   # plan 7.5: overloaded GPU -> slow low-risk zones first 
   lag_ratio: 0.85
   lag_steps: 3
   recover_steps: 10
+  gpu_busy_min: 0.85    # 4 Nov: slow a camera only if the GPU engine is really busy (>= 85 % of the time)
 
 processing:
   target_fps: 12        # processed frames per second per camera (upper limit; the GPU decides the real rate)
@@ -33,6 +34,10 @@ processing:
   max_batch: 4          # cameras processed in one GPU call
   batch_gather_ms: 3    # wait at most this long for other cameras' frames to join a batch
   max_frame_age_s: 0.6  # a frame older than this when the camera gets to it is skipped (never judge stale pictures)
+  # 4 Nov (video "hangs" with several cameras): the live picture no longer waits for the AI.
+  live_view: true       # edge/live.py: newest camera frame + latest AI boxes at live_fps (false = old behaviour)
+  live_fps: 12          # live picture rate per camera on the dashboard
+  live_width: 800       # live picture width (px) - drawn + JPEG-encoded at this size
   fire_every_n: 2       # fire model every 2nd frame while the scene is clear; EVERY frame as soon as a
                         # fire/smoke candidate exists (small flames need every hit, idle frames stay fast)
 
@@ -122,6 +127,7 @@ privacy:                          # F22
   snapshot_retention_days: 30     # alert images older than this are deleted (records are kept); 0 = keep
 
 identity:                         # one person = one ID (edge/identity.py); registered on the dashboard
+  detect_max_side: 960   # 4 Nov: face DETECTION on a copy scaled to <= 960 px (phones send 1920 px); recognition still full size
   enabled: true
   # 12 Oct: names were mixed up (Sushree -> Chinmaya ...). Measured on the registered photos: two different
   # workers are up to 0.38 alike (Chinmaya ~ Chandrabhanu), above the old 0.36 threshold. Now stricter:

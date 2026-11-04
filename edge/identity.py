@@ -30,17 +30,35 @@ REC_MODEL = ("models", "face_recognition_sface_2021dec.onnx")
 class FaceEngine:
     """Thin, thread-safe wrapper around YuNet + SFace."""
 
-    def __init__(self, det_score=0.8):
+    def __init__(self, det_score=0.8, max_side=None):
         self.det = cv2.FaceDetectorYN.create(path(*DET_MODEL), "", (320, 320), det_score)
         self.rec = cv2.FaceRecognizerSF.create(path(*REC_MODEL), "")
         self.lock = threading.Lock()
+        # 4 Nov: YuNet ran on the FULL camera frame (a phone gives 1080x1920) on the CPU, under one lock shared by
+        # every camera -> the cameras queued behind each other. Detect on a copy scaled to max_side (e.g. 960 px)
+        # and scale the boxes + landmarks back: same faces, a fraction of the work. Embeddings still use the
+        # full-resolution frame, so recognition quality is unchanged.
+        self.max_side = max_side
+        self.ms = []
 
-    def faces(self, img):
+    def faces(self, img, max_side=None):
+        import time as _t
+        t0 = _t.perf_counter()
         h, w = img.shape[:2]
+        ms = max_side or self.max_side
+        k = min(1.0, float(ms) / max(h, w)) if ms else 1.0
+        src = cv2.resize(img, (max(1, int(w * k)), max(1, int(h * k))), interpolation=cv2.INTER_AREA) if k < 1.0 else img
+        sh, sw = src.shape[:2]
         with self.lock:
-            self.det.setInputSize((w, h))
-            _, f = self.det.detect(img)
-        return [] if f is None else [r for r in f]
+            self.det.setInputSize((sw, sh))
+            _, f = self.det.detect(src)
+        out = [] if f is None else [r for r in f]
+        if k < 1.0 and out:
+            out = [np.concatenate([r[:14] / k, r[14:]]).astype(np.float32) for r in out]
+        self.ms.append((_t.perf_counter() - t0) * 1000)
+        if len(self.ms) > 400:
+            del self.ms[:200]
+        return out
 
     def embed(self, img, face):
         with self.lock:
@@ -97,7 +115,7 @@ class IdentityService:
         if not self.enabled:
             return
         try:
-            self.engine = engine or FaceEngine()
+            self.engine = engine or FaceEngine(max_side=c.get("detect_max_side", 960))
         except Exception as e:
             print(f"[identity] face models not available ({e!r}) - identity disabled")
             self.enabled = False

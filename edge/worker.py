@@ -72,6 +72,10 @@ class CameraWorker(threading.Thread):
         self.snap_dir = path(settings["snapshots_dir"])
         os.makedirs(self.snap_dir, exist_ok=True)
         self.clips = clips                # short video per incident (edge/clips.py)
+        # 4 Nov: live view is drawn by edge/live.py from the newest camera frame + this worker's latest result
+        self.live_view = bool(settings["processing"].get("live_view", True))
+        self.overlay = None
+        self.stage_ms = {}                # stage -> deque of ms (profiler: where does the time go?)
 
     def set_target(self, fps):
         """Load manager (edge/load.py) changes the processing rate at run time."""
@@ -104,9 +108,27 @@ class CameraWorker(threading.Thread):
             self.proc_times.append(time.time())
             time.sleep(max(0.0, 1.0 / self.fps_target - (time.time() - t0)))
 
+    def _t(self, name, t0):
+        """Profiler: time spent in one stage of process() (ms). Returns a new start time."""
+        t1 = time.perf_counter()
+        d = self.stage_ms.get(name)
+        if d is None:
+            d = self.stage_ms[name] = deque(maxlen=200)
+        d.append((t1 - t0) * 1000)
+        return t1
+
+    def stage_stats(self):
+        out = {}
+        for k, d in list(self.stage_ms.items()):
+            v = sorted(d)
+            if v:
+                out[k] = {"p50": round(v[len(v) // 2], 1), "p95": round(v[min(len(v) - 1, int(len(v) * .95))], 1)}
+        return out
+
     def process(self, frame, frame_ts, n):
         h, w = frame.shape[:2]
         now = time.time()
+        tp = time.perf_counter()
         busy = bool(self.fv.regions.get(self.cam_id))       # something fire-like is being verified
         want_fire = busy or (self.fire_every > 0 and n % self.fire_every == 0)
         if self.engine is not None:
@@ -122,6 +144,7 @@ class CameraWorker(threading.Thread):
                 parts = self.detector.last_parts
                 fire_dets = self.detector.fire_detect(frame) if want_fire else None
             self.infer_ms.append((time.time() - t_inf) * 1000)
+        tp = self._t("ai_engine", tp)
 
         tracks = self.tracker.update([p["bbox"] for p in raw_persons],
                                      [p["conf"] for p in raw_persons])
@@ -132,9 +155,11 @@ class CameraWorker(threading.Thread):
                 m = max(raw_persons, key=lambda r: _iou(r["bbox"], p["bbox"]))
                 if _iou(m["bbox"], p["bbox"]) > 0.5:
                     p["kps"] = m["kps"]
+        tp = self._t("tracker", tp)
         if self.identity is not None:
             persons = self.identity.update(self.cam_id, frame, persons, n)
             self._stable_ids(persons)
+        tp = self._t("face_id", tp)
         zone_of = {p["tid"]: self.zonemap.zone_of(p["bbox"], w, h) for p in persons}
         required = {tid: self.zonemap.required(z) for tid, z in zone_of.items()}
         statuses, bad_items = evaluate(persons, items, required, w, h, self.s["association"],
@@ -143,6 +168,7 @@ class CameraWorker(threading.Thread):
         for st in statuses.values():
             for s, _ in st.values():
                 self.decisions[s] += 1
+        tp = self._t("ppe_match", tp)
 
         take = getattr(self.publisher, "take_closed", None)
         closed = take(self.cam_id) if take else None
@@ -166,9 +192,17 @@ class CameraWorker(threading.Thread):
         actions += fire_actions
         if self.entrance is None:
             actions += self.access.update(self.cam_id, persons, zone_of, now)
+        tp = self._t("decisions_fire", tp)
 
         shown = self._smooth(statuses)                       # steady on-screen PPE list (no frame flicker)
-        publish = self.publisher.due(self.cam_id)
+        if self.live_view:                                   # edge/live.py draws this on every new camera frame
+            self.overlay = {"at": time.time(), "persons": [dict(p) for p in persons], "shown": shown,
+                            "items": list(items), "parts": list(parts or []), "fire": list(self.fv.boxes(self.cam_id)),
+                            "rejected": list(self.fv.rejected.get(self.cam_id, [])) + list(bad_items),
+                            "polys": self.zonemap.polys, "entrance": self.entrance}
+            publish = False
+        else:
+            publish = self.publisher.due(self.cam_id)
         annotated = None
         if publish or actions:                               # draw only when someone will see it
             annotated = annotate.draw(frame, persons, shown, items, self.fv.boxes(self.cam_id),
@@ -191,7 +225,8 @@ class CameraWorker(threading.Thread):
             if open_ppe:
                 items_ = sorted({i for w_ in open_ppe for i in w_.open_items})
                 self.tile_badge = "NO " + " / ".join(i.upper() for i in items_)
-        if self.clips is not None and annotated is not None and self.clips.due(self.cam_id, frame_ts):
+        if not self.live_view and self.clips is not None and annotated is not None and \
+                self.clips.due(self.cam_id, frame_ts):
             self.clips.add(self.cam_id, annotated, frame_ts, persons)
         for a in actions:
             a["frame_w"], a["frame_h"] = w, h
@@ -201,6 +236,7 @@ class CameraWorker(threading.Thread):
         if publish:
             self.publisher.frame(self.cam_id, annotated, frame_ts)
         self.publisher.raw(self.cam_id, frame)
+        self._t("draw_emit", tp)
         self.frame_ms.append((time.time() - frame_ts) * 1000)
 
     def _smooth(self, statuses, keep=8):

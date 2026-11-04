@@ -1,6 +1,6 @@
 # NETRAX final acceptance self-test
 
-Run: 02 Nov 2026, 16:32:53 IST - `python -m tools.final_selftest`
+Run: 04 Nov 2026, 22:51:23 IST - `python -m tools.final_selftest`
 
 Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the real services; the live-provider and camera tests are in docs/NETRAX_Final_Test_Guide.pdf.
 
@@ -34,18 +34,18 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 09 | SMS: first try fails (HTTP 503) -> retried -> delivered, attempts logged | PASS | attempts 2 |
 | 09 | SMS text has type, severity, location, time and recommended action | PASS |  |
 | 09 | e-mail: SMTP drop -> retried -> accepted by the mail server ('sent', never claimed 'delivered') | PASS |  |
-| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 15 ms |
+| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 21 ms |
 | 13 | Telegram failure retried (bounded) then shown as FAILED with the reason - never 'delivered' | PASS |  |
 | 13 | system health shows the failing channel | PASS |  |
 | 13 | no credentials -> NOT CONFIGURED (clearly labelled), nothing claimed as sent | PASS |  |
 | 13 | health lists unconfigured channels as warnings | PASS |  |
 | 05 | same continuous incident is not sent twice on a channel | PASS |  |
-| 10 | 'What happened yesterday at 4:00 PM?' -> the saved record at 16:02 yesterday, nothing else | PASS | Between 01 Nov 2026, 15:30:00 IST to 16:30:00 IST: 1 incident - 1 ppe violation. |
+| 10 | 'What happened yesterday at 4:00 PM?' -> the saved record at 16:02 yesterday, nothing else | PASS | Between 03 Nov 2026, 15:30:00 IST to 16:30:00 IST: 1 incident - 1 ppe violation. |
 | 10 | no record in the window -> says 'No matching record was found' (no invented events) | PASS |  |
 | 10 | type filter (smoke) + whole day | PASS |  |
 | 10 | viewer role: worker names hidden in the answer | PASS |  |
 | 10 | every question logged | PASS |  |
-| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 8, "p50": 0.0, "p95": 0.0, "max": 0.0, "mean": 0.0} |
+| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 6, "p50": 0.0, "p95": 0.0, "max": 0.0, "mean": 0.0} |
 | 14 | no GPS + no configured site -> 'Location unavailable' + zone label (never invented) | PASS |  |
 | 14 | valid device GPS -> shown with source, accuracy and map link | PASS |  |
 | 14 | 1-hour-old reading -> marked STALE and not used | PASS |  |
@@ -87,7 +87,11 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | CLIP | viewer role: clip hidden (no link, file 403) | PASS |  |
 | CLIP | supervisor: dashboard record has the clip and it downloads (video/mp4) | PASS |  |
 | CLIP | retention: clips older than snapshot_retention_days are deleted like snapshots | PASS |  |
-| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 57 ms for 3 cameras |
-| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1102 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
+| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 42 ms for 3 cameras |
+| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1110 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
 | 04 | edge pipeline: monitored zone, helmet off -> one PPE alert naming the helmet | PASS | items ['goggles', 'helmet'] after ? |
 | 12 | edge pipeline: per-camera latency samples recorded (capture -> processed) | PASS |  |
+| LIVE | profiler: every AI stage of a camera is timed (engine, tracker, face ID, PPE match, decisions, drawing) | PASS | ai_engine 16.4 ms, tracker 1.8 ms, face_id 0.0 ms, ppe_match 0.6 ms, decisions_fire 3.0 ms, draw_emit 0.1 ms |
+| LIVE | AI at ~1 fps, live picture still ~12 fps (video no longer hangs at the AI rate) | PASS | 12.0 pictures/s at [640] px, draw 1.6 ms |
+| LIVE | incident clips are fed from the smooth live picture | PASS |  |
+| LIVE | face detection runs on a <= 960 px copy (phone frames are 1920 px) and boxes map back exactly | PASS | detector input (540, 960), face x=540 y=480 |

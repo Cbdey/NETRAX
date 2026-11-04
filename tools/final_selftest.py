@@ -248,7 +248,8 @@ def pipeline_test():
         time.sleep(0.1)
     ent = [p for p in box.items if p["type"] == "entrance_check"]
     check("01", "edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached)",
-          len(ent) == 1 and ent[0]["result"] == "approved" and ent[0]["frame_w"] == 1280 and pub.frames > 5,
+          len(ent) == 1 and ent[0]["result"] == "approved" and ent[0]["frame_w"] == 1280
+          and (pub.frames > 5 or (w_ent.live_view and w_ent.overlay and w_ent.overlay["persons"])),
           ent and f"{ent[0]['result']} {ent[0]['decision_ms']} ms, {ent[0]['frames']} frames, ok {ent[0]['items_ok']} "
           f"missing {ent[0]['items_missing']} unclear {ent[0]['items_uncertain']} {ent[0]['evidence']}")
     det.helmet = False
@@ -264,6 +265,77 @@ def pipeline_test():
           ppe and f"items {ppe[0]['items_missing']} after {ppe[0].get('time_to_alert_ms') or '?'}")
     check("12", "edge pipeline: per-camera latency samples recorded (capture -> processed)",
           len(w_mon.frame_ms) > 5 and w_mon.infer_ms and w_mon.infer_ms[-1] == 20.0)
+    st = w_mon.stage_stats()
+    check("LIVE", "profiler: every AI stage of a camera is timed (engine, tracker, face ID, PPE match, decisions, drawing)",
+          all(k in st for k in ("ai_engine", "tracker", "face_id", "ppe_match", "decisions_fire", "draw_emit")),
+          ", ".join(f"{k} {v['p50']} ms" for k, v in st.items()))
+    live_test(w_mon, frame)
+
+
+def live_test(worker, frame):
+    """4 Nov: the live picture must stay smooth while the AI is slow (it used to hang at the AI rate)."""
+    from edge.live import LiveView
+
+    class Reader:
+        def __init__(self):
+            self.no = 0
+            self.lock = threading.Lock()
+
+        def latest(self):
+            with self.lock:
+                self.no += 1                    # a new camera frame every call (camera at full speed)
+                return frame, time.time(), self.no
+
+    class Pub:
+        def __init__(self):
+            self.n, self.sizes = 0, set()
+
+        def frame(self, cam, img, ts=None):
+            self.n += 1
+            self.sizes.add(img.shape[1])
+
+    class Clips:
+        def __init__(self):
+            self.n = 0
+
+        def due(self, cam, ts):
+            return True
+
+        def add(self, cam, img, ts, persons=()):
+            self.n += 1
+
+    worker.overlay = dict(worker.overlay, at=time.time() + 60)     # an AI result that stays fresh during the test
+    worker.proc_times.clear()
+    worker.proc_times.extend([time.time() - 2, time.time() - 1])  # AI at ~1 frame per second
+    pub, clips = Pub(), Clips()
+    lv = LiveView({"cam_01": Reader()}, {"cam_01": worker}, pub, clips, fps=12, width=640)
+    lv.start()
+    time.sleep(2.0)
+    rate = pub.n / 2.0
+    check("LIVE", "AI at ~1 fps, live picture still ~12 fps (video no longer hangs at the AI rate)",
+          rate >= 9 and pub.sizes == {640}, f"{rate:.1f} pictures/s at {sorted(pub.sizes)} px, draw "
+          f"{sorted(lv.ms)[len(lv.ms) // 2]:.1f} ms")
+    check("LIVE", "incident clips are fed from the smooth live picture", clips.n >= 9)
+    # face detection on a scaled copy: boxes + landmarks come back in full-frame pixels
+    import numpy as np
+    from edge.identity import FaceEngine
+
+    class Det:
+        def setInputSize(self, wh):
+            self.wh = wh
+
+        def detect(self, img):
+            h, w = img.shape[:2]
+            row = np.array([w * .5, h * .25, w * .1, h * .1] + [w * .55, h * .3] * 5 + [0.95], np.float32)
+            return 1, row[None, :]
+
+    fe = FaceEngine.__new__(FaceEngine)
+    fe.det, fe.lock, fe.max_side, fe.ms = Det(), threading.Lock(), 960, []
+    big = np.zeros((1920, 1080, 3), np.uint8)
+    f = fe.faces(big)[0]
+    check("LIVE", "face detection runs on a <= 960 px copy (phone frames are 1920 px) and boxes map back exactly",
+          max(fe.det.wh) == 960 and abs(f[0] - 540) < 2 and abs(f[1] - 480) < 2 and abs(f[2] - 108) < 2
+          and abs(f[4] - 594) < 2 and abs(f[14] - 0.95) < 1e-6, f"detector input {fe.det.wh}, face x={f[0]:.0f} y={f[1]:.0f}")
 
 
 async def main():

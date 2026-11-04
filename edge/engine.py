@@ -33,6 +33,7 @@ class InferenceEngine(threading.Thread):
         self.batch_ms = deque(maxlen=200)          # model time per batch
         self.wait_ms = deque(maxlen=200)           # queue wait per frame
         self.batch_sizes = deque(maxlen=200)
+        self.busy = deque(maxlen=400)              # (start, end) of each batch -> busy share of the last seconds
         self.running = True
 
     @property
@@ -79,12 +80,20 @@ class InferenceEngine(threading.Thread):
             except Exception as e:                # noqa: BLE001 - hand the error to every waiting camera
                 for r in batch:
                     r.error = e
-            ms = (time.perf_counter() - t0) * 1000
+            t1 = time.perf_counter()
+            ms = (t1 - t0) * 1000
+            self.busy.append((t0, t1))
             self.batch_ms.append(ms)
             self.batch_sizes.append(len(batch))
             for r in batch:
                 self.wait_ms.append((t0 - r.t) * 1000)
                 r.done.set()
+
+    def busy_share(self, window_s=5.0):
+        """Share of the last window_s seconds the GPU engine spent running models (0..1)."""
+        now = time.perf_counter()
+        t = sum(min(e, now) - max(s, now - window_s) for s, e in list(self.busy) if e > now - window_s)
+        return max(0.0, min(1.0, t / window_s))
 
     def stats(self):
         def pct(d, p):
@@ -94,4 +103,5 @@ class InferenceEngine(threading.Thread):
             return round(s[min(len(s) - 1, int(round((len(s) - 1) * p)))], 1)
         return {"batch_ms_p50": pct(self.batch_ms, .5), "batch_ms_p95": pct(self.batch_ms, .95),
                 "wait_ms_p50": pct(self.wait_ms, .5), "wait_ms_p95": pct(self.wait_ms, .95),
-                "batch_size_avg": round(sum(self.batch_sizes) / len(self.batch_sizes), 2) if self.batch_sizes else None}
+                "batch_size_avg": round(sum(self.batch_sizes) / len(self.batch_sizes), 2) if self.batch_sizes else None,
+                "gpu_busy_share": round(self.busy_share(), 2)}

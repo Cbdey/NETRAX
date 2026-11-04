@@ -9,6 +9,7 @@ from .config import load_all, path
 from .detector import Detector
 from .engine import InferenceEngine
 from .identity import IdentityService
+from .live import LiveView
 from .load import LoadManager
 from .retention import purge
 from .clips import ClipRecorder
@@ -73,13 +74,24 @@ def main():
         print(f"[edge] {cam_id} '{cam.get('name')}' source={cam['source']} "
               f"zone={cam['default_zone']} tracker={wkr.tracker.kind} device={wkr.detector.device}")
 
+    live = None
+    if proc.get("live_view", True):
+        # 4 Nov: smooth live picture from the newest camera frame + the latest AI result (edge/live.py)
+        live = LiveView(readers, workers, publisher, clips if clips.enabled else None,
+                        fps=proc.get("live_fps", settings["backend"]["preview_fps"]),
+                        width=proc.get("live_width", 800))
+        live.start()
+        print(f"[edge] live view: {live.gap and round(1 / live.gap)} fps per camera, independent of the AI rate")
     print(f"[edge] running {len(cameras)} camera(s). Backend: {backend}. Ctrl+C to stop.")
     load = LoadManager(settings.get("load"), fps)
+    if engine is not None:
+        load.gpu_busy = engine.busy_share
     risk_of = lambda c: zones[cameras[c]["default_zone"]]["risk"]
     last_load, last_purge = 0, 0
     keep_days = settings.get("privacy", {}).get("snapshot_retention_days", 30)
     every = settings["backend"]["health_every_s"]
     last_print = 0
+    t_start = time.time()
     try:
         while True:
             for msg in share.step({c: r.frame_ts for c, r in readers.items()}):
@@ -106,6 +118,8 @@ def main():
                     "target_fps": wkr.fps_target,
                     "role": wkr.role,
                     "latency": _lat(wkr),
+                    "stages_ms": wkr.stage_stats(),
+                    "live_fps": round(live.sent.get(cam_id, 0) / max(1.0, time.time() - t_start), 1) if live else None,
                 })
             online = publisher.health({
                 "at": time.time(),
@@ -129,9 +143,22 @@ def main():
                 if msg:
                     print(f"[edge] {msg}")
             if time.time() - last_print > 10:
-                line = " | ".join(f"{c['camera_id']}:{c['status']} {c['fps']}fps" for c in cams)
+                line = " | ".join(f"{c['camera_id']}:{c['status']} cam {c['source_fps']}fps AI {c['fps']}fps"
+                                  for c in cams)
                 print(f"[edge] {line} | backend={'up' if online else 'DOWN (buffering)'} "
                       f"| outbox pending={outbox.pending()}")
+                # profiler (4 Nov): where each camera's AI time goes, median ms per stage
+                for c in cams:
+                    st = c.get("stages_ms") or {}
+                    if st:
+                        print(f"[perf] {c['camera_id']} " + " ".join(f"{k}={v['p50']:.0f}/{v['p95']:.0f}"
+                                                                      for k, v in st.items()) + " (ms p50/p95)")
+                es = engine.stats() if engine else {}
+                fms = sorted(getattr(identity.engine, "ms", []) or []) if getattr(identity, "engine", None) else []
+                lms = sorted(live.ms) if live else []
+                print(f"[perf] GPU engine batch {es.get('batch_ms_p50')} ms, busy {es.get('gpu_busy_share')}, "
+                      f"cams/batch {es.get('batch_size_avg')} | face detect "
+                      f"{fms[len(fms) // 2] if fms else '-'} ms | live view draw {lms[len(lms) // 2] if lms else '-'} ms")
                 last_print = time.time()
             time.sleep(every)
     except KeyboardInterrupt:
