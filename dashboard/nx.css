@@ -157,3 +157,40 @@ body.nx-firebar{padding-top:52px}
 .nxg-bar{position:absolute;left:0;bottom:0;height:4px;background:var(--tone);width:100%;transform-origin:left;animation:nxbar var(--t,6s) linear forwards}
 @keyframes nxbar{to{transform:scaleX(0)}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}.nxg-mark circle,.nxg-mark path{stroke-dashoffset:0}}
+
+/* ---------- 5 Nov: side panel for alerts on every page + alert / entrance cards (same look as the control room) ---------- */
+.nxc{border:1px solid var(--line);border-left:5px solid var(--warn);border-radius:12px;background:var(--panel2);padding:9px 11px;display:flex;flex-direction:column;gap:5px;cursor:pointer;--ring:var(--warn)}
+.nxc.crit{border-left-color:var(--crit);--ring:var(--crit)}
+.nxc.ok{border-left-color:var(--ok);--ring:var(--ok)}
+.nxc.gate.ok{background:var(--ok-bg);border-color:var(--ok)}
+.nxc.gate.crit{background:var(--crit-bg);border-color:var(--crit)}
+.nxc.gate.warn{background:var(--warn-bg);border-color:var(--warn)}
+.nxc .h{display:flex;align-items:center;gap:8px}
+.nxc .h b{font-family:var(--display);font-size:14.5px;font-weight:700;letter-spacing:.02em}
+.nxc.crit .h b{color:var(--crit)}.nxc.warn .h b{color:var(--warn)}.nxc.ok .h b{color:var(--ok)}
+.nxc .h .sp{flex:1}.nxc .t{font-size:12px;color:var(--muted);white-space:nowrap}
+.nxc .w{font-weight:700;font-size:14px}.nxc .m{font-size:12.5px;color:var(--muted)}
+.nxc .items{display:flex;flex-wrap:wrap;gap:4px}.nxc .item{font-size:12px;padding:2px 7px;box-shadow:none}
+.nxc .a{display:flex;gap:6px}.nxc .a .btn{padding:4px 10px;font-size:12.5px}
+.nxc .newpill,.inc .newpill{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.08em;padding:1px 7px;border-radius:999px;background:var(--ring);color:#0b0b0b}
+.nxc.nx-new{animation:nxslide .45s cubic-bezier(.2,1.15,.4,1),nxring 1.1s ease-in-out .2s 3}
+.nxc.nx-upd{animation:nxring 1.1s ease-in-out 3}
+.nxc .fresh{outline:2px solid #fff;outline-offset:1px}
+.nxempty{color:var(--muted);font-size:13px;text-align:center;padding:12px 6px}
+.nxlist{display:flex;flex-direction:column;gap:8px}
+.nxrail{position:fixed;top:12px;right:12px;bottom:12px;width:320px;z-index:80;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--lift);display:flex;flex-direction:column;overflow:hidden}
+.nxrail.hot{border-color:var(--crit)}
+.nxrail .rh{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.nxrail .rh b{font-family:var(--display);font-size:17px}.nxrail.hot .rh b{color:var(--crit)}.nxrail .rh .sp{flex:1}
+.nxrail .rbody{flex:1;overflow:auto;padding:10px 12px 14px;display:flex;flex-direction:column;gap:8px}
+.nxrail .rsec{font-size:11.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.nxrail .rlist{display:flex;flex-direction:column;gap:8px}
+body.nx-rail-on{padding-right:344px}
+body.nx-rail-on.nx-rail-min{padding-right:0}
+body.nx-rail-min .nxrail{width:auto;bottom:auto}
+body.nx-rail-min .nxrail .rbody{display:none}
+body.nx-firebar .nxrail{top:60px}
+@media (max-width:1100px){body.nx-rail-on{padding-right:0}.nxrail{top:auto;height:46vh;width:min(340px,calc(100vw - 24px))}}
+/* item chips look the same on every page (admin / hardware have no chip styles of their own) */
+.item{display:inline-block;background:var(--crit);color:#fff;letter-spacing:.02em}
+.item.ok{background:var(--ok);color:#03210f}.item.unk{background:var(--warn);color:#2a1c00}

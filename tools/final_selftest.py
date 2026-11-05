@@ -742,6 +742,22 @@ async def main():
         check("12", "live video: pictures are pushed over one WebSocket with camera + capture time; a viewer gets only its cameras",
               all(h[0].startswith(b"cam_02|") and h[0].count(b"|") == 2 for h in heads) and heads[1][1] == b"\xff\xd8jpeg-two-b",
               f"{[h[0].decode() for h in heads]}")
+    # ---------------- 5 Nov: admin report generator (any time range + filters -> preview / PDF / CSV)
+    with TestClient(m.app) as c:
+        t1 = time.time() + 60
+        r = c.get(f"/api/reports/custom?start={t1 - 7 * 86400}&end={t1}&format=json").json()
+        rz = c.get(f"/api/reports/custom?start={t1 - 7 * 86400}&end={t1}&format=json&type=ppe_missing&zone=welding_bay").json()
+        pdf = c.get(f"/api/reports/custom?start={t1 - 7 * 86400}&end={t1}&format=pdf&title=Shift%20report")
+        csvr = c.get(f"/api/reports/custom?start={t1 - 7 * 86400}&end={t1}&format=csv&type=fire,smoke")
+        bad = c.get(f"/api/reports/custom?start={t1}&end={t1 - 10}")
+    check("REP", "report generator: time range -> summary (totals, most missed PPE, by zone / camera / worker) + records",
+          r["summary"]["total"] > 0 and r["summary"]["by_zone"] and r["rows"] and r["summary"]["lines"][0].startswith("Period:"),
+          r["summary"]["lines"][:2])
+    check("REP", "filters work (PPE violations in the welding bay only)", rz["summary"]["total"] > 0 and
+          all(x["type"] == "ppe_missing" and x["zone_name"] == "Welding bay" for x in rz["rows"]))
+    check("REP", "PDF and CSV downloads (named by the time range); end before start refused",
+          pdf.status_code == 200 and pdf.content[:4] == b"%PDF" and "netrax_report_" in pdf.headers.get("content-disposition", "")
+          and csvr.status_code == 200 and csvr.text.startswith("event_id") and bad.status_code == 400)
     from edge.stream import StreamReader
     sr = StreamReader("cam_x", 0, 12)
     sr.frame_ts, sr.active_since, sr.fps = time.time(), 0, 30.0

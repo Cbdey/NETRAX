@@ -1083,6 +1083,31 @@ def analytics():
     return reports.summary(EDGE["state"] if time.time() - EDGE["at"] < 5 else None)
 
 
+@app.get("/api/reports/custom")
+def report_custom(request: Request, start: float, end: float, type: str = None, zone: str = None, camera: str = None,
+                  worker: str = None, severity: str = None, status: str = None, format: str = "json", title: str = None):
+    """5 Nov, admin report generator: any time range + filters -> summary + breakdowns (json preview) / PDF / CSV."""
+    if end <= start:
+        raise HTTPException(400, "the end must be after the start")
+    split = lambda v: [x for x in (v or "").split(",") if x] or None
+    evs = reports.custom_events(start, end, split(type), split(zone), split(camera), split(worker), split(severity), split(status))
+    if current_user(request).get("role") == "viewer":
+        evs = [auth.mask_event(e) for e in evs]
+    summ = reports.custom_summary(evs, start, end)
+    span = f"{datetime.fromtimestamp(start):%d %b %Y %H:%M} - {datetime.fromtimestamp(end):%d %b %Y %H:%M}"
+    name = f"netrax_report_{datetime.fromtimestamp(start):%Y%m%d_%H%M}_{datetime.fromtimestamp(end):%Y%m%d_%H%M}"
+    db.audit((current_user(request) or {}).get("user"), (current_user(request) or {}).get("role"), "report", format,
+             f"{span}; type={type} zone={zone} camera={camera} worker={worker} severity={severity} status={status}")
+    if format == "pdf":
+        return Response(reports.to_pdf(list(reversed(evs)), (title or "NETRAX safety report") + f" - {span}", summ),
+                        media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+    if format == "csv":
+        return Response(reports.to_csv(evs), media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
+    return {"summary": summ, "period": span, "rows": [{k: e.get(k) for k in ("event_id", "type", "items_missing", "severity", "status",
+            "zone_name", "camera_id", "worker_id", "worker_name", "started_at", "snapshot")} for e in reversed(evs[-200:])]}
+
+
 @app.get("/api/reports/export")
 def export(format: str = "csv", kind: str = "shift", zone: str = None, shift: str = None, days: int = 1):
     evs = reports.events_between(time.time() - days * 86400, zone, shift)

@@ -228,7 +228,7 @@ async function slow(){
 function connect(){
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
   ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
-    if (kind === "entrance"){ LOG = [data].concat(LOG.filter(g => g.event_id !== data.event_id)); renderAll(); NA.gate(data); slow(); }
+    if (kind === "entrance"){ LOG = [data].concat(LOG.filter(g => g.event_id !== data.event_id)); renderAll(); NA.gate(data, {screen: true}); slow(); }
     else if (kind === "event") NA.offer(data);
     else if (kind === "attendance"){ toast(`RFID ${data.event || data.status || ""}`, data.message || ""); slow(); }
     else if (kind === "cameras" && STATUS){ STATUS.camera = (data.cameras||[]).find(c => c.role === "entrance") || STATUS.camera; renderDevices(); }
@@ -239,7 +239,7 @@ function connect(){
 (async function boot(){
   try { ME = await api("/api/me"); } catch { return; }
   $("userChip").textContent = `👤 ${ME.user || "local"} · ${String(ME.role).toUpperCase()}`;
-  NA.init({canAct, role: () => ME.role, tone: () => {}, view: id => { location.href = "/#event=" + encodeURIComponent(id); }});
+  NA.init({canAct, role: () => ME.role, tone: () => {}, rail: "dock", railGate: false, view: id => { location.href = "/#event=" + encodeURIComponent(id); }});
   try { NA.seed(await api("/api/events?limit=300")); } catch {}
   try { LOG = await api("/api/entrance?limit=200"); } catch {}
   renderAll(); await slow(); connect();

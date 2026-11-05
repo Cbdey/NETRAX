@@ -252,6 +252,11 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
   </div>
 
   <div class="stack">
+    <section class="panel nxside" aria-label="Entrance results" id="gatePanel">
+      <div class="alerthead"><h2 style="margin:0">🚪 Entrance</h2><span class="sp" style="flex:1"></span><a class="small" href="/entrance">Entrance dashboard ›</a></div>
+      <p class="small" style="margin:4px 0 10px">Green = verified, may enter · Red = do not enter · Amber = manual check</p>
+      <div class="nxlist" id="gateSide"></div>
+    </section>
     <section class="panel" aria-label="Live alerts" id="alertPanel">
       <div class="alerthead" id="alertHead"><h2 style="margin:0">Live alerts</h2><span class="sp" style="flex:1"></span><span class="pill p-crit" id="nActive">0 active</span>
         <button class="btn" id="muteBtn" style="font-size:12px;padding:4px 9px" aria-pressed="false" title="Alert sound on / off">🔔</button></div>
@@ -616,7 +621,14 @@ $("modal").onclick = ev => { if (ev.target.id === "modal") closeModal(); };
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeModal(); });
 
 /* ---------- entrance ---------- */
+function renderGateSide(){
+  const box = $("gateSide"); if (!box) return;
+  NetraxAlerts.keyed(box, ENTR.filter(g => Date.now() / 1000 - g.at < 3 * 3600).slice(0, 4), g => g.event_id, NetraxAlerts.gateCard,
+    "No entrance checks in the last 3 hours. The USB entrance camera decides when a person stands in front of it.");
+}
+setInterval(renderGateSide, 15000);
 function renderGate(){
+  renderGateSide();
   const box = $("gateLast"), cell = $("gateCell"); if (!box) return;
   const g = ENTR[0];
   if (!g){ cell.className = "gatecell"; box.innerHTML = `<div class="small">No checks yet. The USB camera decides when a person stands in front of it.</div>`; return; }
@@ -766,7 +778,7 @@ function connect(){
     else if (kind === "location"){ LOC = data; renderLoc(); }
     else if (kind === "notification"){ NOTIFS.set(data.id, Object.assign(NOTIFS.get(data.id) || {}, data)); renderNotifs(); renderBand();
       if (data.status === "failed") toast(`${CH[data.channel] || data.channel} failed`, `${data.event_id}: ${data.error || ""}`, "crit"); }
-    else if (kind === "entrance"){ ENTR = [data].concat(ENTR.filter(x => x.event_id !== data.event_id)); renderGate(); NetraxAlerts.gate(data, {compact:true}); }
+    else if (kind === "entrance"){ ENTR = [data].concat(ENTR.filter(x => x.event_id !== data.event_id)); NetraxAlerts.gate(data); renderGate(); }
     else if (kind === "ppe_ok") toast("✓ PPE complete", `${data.worker_name || data.worker_id || "Worker"} · ${data.zone_name || ""}`);
   };
   ws.onopen = () => { $("sysChip").dataset.ws = "1"; };
@@ -785,7 +797,7 @@ async function boot(){
   $("userChip").textContent = `👤 ${ME.user || "local"} · ${String(ME.role).toUpperCase()}`;
   $("logoutBtn").hidden = !ME.auth;
   try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
-  NetraxAlerts.init({canAct, onEvent: upsert, view: openEvent, tone: () => {}, mode: "none", fireBanner: false});
+  NetraxAlerts.init({canAct, onEvent: upsert, view: openEvent, tone: () => {}, rail: false, fireBanner: false});
   try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs);
     evs.forEach(e => { EVENTS.set(e.event_id, e); SEEN.add(e.event_id); SIGS.set(e.event_id, (e.items_missing||[]).slice().sort().join(",") + "|" + (e.fire_level||0)); }); } catch {}
   try { MUTED = localStorage.getItem("netrax-mute") === "1"; } catch {}

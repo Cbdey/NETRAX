@@ -133,6 +133,7 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
 .alarmbar{display:none;margin-bottom:14px;background:var(--crit);color:#fff;border-radius:12px;padding:12px 16px;font-weight:700;align-items:center;gap:12px}
 .alarmbar.show{display:flex}.alarmbar .btn{background:#fff;color:var(--crit);border:0}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.rpre{display:flex;gap:6px;flex-wrap:wrap}
 @media (max-width:1400px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:1100px){.g2,.g3,.g21,.g12{grid-template-columns:1fr}}
 @media (max-width:860px){.app{grid-template-columns:1fr}aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center}
@@ -154,6 +155,7 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
     <a href="#cameras" data-p="cameras"><span class="ic">◧</span>Cameras &amp; zones</a>
     <a href="#users" data-p="users"><span class="ic">🔐</span>Users &amp; audit</a>
     <a href="#system" data-p="system"><span class="ic">🩺</span>System health<span class="cnt" id="navHealth"></span></a>
+    <a href="#reports" data-p="reports"><span class="ic">📄</span>Report generator</a>
     <a href="#acceptance" data-p="acceptance"><span class="ic">✔</span>Acceptance tests<span class="cnt" id="navAcc" style="background:var(--info)"></span></a>
   </nav>
   <div class="sidefoot">
@@ -288,6 +290,30 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
     </div>
   </section>
 
+  <section class="page" id="p-reports">
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Generate a report <span class="grow"></span><small>any time range · any filter · PDF or CSV · numbers come only from the saved records</small></h2>
+      <div class="rpre" role="group" aria-label="Time range">
+        <button class="btn sm" data-pre="1h">Last hour</button><button class="btn sm" data-pre="shift">This shift</button>
+        <button class="btn sm" data-pre="today">Today</button><button class="btn sm" data-pre="yday">Yesterday</button>
+        <button class="btn sm" data-pre="7d">Last 7 days</button><button class="btn sm" data-pre="month">This month</button>
+      </div>
+      <form class="form" id="rForm" style="margin-top:12px">
+        <label class="f">From<input class="inp" type="datetime-local" id="rFrom" required></label>
+        <label class="f">To<input class="inp" type="datetime-local" id="rTo" required></label>
+        <label class="f">Type<select class="inp" id="rType"><option value="">All types</option><option value="ppe_missing">PPE violations</option><option value="fire,smoke">Fire + smoke</option><option value="unauthorized_entry">Restricted zone</option><option value="entrance_check">Entrance checks</option></select></label>
+        <label class="f">Zone<select class="inp" id="rZone"><option value="">All zones</option></select></label>
+        <label class="f">Camera<select class="inp" id="rCam"><option value="">All cameras</option></select></label>
+        <label class="f">Worker<select class="inp" id="rWorker"><option value="">Anyone</option></select></label>
+        <label class="f">Severity<select class="inp" id="rSev"><option value="">All</option><option value="Critical">Critical</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option></select></label>
+        <label class="f">Status<select class="inp" id="rStat"><option value="">All</option><option value="open,escalated,verifying,acknowledged">Still active</option><option value="resolved,closed">Resolved / closed</option><option value="dismissed">False alarm</option></select></label>
+        <label class="f">Title<input class="inp" id="rTitle" value="NETRAX safety report" maxlength="80"></label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" type="submit">Preview</button><button class="btn" type="button" id="rPdf">⬇ PDF</button><button class="btn" type="button" id="rCsv">⬇ CSV</button></div>
+      </form>
+    </div>
+    <div id="rOut"><div class="panel"><div class="empty">Pick a time range (or a preset above) and press Preview.</div></div></div>
+  </section>
+
   <section class="page" id="p-acceptance">
     <div class="panel"><h2>Live end-to-end run <span class="grow"></span><small id="accSum"></small><a class="btn sm" href="/api/acceptance/report.md">⬇ Export results</a></h2>
       <p class="small" style="margin:0 0 10px">Brief section 11. The automatic tests use fake providers; this list is the real run. Do the test, then record the result and attach a screenshot. The evidence line is read from the database. Nothing is marked passed automatically.</p>
@@ -329,13 +355,14 @@ const PAGES = {overview:["Overview","Live picture of safety across all zones"], 
   workers:["Workers","Registration, face ID and RFID cards"], alerts:["Alerts & channels","Telegram, e-mail, phone and SMS — status and delivery log"],
   cameras:["Cameras & zones","Live feeds, zone rules and the speaker / siren"], users:["Users & audit","Who can do what, and who did what"],
   system:["System health","Edge computer, cameras, database, channels and measured speed"],
+  reports:["Report generator","Specific reports for any time range: who, where, what was missing, how fast it was handled"],
   acceptance:["Acceptance tests","Brief section 11, tests 01-14: result, evidence and screenshot"]};
 function show(){
   const p = (location.hash.slice(1) || "overview").split("=")[0]; const page = PAGES[p] ? p : "overview";
   document.querySelectorAll("section.page").forEach(s => s.classList.toggle("on", s.id === "p-" + page));
   document.querySelectorAll("nav a").forEach(a => { if (a.dataset.p === page) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
   $("pgTitle").textContent = PAGES[page][0]; $("pgSub").textContent = PAGES[page][1];
-  ({incidents: search, alerts: loadAlerts, users: loadUsers, system: loadSystem, workers: loadWorkers, cameras: loadCameras, acceptance: loadAcceptance}[page] || (() => {}))();
+  ({incidents: search, alerts: loadAlerts, users: loadUsers, system: loadSystem, workers: loadWorkers, cameras: loadCameras, acceptance: loadAcceptance, reports: initReports}[page] || (() => {}))();
 }
 window.addEventListener("hashchange", show);
 $("logoutBtn").onclick = async () => { await post("/api/logout").catch(()=>{}); location.href = "/login"; };
@@ -606,6 +633,58 @@ async function loadSystem(){
 
 /* ---------- live data ---------- */
 function upsert(e){ if (!e || !e.event_id) return; EVENTS.set(e.event_id, e); renderKpis(); renderActivity(); NetraxAlerts.offer(e); }
+/* ---------- report generator (5 Nov) ---------- */
+const pad = n => String(n).padStart(2, "0");
+const toLocal = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function preset(k){
+  const now = new Date(), d0 = new Date(now); d0.setHours(0, 0, 0, 0);
+  const h = now.getHours(), sh = new Date(d0);
+  if (h >= 22 || h < 6){ sh.setHours(22); if (h < 6) sh.setDate(sh.getDate() - 1); } else sh.setHours(h >= 14 ? 14 : 6);
+  const r = {"1h": [new Date(now - 3600e3), now], shift: [sh, now], today: [d0, now],
+    yday: [new Date(d0 - 86400e3), new Date(d0 - 1000)], "7d": [new Date(now - 7 * 86400e3), now],
+    month: [new Date(now.getFullYear(), now.getMonth(), 1), now]}[k];
+  $("rFrom").value = toLocal(r[0]); $("rTo").value = toLocal(r[1]);
+  document.querySelectorAll("[data-pre]").forEach(b => b.classList.toggle("pri", b.dataset.pre === k));
+}
+function rParams(fmt){
+  const p = new URLSearchParams({start: new Date($("rFrom").value).getTime() / 1000, end: new Date($("rTo").value).getTime() / 1000, format: fmt});
+  [["rType","type"],["rZone","zone"],["rCam","camera"],["rWorker","worker"],["rSev","severity"],["rStat","status"]].forEach(([id,k]) => { if ($(id).value) p.set(k, $(id).value); });
+  if ($("rTitle").value.trim()) p.set("title", $("rTitle").value.trim());
+  return p;
+}
+function initReports(){
+  const set = (id, opts) => { const el = $(id), v = el.value, first = el.options[0].outerHTML; el.innerHTML = first + opts; el.value = v; };
+  set("rZone", ZONES.map(z => `<option value="${esc(z.zone_id)}">${esc(z.name)}</option>`).join(""));
+  set("rCam", (CAMS.cameras||[]).map(c => `<option value="${esc(c.camera_id)}">${esc(c.camera_id)} · ${esc(c.name)}</option>`).join(""));
+  set("rWorker", WORKERS.map(w => `<option value="${esc(w.worker_id)}">${esc(w.worker_id)} · ${esc(w.name)}</option>`).join(""));
+  if (!$("rFrom").value) preset("today");
+}
+document.addEventListener("click", ev => { const b = ev.target.closest("[data-pre]"); if (b) preset(b.dataset.pre); });
+const rValid = () => { if (!$("rFrom").value || !$("rTo").value){ toast("Pick a time range", "From and To are needed", true); return false; }
+  if (new Date($("rTo").value) <= new Date($("rFrom").value)){ toast("Check the time range", "To must be after From", true); return false; } return true; };
+$("rPdf").onclick = () => { if (rValid()) location.href = "/api/reports/custom?" + rParams("pdf"); };
+$("rCsv").onclick = () => { if (rValid()) location.href = "/api/reports/custom?" + rParams("csv"); };
+$("rForm").onsubmit = async ev => {
+  ev.preventDefault(); if (!rValid()) return;
+  $("rOut").innerHTML = `<div class="panel"><div class="empty">Building the report…</div></div>`;
+  try {
+    const r = await api("/api/reports/custom?" + rParams("json")), s = r.summary;
+    const list = (rows, max = 8) => rows && rows.length ? rows.slice(0, max).map(([k, v]) => `<div class="hbar"><span>${esc(k)}</span><span class="t"><i style="width:${Math.round(100 * v / rows[0][1])}%"></i></span><b>${v}</b></div>`).join("") : `<div class="small">none</div>`;
+    const kpi = (label, val, c) => `<div class="kpi" style="--c:${c}"><small>${label}</small><b>${val}</b></div>`;
+    $("rOut").innerHTML = `<div class="kpis">${kpi("Records", s.total, "var(--teal)")}${kpi("Still active", s.active, "var(--crit)")}${kpi("Closed", s.closed, "var(--ok)")}
+        ${kpi("Median time to alert", s.median_time_to_alert_s != null ? s.median_time_to_alert_s + " s" : "–", "var(--warn)")}${kpi("Median time to acknowledge", s.median_time_to_ack_s != null ? s.median_time_to_ack_s + " s" : "–", "var(--info)")}
+        ${kpi("Entrance verified / refused", s.entrance && Object.keys(s.entrance).length ? `${s.entrance.approved || 0} / ${s.entrance.denied || 0}` : "–", "var(--violet)")}</div>
+      <div class="grid g2" style="margin-bottom:16px"><div class="panel"><h2>Summary <span class="grow"></span><small>${esc(r.period)}</small></h2><ul style="margin:0;padding-left:18px">${s.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
+          <div style="display:flex;gap:8px;margin-top:12px"><button class="btn pri" onclick="$('rPdf').click()">⬇ Download PDF</button><button class="btn" onclick="$('rCsv').click()">⬇ CSV</button></div></div>
+        <div class="panel"><h2>Most missed PPE</h2>${list(s.items)}</div></div>
+      <div class="grid g3" style="margin-bottom:16px"><div class="panel"><h2>By zone</h2>${list(s.by_zone)}</div><div class="panel"><h2>By camera</h2>${list(s.by_camera)}</div><div class="panel"><h2>By worker</h2>${list(s.workers)}</div></div>
+      <div class="panel"><h2>Records <span class="grow"></span><small>newest first${r.rows.length >= 200 ? " · first 200 shown, the PDF / CSV has all" : ""}</small></h2>
+        <div class="tw"><table><thead><tr><th>Time</th><th>Record</th><th>Zone · camera</th><th>Worker</th><th>Severity</th><th>Status</th></tr></thead><tbody>
+        ${r.rows.map(e => `<tr class="click" data-ev="${esc(e.event_id)}"><td>${fmtT(e.started_at)}</td><td>${esc(e.type === "ppe_missing" ? "Missing " + (e.items_missing||[]).map(iname).join(", ") : e.type.replace(/_/g, " "))}</td>
+          <td>${esc(e.zone_name || "")} · ${esc(e.camera_id || "-")}</td><td>${esc(e.worker_id ? (e.worker_id + " " + (e.worker_name || "")) : "-")}</td><td>${esc(e.severity || "")}</td><td>${esc(e.status || "")}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">No records in this range.</td></tr>`}</tbody></table></div></div>`;
+  } catch (x){ $("rOut").innerHTML = `<div class="panel"><div class="empty">Could not build the report: ${esc(x.message)}</div></div>`; }
+};
+
 /* ---------- live acceptance checklist ---------- */
 let ACC = [];
 function accRow(t){
@@ -637,7 +716,7 @@ function connect(){
   ws.onopen = () => { const lc = $("liveChip"); lc.dataset.ws = "1"; lc.className = "chip live ok"; lc.querySelector("span:last-child").textContent = "LIVE"; renderHealth(); };
   ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
     if (kind === "event") upsert(data);
-    else if (kind === "entrance") NetraxAlerts.gate(data, {compact:true});
+    else if (kind === "entrance") NetraxAlerts.gate(data);
     else if (kind === "cameras"){ CAMS = data; renderCams(); renderKpis(); }
     else if (kind === "health"){ HEALTH = data; renderHealth(); }
     else if (kind === "notification"){ NOTIFS.set(data.id, Object.assign(NOTIFS.get(data.id) || {}, data)); renderNotifs(); renderKpis();
@@ -659,7 +738,8 @@ async function boot(){
   $("userInfo").innerHTML = `Signed in as <b>${esc(ME.user || "local")}</b> · ${esc(String(ME.role).toUpperCase())}`;
   $("logoutBtn").hidden = !ME.auth;
   try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
-  NetraxAlerts.init({canAct, onEvent: upsert});
+  NetraxAlerts.init({canAct, onEvent: upsert, rail: "dock", view: id => openEvent(id)});
+  try { NetraxAlerts.seedGates(await api("/api/entrance?limit=10")); } catch {}
   try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs); evs.forEach(e => EVENTS.set(e.event_id, e)); } catch {}
   try { (await api("/api/notifications?limit=150")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
   await loadWorkers(); await refreshSlow(); renderActivity(); renderKpis();

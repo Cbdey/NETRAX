@@ -98,6 +98,8 @@ td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 </style>
 <link rel="stylesheet" href="/static/theme.css">
 <script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/nx.css">
+<script src="/static/alerts.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -393,6 +395,12 @@ async function full(){
   } catch {}
 }
 function connect(){
+  if (!window.__nxRail){ window.__nxRail = true;           // 5 Nov: same side panel for alerts as the other pages
+    fetch("/api/me").then(r => r.json()).then(me => {
+      NetraxAlerts.init({canAct: () => me.role === "admin" || me.role === "supervisor", rail: "dock"});
+      fetch("/api/events?limit=300").then(r => r.json()).then(NetraxAlerts.seed).catch(() => {});
+      fetch("/api/entrance?limit=10").then(r => r.json()).then(NetraxAlerts.seedGates).catch(() => {});
+    }).catch(() => {}); }
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
   ws.onopen = () => { $("livePill").className = "pill"; $("livePill").querySelector("span").textContent = "LIVE"; };
   ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
@@ -400,7 +408,9 @@ function connect(){
     else if (kind === "attendance"){ toast(data.access === "DENIED" && data.event === "ENTERED" ? "⚠ NOT AUTHORISED" : data.event === "UNKNOWN_UID" ? "Unregistered card" : "RFID attendance", data.message || data.status);
       api("/api/attendance?limit=40").then(renderScans).catch(()=>{});
       api("/api/hw/state").then(s => { STATE = s; renderPeople(); }).catch(()=>{}); }
-    else if (kind === "event" && (data.type === "fire" || data.type === "smoke")) full();
+    else if (kind === "event" && (data.type === "fire" || data.type === "smoke")) { full(); NetraxAlerts.offer(data); }
+    else if (kind === "event") NetraxAlerts.offer(data);
+    else if (kind === "entrance") NetraxAlerts.gate(data);
     else if (kind === "workers") renderWorkers(data); };
   ws.onclose = () => { $("livePill").className = "pill off"; $("livePill").querySelector("span").textContent = "RECONNECTING"; setTimeout(connect, 2000); };
   setInterval(() => ws.readyState === 1 && ws.send("ping"), 20000);

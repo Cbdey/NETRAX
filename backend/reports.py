@@ -117,6 +117,74 @@ def zone_summary_csv(events):
     return buf.getvalue()
 
 
+# ---------- 5 Nov: report generator (admin): any time range + filters -> summary, breakdowns, PDF / CSV ----------
+ITEM_LABEL = {"helmet": "Helmet", "vest": "Safety vest", "gloves": "Gloves", "boots": "Safety shoes", "goggles": "Goggles",
+              "mask": "Mask"}
+TYPE_LABEL = {"ppe_missing": "PPE violation", "unauthorized_entry": "Restricted zone", "fire": "Fire", "smoke": "Smoke",
+              "entrance_check": "Entrance check"}
+
+
+def custom_events(start, end, types=None, zones=None, cameras=None, workers=None, severities=None, statuses=None):
+    sql, args = "SELECT * FROM events WHERE started_at >= ? AND started_at <= ? AND type != 'test'", [start, end]
+    for col, vals in (("type", types), ("zone_id", zones), ("camera_id", cameras), ("worker_id", workers),
+                      ("severity", severities), ("status", statuses)):
+        if vals:
+            sql += f" AND {col} IN ({','.join('?' * len(vals))})"
+            args += list(vals)
+    out = []
+    for r in db.q(sql + " ORDER BY started_at", args):
+        e = db.row_to_event(r)
+        e["shift"] = shift_of(e["started_at"])
+        out.append(e)
+    return out
+
+
+def _median(v):
+    v = sorted(x for x in v if x is not None)
+    return v[len(v) // 2] if v else None
+
+
+def custom_summary(events, start, end):
+    """Numbers only from the records (never estimated)."""
+    fmt = lambda t: datetime.fromtimestamp(t).strftime("%d %b %Y %H:%M")
+    by_type = Counter(TYPE_LABEL.get(e["type"], e["type"]) for e in events)
+    by_sev = Counter(e["severity"] or "-" for e in events)
+    by_zone = Counter(e["zone_name"] or e["zone_id"] or "-" for e in events)
+    by_cam = Counter(e["camera_id"] or "safety station" for e in events)
+    items = Counter(i for e in events if e["type"] == "ppe_missing" for i in e["items_missing"])
+    workers = Counter((f"{e['worker_id']} {e.get('worker_name') or ''}".strip() if str(e.get("worker_id") or "").startswith("W-")
+                       else "Unregistered / not identified") for e in events if e["type"] in ("ppe_missing", "unauthorized_entry"))
+    gate = Counter((e.get("details") or {}).get("result") for e in events if e["type"] == "entrance_check")
+    acked = [e for e in events if e.get("acked_at")]
+    ack_s = _median([e["acked_at"] - e["started_at"] for e in acked])
+    tta = _median([e.get("time_to_alert_ms") for e in events if e["type"] in ("ppe_missing", "fire", "smoke")])
+    closed = sum(1 for e in events if e["status"] in ("resolved", "closed", "dismissed"))
+    still = sum(1 for e in events if e["status"] in ("open", "escalated", "acknowledged", "verifying"))
+    max_fire = max([e.get("fire_level") or 0 for e in events if e["type"] in ("fire", "smoke")] or [0])
+    lines = [f"Period: {fmt(start)} to {fmt(end)} (IST) - {len(events)} record(s).",
+             "By type: " + (", ".join(f"{k} {v}" for k, v in by_type.most_common()) or "none") + ".",
+             f"Closed {closed}, still active {still}."]
+    if items:
+        lines.append("Most missed PPE: " + ", ".join(f"{ITEM_LABEL.get(k, k)} {v}" for k, v in items.most_common(5)) + ".")
+    if by_zone:
+        z, n = by_zone.most_common(1)[0]
+        lines.append(f"Zone with most records: {z} ({n}).")
+    if gate:
+        lines.append(f"Entrance: {gate.get('approved', 0)} verified, {gate.get('denied', 0)} refused, {gate.get('manual', 0)} manual checks.")
+    if max_fire:
+        lines.append(f"Highest fire level reached: {max_fire} of 3.")
+    if tta is not None:
+        lines.append(f"Median time from hazard seen to alert: {tta / 1000:.1f} s (includes the deliberate confirmation).")
+    if ack_s is not None:
+        lines.append(f"Median time until a supervisor acknowledged: {ack_s:.0f} s ({len(acked)} acknowledged).")
+    return {"title": "Summary", "lines": lines, "total": len(events), "closed": closed, "active": still,
+            "by_type": by_type.most_common(), "by_severity": by_sev.most_common(), "by_zone": by_zone.most_common(),
+            "by_camera": by_cam.most_common(), "items": [(ITEM_LABEL.get(k, k), v) for k, v in items.most_common()],
+            "workers": workers.most_common(15), "entrance": {k: v for k, v in gate.items() if k},
+            "median_time_to_alert_s": None if tta is None else round(tta / 1000, 2),
+            "median_time_to_ack_s": None if ack_s is None else round(ack_s, 1), "max_fire_level": max_fire}
+
+
 def to_pdf(events, title, summary=None):
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
@@ -135,6 +203,21 @@ def to_pdf(events, title, summary=None):
     if summary:
         story.append(Paragraph(summary["title"], st["Heading3"]))
         story += [Paragraph("- " + ln, st["Normal"]) for ln in summary["lines"]] + [Spacer(1, 10)]
+        blocks = [(h, summary.get(k)) for h, k in (("By zone", "by_zone"), ("By camera", "by_camera"), ("Most missed PPE", "items"),
+                                                    ("By worker", "workers"), ("By severity", "by_severity"))] if "by_zone" in summary else []
+        cells = []
+        for h, rows in blocks:
+            if rows:
+                t = Table([[h, "n"]] + [[str(k), str(v)] for k, v in rows[:10]], colWidths=[150, 34])
+                t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f766e")),
+                                       ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("FONTSIZE", (0, 0), (-1, -1), 8),
+                                       ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#c9d1dd")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+                cells.append(t)
+        if cells:
+            grid = Table([cells], hAlign="LEFT")
+            grid.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                      ("RIGHTPADDING", (0, 0), (-1, -1), 8)]))
+            story += [grid, Spacer(1, 12)]
     cols = ["Started", "Shift", "Event", "Severity", "Status", "Zone", "Camera", "Worker", "Conf."]
     data = [cols] + [[_flat(e)[1], e["shift"],
                       ("No " + ", ".join(e["items_missing"])) if e["items_missing"] else e["type"].title(),

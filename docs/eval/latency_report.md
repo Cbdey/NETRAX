@@ -36,3 +36,21 @@ Runtime: PyTorch (ultralytics) + shared batched engine; GPU engine: {'batch_ms_p
 | hazard first seen -> alert (includes the deliberate confirmation window) | 2 | 3.82 s | 6.88 s | 7.22 s |
 
 _Note (4 Nov): during this run a software-rendered test browser (headless Edge, no GPU) decoded all 36 live pictures per second on the same CPU, which slowed the AI process (model p50 155 ms vs 75 ms without it). Without that browser the same 3 cameras ran at 3.4-3.9 AI checks per second each (edge [perf] lines, data in the run log). Real phones at 960x540 / 15 fps (tools.phone_tune) cost far less CPU than these 30 fps recorded videos._
+
+## 5 Nov LIVE: laptop webcam = welding bay (640x480 30 fps) + USB Logi C270 = entrance; phone offline (IP Webcam app stopped); AI in its own process; 1 dashboard open - 05 Nov 2026 19:56 (100 s)
+
+Runtime: PyTorch (ultralytics) + shared batched engine; GPU engine: {'batch_ms_p50': 60.5, 'batch_ms_p95': 81.5, 'wait_ms_p50': 15.0, 'wait_ms_p95': 54.2, 'batch_size_avg': 1.04, 'gpu_busy_share': 0.66, 'process': True}
+
+| Camera | status | processed fps (median) | capture -> processed p50 | p95 | model p50 | wait for GPU p50 | stale frames skipped |
+|---|---|---|---|---|---|---|---|
+| cam_01 | ONLINE | 6.9 | 99 ms | 136 ms | 63 ms | 13 ms | 0 |
+| cam_02 | OFFLINE | 0 | - | - | - | - | 0 |
+| cam_04 | ONLINE | 4.0 | 135 ms | 223 ms | 23 ms | 21 ms | 0 |
+
+| Measurement | n | median | 95th percentile | max |
+|---|---|---|---|---|
+| frame captured -> event stored (backend) | 2 | 263 ms | 280 ms | 281 ms |
+| frame captured -> event on the dashboard | 2 | 282 ms | 306 ms | 309 ms |
+| live picture age on the dashboard | 1731 | 39 ms | 92 ms | 186 ms |
+| live frame edge -> backend | 1925 | 36 ms | 90 ms | 181 ms |
+| entrance: person seen -> APPROVED/DENIED/MANUAL | 2 | 5.91 s | 6.45 s | 6.51 s |

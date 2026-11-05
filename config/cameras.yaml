@@ -14,17 +14,18 @@
 cameras:
   cam_01:
     name: Welding bay
-    source: 0                               # laptop webcam (zone A); ESP32 safety station + RFID guard this zone
+    source: 1                               # 5 Nov: LAPTOP webcam (HP) = index 1 on this laptop while the USB webcam is plugged in
     default_zone: welding_bay
     zones: []
   cam_02:
     name: Warehouse
-    source: http://192.168.60.64:8080/video     # PHONE 1 (OPPO Reno14, laptop is on its hotspot), IP Webcam app
+    source: http://192.0.0.4:8080/video     # PHONE 1 (OPPO Reno14; the laptop is on its hotspot), IP Webcam app
     rotate: 90
     default_zone: warehouse
     zones: []
   cam_03:
     name: Assembly line
+    enabled: false                          # no second phone on this Wi-Fi: python -m tools.find_phones --write switches it on
     source: http://192.168.60.72:8080/video       # PHONE 2 (friend's), IP Webcam app - set by tools.find_phones
     rotate: 90
     default_zone: assembly_line
@@ -32,7 +33,7 @@ cameras:
   cam_04:
     name: Main entrance
     role: entrance                          # 29 Oct: automatic PPE check at the door (edge/entrance.py)
-    source: 1                               # USB webcam (index 1; the laptop webcam is 0)
+    source: 0                               # 5 Nov: USB webcam (Logi C270) = index 0 when plugged in. Swapped? swap 0 / 1 here and in cam_01
     default_zone: main_entrance             # required PPE = zones.yaml main_entrance
     capture: {width: 1280, height: 720, fps: 30, mjpg: true}
     zones: []

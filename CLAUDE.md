@@ -290,3 +290,17 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   * state_machine id_wait_s 1.5 -> 1.0, evidence_wait_s 1.5 -> 1.0 (replay at 4 AI checks/s: helmet off -> alert 2.25 s,
     hands hidden / name pending 3.25 s; gloves-in-first-alarm and right-name tests still pass).
   * Tests: edge.selftest async face ID x2; final_selftest live-video WebSocket, camera health rule, AI process.
+- 5 Nov: cameras on THIS laptop with the USB webcam plugged in: index 0 = USB Logi C270 (cam_04 entrance), index 1 = laptop HP
+  (cam_01 welding bay) - checked on the live pictures. cam_02 phone http://192.0.0.4:8080/video (IP Webcam app keeps stopping:
+  keep it open, screen on; its picture was ~1.5 s old at 1080p -> python -m tools.phone_tune --apply). cam_03 enabled:false (no 2nd phone).
+- 5 Nov alerts in a SIDE PANEL on every page (user: "slight popup with border colour, not covering the page"): alerts.js rail "dock"
+  (fixed right panel, body padding-right; collapse button) on admin / entrance / hardware: violations newest first + entrance cards;
+  shared card()/keyed() (no re-render flicker; NEW / UPDATED pill, glow on new / worse). Control room: "Entrance" side panel above
+  Live alerts (green verified / red do-not-enter / amber manual with Allow / Refuse). Full entrance screen only on /entrance (gate(g,{screen:true})).
+  hardware.html now loads nx.css + alerts.js. No toasts / popups for alerts any more.
+- 5 Nov admin REPORT GENERATOR (#reports): presets (last hour, this shift, today, yesterday, 7 days, month) or custom from/to + type, zone,
+  camera, worker, severity, status, title -> preview (KPIs, summary lines, most missed PPE, by zone / camera / worker, records) and PDF / CSV.
+  GET /api/reports/custom (reports.custom_events / custom_summary; to_pdf adds breakdown tables; audit-logged). final_selftest [REP] x3.
+- 5 Nov entrance id_wait_s 2.0 -> 1.0 (entrance decision was ~6 s with a manual result).
+- 5 Nov LIVE measurement (real cameras, docs/eval/latency_report.md): laptop cam 12 fps live, picture age 39 ms median; USB C270 7.5 fps
+  (camera limit in a dim room); AI 6.9 / 4.0 checks/s; frame -> alert on the dashboard 0.28 s.

@@ -1,36 +1,96 @@
-/* NETRAX alerts on every page (4 Nov rework, user: "big popups cover 40 % of the screen and get irritating").
-   - PPE / restricted-zone alerts are NOT popped up any more. On the control room they appear in the alert panel
-     (index.html handles that: the new card slides in with a glowing border). Other pages (admin, entrance) show a
-     small corner card with a coloured border that hides itself after a few seconds (mode "toast").
-   - FIRE / SMOKE: the whole page gets a red frame and a slim red banner with the fire level on EVERY page, until the
-     fire is acknowledged or resolved (Level 3 keeps the full-screen evacuation screen on the control room).
-   - Entrance decision: the full green / red / amber screen only on the entrance display (/entrance); everywhere else a
-     compact corner card (green VERIFIED, red DO NOT ENTER, amber MANUAL CHECK with Allow / Refuse). */
+/* NETRAX alerts on every page (5 Nov: "all alerts in each panel should come in the side part like in the control room;
+   when an alert comes it should slightly pop up with a border colour, not cover the page").
+   - Side rail (admin, entrance, hardware pages): a docked panel on the right. Every new PPE / restricted-zone / fire alert
+     slides into it with a coloured, glowing border; an alert that gets worse ("also missing: gloves") glows again.
+     Entrance decisions appear there as a container: GREEN = verified, RED = do not enter, AMBER = manual check.
+     The control room has the same cards in its own "Live alerts" and "Entrance" panels (index.html uses card() / keyed()).
+   - FIRE / SMOKE: red frame around every page + a slim red banner with the fire level until the fire is resolved.
+   - The full green / red / amber entrance screen is shown only on the entrance display (/entrance). */
 window.NetraxAlerts = (function () {
   const ITEM = {helmet:"HELMET", vest:"SAFETY VEST", gloves:"GLOVES", boots:"SAFETY SHOES", goggles:"GOGGLES", mask:"MASK"};
   const iname = i => ITEM[i] || String(i).toUpperCase();
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const fmt = t => t ? new Date(t * 1000).toLocaleTimeString("en-IN", {timeZone:"Asia/Kolkata", hour12:false}) : "–";
+  const ago = t => { const s = Math.max(0, Date.now() / 1000 - t); return s < 60 ? `${Math.floor(s)} s ago` : s < 3600 ? `${Math.floor(s / 60)} min ago` : `${Math.floor(s / 3600)} h ago`; };
   const POP = new Set(["ppe_missing", "unauthorized_entry", "fire", "smoke"]);
-  let opt = {canAct: () => false, onEvent: () => {}, view: null, tone: () => {}, mode: "toast", fireBanner: true};
-  const sigs = new Map(), fires = new Map();
-  let stack = null, fireEl = null, gateEl = null, gateT = null;
+  let opt = {canAct: () => false, onEvent: () => {}, view: null, tone: () => {}, rail: "dock", fireBanner: true, railGate: true};
+  const sigs = new Map(), fires = new Map(), active = new Map(), gates = [], fresh = new Map();
+  let fireEl = null, gateEl = null, rail = null, gateT = null;
 
+  /* ---------- shared card html + keyed list (no re-render flicker, animation only for new / worse) ---------- */
+  const whoOf = e => e.worker_id === "W-***" ? "Registered worker (name hidden)" : e.worker_id && String(e.worker_id).startsWith("W-")
+    ? `${e.worker_id} · ${e.worker_name || ""}` : "Unregistered person";
+  function alertCard(e) {
+    const fire = e.type === "fire" || e.type === "smoke", f = fresh.get(e.event_id);
+    const cls = fire || e.severity === "Critical" || e.severity === "High" ? "crit" : "warn";
+    const head = fire ? `🔥 ${e.type === "smoke" ? "SMOKE" : "FIRE"} · LEVEL ${e.fire_level || "?"}` : e.type === "unauthorized_entry" ? "⛔ NOT AUTHORISED" : `▲ ${String(e.severity || "").toUpperCase()} · PPE MISSING`;
+    const chips = e.type === "ppe_missing" ? `<div class="items">${(e.items_missing || []).map(i => `<span class="item${f && (f.added || []).includes(i) ? " fresh" : ""}">✖ ${iname(i)}</span>`).join("")}</div>` : "";
+    const isNew = f && Date.now() - f.at < 12000;
+    return {cls: "nxc " + cls, html: `<div class="h"><b>${head}</b>${isNew ? `<span class="newpill">${(f.added || []).length ? "UPDATED" : "NEW"}</span>` : ""}<span class="sp"></span><span class="t" data-t="${e.started_at}">${ago(e.started_at)}</span></div>
+      ${chips}${fire ? "" : `<div class="w">👷 ${esc(whoOf(e))}</div>`}
+      <div class="m">${esc(e.zone_name || e.zone_id || "")} · ${esc(e.camera_id || "safety station")} · ${fmt(e.started_at)}</div>
+      ${opt.canAct() ? `<div class="a"><button class="btn sm red" data-nxact="ack" data-id="${esc(e.event_id)}">Acknowledge</button><button class="btn sm" data-nxview="${esc(e.event_id)}">Details</button></div>` : ""}`};
+  }
+  function gateCard(g) {
+    const r = g.override ? g.override.decision : g.result, w = who(g), f = fresh.get(g.event_id);
+    const head = {approved: "✓ VERIFIED — MAY ENTER", denied: "✖ DO NOT ENTER", manual: "⚠ MANUAL CHECK"}[r] || r;
+    const can = opt.canAct() && g.result === "manual" && !g.override;
+    return {cls: "nxc gate " + ({approved: "ok", denied: "crit", manual: "warn"}[r] || "warn"), html: `<div class="h"><b>${head}</b>${f && Date.now() - f.at < 12000 ? `<span class="newpill">NEW</span>` : ""}<span class="sp"></span><span class="t" data-t="${g.at}">${ago(g.at)}</span></div>
+      <div class="w">${esc(w.name)}</div><div class="items">${chips(g)}</div>
+      <div class="m">${esc(g.verdict || "")}${g.override ? ` · decided by ${esc(g.override.by)}` : ""}</div>
+      ${can ? `<div class="a"><button class="btn sm pri" data-gate="approved" data-id="${esc(g.event_id)}">Allow</button><button class="btn sm red" data-gate="denied" data-id="${esc(g.event_id)}">Refuse</button></div>` : ""}`};
+  }
+  function keyed(box, items, idOf, cardOf, emptyHtml) {
+    const nodes = box.__nodes || (box.__nodes = new Map()), keep = new Set();
+    let prev = null;
+    const ph = box.querySelector(":scope > .nxempty"); if (ph) ph.remove();
+    for (const it of items) {
+      const id = idOf(it); keep.add(id);
+      const c = cardOf(it), sig = c.cls + c.html.replace(/<span class="t"[^<]*<\/span>/, "");
+      let n = nodes.get(id);
+      if (!n) { n = document.createElement("div"); n.dataset.nxview = id; nodes.set(id, n); }
+      if (n.__sig !== sig) {
+        n.className = c.cls; n.innerHTML = c.html; n.__sig = sig;
+        const f = fresh.get(id);
+        if (f && !f.shown) { f.shown = true; n.classList.add((f.added || []).length ? "nx-upd" : "nx-new"); }
+      }
+      const want = prev ? prev.nextSibling : box.firstChild;
+      if (want !== n) box.insertBefore(n, want);
+      prev = n;
+    }
+    for (const [id, n] of nodes) if (!keep.has(id)) { n.remove(); nodes.delete(id); }
+    box.querySelectorAll(".t[data-t]").forEach(x => { x.textContent = ago(+x.dataset.t); });
+    if (!items.length && emptyHtml) box.insertAdjacentHTML("beforeend", `<div class="nxempty">${emptyHtml}</div>`);
+  }
+
+  /* ---------- mount ---------- */
   function mount() {
-    if (stack) return;
-    stack = document.createElement("div"); stack.className = "nxt-stack"; stack.setAttribute("aria-live", "assertive");
+    if (fireEl) return;
     fireEl = document.createElement("div"); fireEl.className = "nxfire"; fireEl.setAttribute("role", "alert");
     gateEl = document.createElement("div"); gateEl.className = "nxg"; gateEl.setAttribute("role", "alertdialog");
-    document.body.append(stack, fireEl, gateEl);
+    document.body.append(fireEl, gateEl);
+    if (opt.rail === "dock") {
+      rail = document.createElement("aside"); rail.className = "nxrail"; rail.setAttribute("aria-label", "Live alerts");
+      rail.innerHTML = `<div class="rh"><b>Live alerts</b><span class="pill p-crit" id="nxrN">0</span><span class="sp"></span><button class="btn sm" id="nxrHide" aria-expanded="true" title="Hide / show">⟩</button></div>
+        <div class="rbody"><div class="rsec">Violations · newest first</div><div class="rlist" id="nxrA"></div>
+        ${opt.railGate ? `<div class="rsec">Entrance</div><div class="rlist" id="nxrG"></div>` : ""}</div>`;
+      document.body.append(rail); document.body.classList.add("nx-rail-on");
+      rail.querySelector("#nxrHide").onclick = () => { const c = document.body.classList.toggle("nx-rail-min"); rail.querySelector("#nxrHide").textContent = c ? "⟨" : "⟩"; };
+    }
     document.body.addEventListener("click", onClick);
     document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeGate(); });
+    setInterval(renderRail, 15000);
   }
-  const sig = e => [(e.items_missing || []).slice().sort().join(","), e.fire_level || 0, e.status].join("|");
-  const active = e => e.status === "open" || e.status === "escalated";
-  const whoOf = e => e.worker_id === "W-***" ? "Registered worker" : e.worker_id && String(e.worker_id).startsWith("W-")
-    ? `${e.worker_id} ${e.worker_name || ""}`.trim() : "Unregistered person";
+  const sig = e => [(e.items_missing || []).slice().sort().join(","), e.fire_level || 0].join("|");
+  const isActive = e => e.status === "open" || e.status === "escalated";
 
-  function seed(events) { for (const e of events) if (POP.has(e.type)) { sigs.set(e.event_id, sig(e)); fireTrack(e); } renderFire(); }
+  function seed(events) {
+    for (const e of events) {
+      if (POP.has(e.type)) { sigs.set(e.event_id, sig(e)); fireTrack(e); if (isActive(e)) active.set(e.event_id, e); }
+    }
+    renderFire(); renderRail();
+  }
+  function seedGates(list) { gates.splice(0, gates.length, ...list.slice(0, 6)); renderRail(); }
 
   /* ---------- incidents ---------- */
   function offer(e) {
@@ -39,24 +99,25 @@ window.NetraxAlerts = (function () {
     fireTrack(e); renderFire();
     const old = sigs.get(e.event_id), now = sig(e);
     sigs.set(e.event_id, now);
-    if (!active(e) || old === now) return;
-    const was = old ? old.split("|")[0].split(",") : null;
-    const added = was ? (e.items_missing || []).filter(i => !was.includes(i)) : [];
-    if (old && !added.length && (e.fire_level || 0) <= +(old.split("|")[1] || 0)) return;   // not worse: no new signal
-    opt.tone(e);
-    if (opt.mode === "toast" && e.type !== "fire" && e.type !== "smoke") toast(e, added);
+    if (isActive(e)) active.set(e.event_id, e); else active.delete(e.event_id);
+    if (isActive(e) && old !== now) {
+      const was = old ? old.split("|")[0].split(",") : null;
+      const added = was ? (e.items_missing || []).filter(i => !was.includes(i)) : [];
+      if (!old || added.length || (e.fire_level || 0) > +(old.split("|")[1] || 0)) {
+        fresh.set(e.event_id, {at: Date.now(), added, shown: false});
+        opt.tone(e);
+      }
+    }
+    renderRail();
   }
-  function toast(e, added) {
-    const serious = e.severity === "Critical" || e.severity === "High";
-    const t = document.createElement("div");
-    t.className = "nxt " + (serious ? "crit" : "warn");
-    const what = e.type === "unauthorized_entry" ? "Not authorised in this zone"
-      : (added.length ? "Also missing: " : "Missing: ") + (added.length ? added : e.items_missing || []).map(iname).join(", ");
-    t.innerHTML = `<b>${serious ? "▲" : "⚠"} ${esc(what)}</b><span>${esc(whoOf(e))} · ${esc(e.zone_name || e.zone_id || "")} · ${fmt(e.started_at)}</span>`;
-    t.dataset.nxview = e.event_id; t.setAttribute("role", "button"); t.tabIndex = 0;
-    stack.prepend(t);
-    while (stack.children.length > 3) stack.lastElementChild.remove();
-    setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 400); }, 7000);
+  function renderRail() {
+    if (!rail) return;
+    const list = [...active.values()].sort((a, b) => ((b.type === "fire" || b.type === "smoke") - (a.type === "fire" || a.type === "smoke")) || b.started_at - a.started_at);
+    rail.querySelector("#nxrN").textContent = list.length;
+    rail.classList.toggle("hot", list.length > 0);
+    keyed(rail.querySelector("#nxrA"), list.slice(0, 30), e => e.event_id, alertCard, "✓ No active alerts. New violations appear here at once.");
+    const g = rail.querySelector("#nxrG");
+    if (g) keyed(g, gates.filter(x => Date.now() / 1000 - x.at < 3600).slice(0, 6), x => x.event_id, gateCard, "No entrance checks in the last hour.");
   }
 
   /* ---------- fire: red frame + banner on every page ---------- */
@@ -95,19 +156,14 @@ window.NetraxAlerts = (function () {
   function closeGate() { if (gateEl) gateEl.classList.remove("show"); clearTimeout(gateT); }
   function gate(g, o) {
     mount(); o = o || {};
+    const at = gates.findIndex(x => x.event_id === g.event_id);
+    if (at >= 0) gates.splice(at, 1); else fresh.set(g.event_id, {at: Date.now(), shown: false});
+    gates.unshift(g); gates.splice(8);
+    renderRail();
     if (g.override) { closeGate(); return; }
+    if (!o.screen) return;                    // the full screen only on the entrance display
     const w = who(g), can = opt.canAct() && g.result === "manual";
     const head = {approved:"VERIFIED — YOU MAY ENTER", denied:"DO NOT ENTER", manual:"MANUAL CHECK REQUIRED"}[g.result] || g.result;
-    if (o.compact) {
-      const t = document.createElement("div");
-      t.className = "nxt " + ({approved: "ok", denied: "crit", manual: "warn"}[g.result] || "warn");
-      t.innerHTML = `<b>🚪 ${esc(head)}</b><span>${esc(w.name)} · ${esc(g.verdict || "")}</span>
-        ${can ? `<span class="acts"><button class="btn sm pri" data-gate="approved" data-id="${esc(g.event_id)}">Allow</button><button class="btn sm red" data-gate="denied" data-id="${esc(g.event_id)}">Refuse</button></span>` : ""}`;
-      stack.prepend(t);
-      while (stack.children.length > 3) stack.lastElementChild.remove();
-      if (g.result !== "manual") setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 400); }, 6000);
-      return;
-    }
     const ms = {approved:6000, denied:12000}[g.result];
     gateEl.className = "nxg show " + g.result;
     gateEl.innerHTML = `<div class="nxg-card"><svg class="nxg-mark" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45" transform="rotate(-90 50 50)"/>${MARK[g.result] || ""}</svg>
@@ -123,21 +179,32 @@ window.NetraxAlerts = (function () {
     clearTimeout(gateT); if (ms) gateT = setTimeout(closeGate, ms);
   }
   async function onClick(ev) {
-    const v = ev.target.closest("[data-nxview]");
-    if (v && !ev.target.closest("button")) {
-      v.remove();
-      if (opt.view) opt.view(v.dataset.nxview); else location.href = "/#event=" + encodeURIComponent(v.dataset.nxview);
+    const a = ev.target.closest("[data-nxact]");
+    if (a) {
+      a.disabled = true;
+      try {
+        const r = await fetch(`/api/events/${a.dataset.id}/${a.dataset.nxact}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+        if (!r.ok) throw new Error(r.status);
+        const u = await r.json(); offer(u); opt.onEvent(u);
+      } catch { a.disabled = false; a.textContent = "Failed - retry"; }
       return;
     }
-    const b = ev.target.closest("[data-gate]"); if (!b) return;
-    if (b.dataset.gate === "close") return closeGate();
-    b.disabled = true;
-    try {
-      const r = await fetch(`/api/entrance/${b.dataset.id}/decide`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({decision:b.dataset.gate, note:"manual check at the entrance"})});
-      if (!r.ok) throw new Error(r.status);
-      closeGate();
-      const t = b.closest(".nxt"); if (t) t.remove();
-    } catch { b.disabled = false; b.textContent = "Not saved - try again"; }
+    const b = ev.target.closest("[data-gate]");
+    if (b) {
+      if (b.dataset.gate === "close") return closeGate();
+      b.disabled = true;
+      try {
+        const r = await fetch(`/api/entrance/${b.dataset.id}/decide`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({decision:b.dataset.gate, note:"manual check at the entrance"})});
+        if (!r.ok) throw new Error(r.status);
+        closeGate();
+      } catch { b.disabled = false; b.textContent = "Not saved - try again"; }
+      return;
+    }
+    const v = ev.target.closest("[data-nxview]");
+    if (v && v.closest(".nxrail, .nxside") && !ev.target.closest("button:not([data-nxview])")) {
+      if (opt.view) opt.view(v.dataset.nxview); else location.href = "/#event=" + encodeURIComponent(v.dataset.nxview);
+    }
   }
-  return {init: o => { Object.assign(opt, o); mount(); }, seed, offer, gate, closeGate, chips, who, iname, whoOf};
+  return {init: o => { Object.assign(opt, o); mount(); }, seed, seedGates, offer, gate, closeGate, chips, who, iname, whoOf,
+          alertCard, gateCard, keyed, fresh};
 })();
