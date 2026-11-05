@@ -158,7 +158,9 @@ class StreamReader(threading.Thread):
             return self.state
         if age > 10:
             self.state = "OFFLINE"
-        elif age > 2 or processed_fps < self.target_fps * 0.5:
+        elif age > 2 or (self.fps and self.fps < 4) or processed_fps < 1.0:
+            # 4 Nov: degraded = the CAMERA is slow / stale or the AI has (almost) stopped. The AI rate itself is
+            # shared by all cameras on one GPU (3-6 checks/s each with 3 cameras); the live video runs separately.
             self.state = "DEGRADED"
         else:
             self.state = "ONLINE"

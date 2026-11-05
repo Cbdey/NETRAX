@@ -266,3 +266,27 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   bottleneck, accuracy loss), rebuilding a separate pipeline (ours already has per-camera reader threads + latest frame +
   one shared engine). Kept: raw-vs-AI split (as overlay), lower phone resolution/fps, dedicated network, camera-only test.
 - Tests: final_selftest [LIVE] x4. Backups of replaced files: _to_delete/before_live_view_4nov/.
+- 4 Nov evening (user: "video hangs, big popups irritating, need sudden alerts, calm dashboards"), MEASURED on the laptop:
+  * AI starved by Python's GIL (camera/live/publisher/face threads): in-process batch 440 ms for 2 frames vs ~70 ms/frame alone.
+    edge/engine_proc.py ProcessEngine = models in their OWN process (spawn), frames via shared memory per camera, same
+    interface (infer/stats/busy_share/det); processing.engine_process (false = old thread engine, also the fallback).
+    3 cameras: AI 1.7 -> 3.4-3.9 checks/s each. Engine groups frames by SHAPE (mixed portrait/landscape in one call was
+    ~30 % slower: ultralytics pads to squares). Detector: pose first, PPE models only on frames with a person.
+    run_edge caps OMP/MKL/torch/cv2 threads at 4, cudnn.benchmark. Prescaling frames before the models: tested, no gain (reverted).
+  * Face ID async (identity.async: true): IdentityService.start_async/wants/submit/annotate, one background thread on the newest
+    frame per camera; unnamed person checked every frame -> name in ~1 s. face_boxes() = last face per track -> snapshot blur
+    without a 2nd YuNet run (worker._privacy_boxes; else head from pose keypoints, else top of box).
+  * Video: publisher = one sender thread per camera; backend /ws/video pushes 'cam|captured|server\n'+JPEG (client may
+    subscribe {"cams":[...]}); dashboard/video.js shows any <img data-live=cam>, falls back to /api/frame polling.
+    Measured: 12 fps per camera, picture age 44 ms median, frame -> alert on dashboard 0.74 s (docs/eval/latency_report.md).
+  * Camera health: DEGRADED only if picture stale, camera < 4 fps or AI < 1 check/s (not "AI below target"); tiles show
+    "LIVE · 12 fps · AI 3.8/s · 40 ms".
+  * Alerts: NO big popups. Control room: new alert slides into the "Live alerts" panel (keyed cards, NEW / UPDATED pill,
+    glowing border, "also missing" item outlined), short tone (bell button mutes), newest first, fire first. Violation strip,
+    zones / delivery / latency / health tables moved off the control room (links to admin). alerts.js: mode "toast" (small
+    corner card) on admin/entrance, fire = red frame on every page + fixed red banner with LEVEL (index has its own fire panel
+    + L3 overlay), entrance result = compact card except on /entrance (full green/red/amber screen).
+  * nx.css calm rework: solid panels, one teal accent, no aurora/glow except alerts and fire.
+  * state_machine id_wait_s 1.5 -> 1.0, evidence_wait_s 1.5 -> 1.0 (replay at 4 AI checks/s: helmet off -> alert 2.25 s,
+    hands hidden / name pending 3.25 s; gloves-in-first-alarm and right-name tests still pass).
+  * Tests: edge.selftest async face ID x2; final_selftest live-video WebSocket, camera health rule, AI process.

@@ -110,6 +110,9 @@ class IdentityService:
         self.gallery = {}          # worker_id -> {"name", "embs": np.ndarray(k,128), "learned": [..]}
         self.visitors = []         # [{"id", "embs": [..]}]  memory only
         self.tracks = {}           # (cam, tid) -> state
+        self.tlock = threading.RLock()  # tracks are shared with the background face thread (async mode)
+        self.async_mode = False
+        self.async_ms = deque(maxlen=200)   # background face work per frame (diagnostics)
         self.version = None
         self.engine = None
         if not self.enabled:
@@ -218,47 +221,131 @@ class IdentityService:
         return best[1] if best else None
 
     def update(self, cam, frame, persons, n):
+        """Synchronous: recognise on this frame (when due) and write the ids into persons."""
         if not self.enabled:
             return persons
+        self._init(cam, persons)
+        if self.wants(cam, persons, n):
+            self._recognise(cam, frame, persons, routine=n % self.every_n == 0)
+        return self._assign(cam, persons)
+
+    # ---------- 4 Nov: asynchronous mode ----------
+    # Face detection + embedding is CPU work (~100 ms per frame on the laptop, measured). Done inside the camera's
+    # AI loop it delayed every 2nd frame exactly while an alert was being decided (new person = name pending).
+    # Now the AI loop only hands the frame over (submit) and reads the names already known (annotate); one
+    # background thread works on the newest frame of each camera. Votes, thresholds and naming rules are unchanged.
+    def start_async(self):
+        if not self.enabled or self.async_mode:
+            return
+        self._jobs, self._wake = {}, threading.Event()
+        self.async_mode = True
+        threading.Thread(target=self._async_loop, daemon=True, name="face-id").start()
+
+    def wants(self, cam, persons, n):
+        """Is a face check due on this frame? (every frame-pair while someone is unnamed, else every_n frames)"""
+        if not persons:
+            return False
+        with self.tlock:
+            pending = any((self.tracks.get((cam, p["tid"])) or {}).get("kind") is None for p in persons)
+        # async: an unnamed person is checked on EVERY frame (the face thread just takes the newest one), so the
+        # 3 votes a name needs arrive within ~1 s and the alarm can say the right name
+        return n % self.every_n == 0 or (pending and (self.async_mode or n % 2 == 0))
+
+    def submit(self, cam, frame, persons, n):
+        """Non-blocking: queue this frame for the face thread (an older queued frame of the camera is replaced)."""
+        self._init(cam, persons)
+        snap = [{"tid": p["tid"], "bbox": list(p["bbox"])} for p in persons]
+        self._jobs[cam] = (frame, snap, n % self.every_n == 0)
+        self._wake.set()
+
+    def annotate(self, cam, persons):
+        """Write the ids known so far into persons (cheap; used by the AI loop in async mode)."""
+        if not self.enabled:
+            return persons
+        self._init(cam, persons)
+        return self._assign(cam, persons)
+
+    def _async_loop(self):
+        while True:
+            self._wake.wait(1.0)
+            self._wake.clear()
+            for cam in list(self._jobs):
+                job = self._jobs.pop(cam, None)
+                if job is None:
+                    continue
+                t0 = time.perf_counter()
+                try:
+                    self._recognise(cam, job[0], job[1], routine=job[2])
+                except Exception as e:                  # noqa: BLE001 - face ID must never stop
+                    print(f"[identity] {cam}: {e!r}")
+                self.async_ms.append((time.perf_counter() - t0) * 1000)
+
+    def face_boxes(self, cam, tids, max_age=3.0):
+        """Last seen face box per track id (for blurring snapshots without running the detector again)."""
         now = time.time()
-        for p in persons:
-            st = self.tracks.setdefault((cam, p["tid"]), {"votes": deque(maxlen=8), "embs": deque(maxlen=6),
-                                                           "id": None, "name": None, "kind": None,
-                                                           "score": 0.0, "last": now})
-            st["last"] = now
-        pending = any(self.tracks[(cam, p["tid"])]["kind"] is None for p in persons)   # not yet worker/visitor
-        if persons and (n % self.every_n == 0 or (pending and n % 2 == 0)):
-            # many people in view: embedding every face every time made alerts late. Unidentified people
-            # first, biggest (closest) faces first, at most max_faces per frame; the rest wait a frame.
-            routine = n % self.every_n == 0
-            cand = []
-            for f in self.engine.faces(frame):
-                if f[2] < self.min_face:
+        out = {}
+        with self.tlock:
+            for t in tids:
+                st = self.tracks.get((cam, t))
+                if st and st.get("face") and now - st["face"][1] <= max_age:
+                    out[t] = st["face"][0]
+        return out
+
+    # ---------- shared steps ----------
+    def _init(self, cam, persons):
+        now = time.time()
+        with self.tlock:
+            for p in persons:
+                st = self.tracks.setdefault((cam, p["tid"]), {"votes": deque(maxlen=8), "embs": deque(maxlen=6),
+                                                               "id": None, "name": None, "kind": None,
+                                                               "score": 0.0, "last": now})
+                st["last"] = now
+
+    def _recognise(self, cam, frame, persons, routine):
+        # many people in view: embedding every face every time made alerts late. Unidentified people
+        # first, biggest (closest) faces first, at most max_faces per frame; the rest wait a frame.
+        cand = []
+        now = time.time()
+        for f in self.engine.faces(frame):
+            if f[2] < self.min_face:
+                continue
+            p = self._owner(f, persons)
+            if p is None:
+                continue
+            with self.tlock:
+                st = self.tracks.get((cam, p["tid"]))
+                if st is None:
                     continue
-                p = self._owner(f, persons)
-                if p is None:
+                st["face"] = ((float(f[0]), float(f[1]), float(f[2]), float(f[3])), now)
+                unknown = st["kind"] is None
+            if unknown or routine:
+                cand.append((0 if unknown else 1, -float(f[2]) * float(f[3]), f, p))
+        cand.sort(key=lambda c: (c[0], c[1]))
+        for _, _, f, p in cand[:self.max_faces]:
+            emb = self.engine.embed(frame, f)
+            wid, score, margin = self.classify_full(emb)
+            with self.tlock:
+                st = self.tracks.get((cam, p["tid"]))
+                if st is None:
                     continue
-                unknown = self.tracks[(cam, p["tid"])]["kind"] is None
-                if unknown or routine:
-                    cand.append((0 if unknown else 1, -float(f[2]) * float(f[3]), f, p))
-            cand.sort(key=lambda c: (c[0], c[1]))
-            for _, _, f, p in cand[:self.max_faces]:
-                emb = self.engine.embed(frame, f)
-                wid, score, margin = self.classify_full(emb)
-                st = self.tracks[(cam, p["tid"])]
                 st["votes"].append(wid)
                 st["embs"].append(emb)
                 before = st["id"]
                 self._decide(st, wid, score, emb, margin)
-                if self.debug_log and st["id"] != before:
-                    self._log(f"{cam} track {p['tid']}: {before} -> {st['id']} (vote {wid} score {score:.2f} "
-                              f"margin {margin:.2f}, votes {list(st['votes'])})")
-        self._unique(cam, persons)
-        for p in persons:
-            st = self.tracks[(cam, p["tid"])]
-            p["worker_id"], p["worker_name"], p["identity"] = st["id"], st["name"], st["kind"]
-        for k in [k for k, v in self.tracks.items() if now - v["last"] > 30]:
-            del self.tracks[k]
+                after = st["id"]
+            if self.debug_log and after != before:
+                self._log(f"{cam} track {p['tid']}: {before} -> {after} (vote {wid} score {score:.2f} "
+                          f"margin {margin:.2f}, votes {list(st['votes'])})")
+
+    def _assign(self, cam, persons):
+        now = time.time()
+        with self.tlock:
+            self._unique(cam, persons)
+            for p in persons:
+                st = self.tracks[(cam, p["tid"])]
+                p["worker_id"], p["worker_name"], p["identity"] = st["id"], st["name"], st["kind"]
+            for k in [k for k, v in self.tracks.items() if now - v["last"] > 30]:
+                del self.tracks[k]
         return persons
 
     def _decide(self, st, wid, score, emb, margin=1.0):

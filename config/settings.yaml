@@ -31,6 +31,7 @@ load:                   # plan 7.5: overloaded GPU -> slow low-risk zones first 
 processing:
   target_fps: 12        # processed frames per second per camera (upper limit; the GPU decides the real rate)
   shared_engine: true   # 29 Oct: ONE copy of the models for all cameras, frames batched (edge/engine.py)
+  engine_process: true  # 4 Nov: the models run in their OWN process (edge/engine_proc.py); false = in-process thread
   max_batch: 4          # cameras processed in one GPU call
   batch_gather_ms: 3    # wait at most this long for other cameras' frames to join a batch
   max_frame_age_s: 0.6  # a frame older than this when the camera gets to it is skipped (never judge stale pictures)
@@ -72,8 +73,8 @@ state_machine:                    # plan section 7.2
   # camera watches settle_s again and sends ONE new decision. No alarm per item.
   first_look_s: 2.5
   settle_s: 1.0
-  id_wait_s: 1.5        # face being matched: wait up to this much longer so the alarm says the right name
-  evidence_wait_s: 1.5  # 29 Oct: first alarm waits up to this long for body parts not seen yet (hands for gloves,
+  id_wait_s: 1.0        # 4 Nov: 1.5 -> 1.0 ("sudden alert"); face being matched: wait up to this much longer so the alarm says the right name
+  evidence_wait_s: 1.0  # 4 Nov: 1.5 -> 1.0 ("sudden alert"); 29 Oct: first alarm waits up to this long for body parts not seen yet (hands for gloves,
                         # face for goggles) so it lists everything at once; found later -> "also missing" alarm
   announce_compliant: true   # "PPE complete" once, only when every required item was SEEN worn
   ok_repeat_s: 600           # ... at most once per person per 10 minutes
@@ -127,6 +128,7 @@ privacy:                          # F22
   snapshot_retention_days: 30     # alert images older than this are deleted (records are kept); 0 = keep
 
 identity:                         # one person = one ID (edge/identity.py); registered on the dashboard
+  async: true            # 4 Nov: face detection + matching in a background thread, the AI loop never waits for it
   detect_max_side: 960   # 4 Nov: face DETECTION on a copy scaled to <= 960 px (phones send 1920 px); recognition still full size
   enabled: true
   # 12 Oct: names were mixed up (Sushree -> Chinmaya ...). Measured on the registered photos: two different

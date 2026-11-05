@@ -85,7 +85,7 @@ body.emergency header{background:var(--crit-bg);border-color:var(--crit)}
 .overlay .btn.ghost{background:transparent;color:#fff;border:2px solid #fff}
 /* ---------- 29 Oct: live summary band, compact strips, camera view modes ---------- */
 [hidden]{display:none!important}
-.kband{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-top:12px}
+.kband{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:12px}
 .kb{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;position:relative;overflow:hidden;cursor:default}
 .kb::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--c,var(--teal))}
 .kb small{display:block;color:var(--muted);font-size:13px;font-weight:700}
@@ -228,7 +228,6 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
   <div class="kb" id="kbFire" style="--c:var(--warn)"><small>🔥 Fire / smoke</small><b id="kbFireN">–</b><span id="kbFireS">no fire detected</span></div>
   <div class="kb" style="--c:var(--info)"><small>◧ Cameras live</small><b id="kbCamN">–</b><span id="kbCamS">waiting for edge</span></div>
   <div class="kb" id="kbIn" style="--c:#a78bfa"><small>👷 On site today</small><b id="kbInN">–</b><span id="kbInS">RFID check-ins</span></div>
-  <div class="kb" style="--c:var(--ok)"><small>✓ PPE compliance</small><b id="kbCompN">–</b><span>items seen worn, this session</span></div>
   <div class="kb" id="kbMsg" style="--c:var(--teal)"><small>✉ Alerts sent today</small><b id="kbMsgN">–</b><span id="kbMsgS">provider-confirmed</span></div>
 </section>
 <div class="healthbar" id="healthbar" role="status"></div>
@@ -253,8 +252,10 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
   </div>
 
   <div class="stack">
-    <section class="panel" aria-label="Incidents">
-      <h2>Incidents <span class="sp"></span><span class="pill p-crit" id="nActive">0 active</span></h2>
+    <section class="panel" aria-label="Live alerts" id="alertPanel">
+      <div class="alerthead" id="alertHead"><h2 style="margin:0">Live alerts</h2><span class="sp" style="flex:1"></span><span class="pill p-crit" id="nActive">0 active</span>
+        <button class="btn" id="muteBtn" style="font-size:12px;padding:4px 9px" aria-pressed="false" title="Alert sound on / off">🔔</button></div>
+      <p class="small" style="margin:4px 0 10px">Every violation appears here at once, newest first, and stays until it is acknowledged and resolved.</p>
       <div class="tabs" role="group" aria-label="Incident filter">
         <button class="tab" data-f="active" aria-pressed="true">Active</button>
         <button class="tab" data-f="ack" aria-pressed="false">Acknowledged</button>
@@ -266,17 +267,8 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
   </div>
 </div>
 
-<div class="three">
-  <section class="panel" aria-label="Zones"><h2>Zones · required PPE</h2>
-    <table><thead><tr><th>Zone</th><th>Required</th><th>Risk</th><th>State</th></tr></thead><tbody id="zones"></tbody></table></section>
-  <section class="panel" aria-label="Alert delivery"><h2>📨 Alert delivery <span class="sp"></span><span class="small" id="chanState"></span></h2>
-    <table><thead><tr><th>Channel</th><th>Status</th><th>Incident</th></tr></thead><tbody id="notifs"></tbody></table></section>
-  <section class="panel" aria-label="Performance"><h2>⏱ Latency (measured) <span class="sp"></span><span class="small">median · 95th %</span></h2>
-    <div class="perfgrid" id="perf"></div>
-    <div class="small" style="margin-top:8px" id="perfNote"></div></section>
-</div>
-<section class="panel" style="margin-top:16px" aria-label="System health"><h2>🩺 System health</h2>
-  <table><tbody id="health"></tbody></table></section>
+<p class="small" style="text-align:center;margin:18px 0 0">Zones, alert delivery, measured latency and full system health:
+  <a href="/admin#cameras">Admin › Cameras &amp; zones</a> · <a href="/admin#alerts">Alerts &amp; channels</a> · <a href="/admin#system">System health</a></p>
 </div>
 
 <!-- Level 3 full-screen evacuation overlay (section 9) -->
@@ -291,6 +283,7 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script src="/static/alerts.js"></script>
+<script src="/static/video.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -299,6 +292,8 @@ const fmtT = (t, date=true) => t ? new Date(t*1000).toLocaleString("en-IN", Obje
 const ago = t => { const s = Math.max(0, Date.now()/1000 - t); return s < 60 ? `${Math.floor(s)} s ago` : s < 3600 ? `${Math.floor(s/60)} min ago` : `${Math.floor(s/3600)} h ${Math.floor(s%3600/60)} min ago`; };
 const ITEM = {helmet:"HELMET", vest:"SAFETY VEST", gloves:"GLOVES", boots:"SAFETY SHOES", goggles:"GOGGLES", mask:"MASK"};
 const iname = i => ITEM[i] || String(i).toUpperCase();
+const SIGS = new Map();
+let MUTED = false;
 let ME = {role:"viewer"}, EVENTS = new Map(), CAMS = {cameras:[]}, ZONES = [], NOTIFS = new Map(), ENTR = [], HEALTH = null, LOC = null;
 let FILTER = "active", FOCUS = null, CLOCK_OFF = 0, EVAC_MIN = new Set(), SEEN = new Set(), audio = null;
 const PERF = {preview_age_ms: [], dashboard_event_ms: []};
@@ -391,7 +386,6 @@ function renderAlertZone(){
   const evs = [...EVENTS.values()];
   const fires = evs.filter(fireActive).sort((a,b) => (b.fire_level||0) - (a.fire_level||0) || b.started_at - a.started_at);
   const ppe = evs.filter(isEmergencyPPE).sort((a,b) => b.started_at - a.started_at);
-  const acked = evs.filter(e => e.status === "acknowledged" && (e.type === "ppe_missing" || e.type === "unauthorized_entry") && EMERG.includes(e.severity));
   let h = "";
   for (const e of fires){
     if (e.status === "verifying"){ h += `<div class="bigpanel warn"><div><h2>⚠ ${e.type === "fire" ? "POSSIBLE FIRE" : "POSSIBLE SMOKE"} — VERIFYING</h2>
@@ -411,23 +405,6 @@ function renderAlertZone(){
       ${e.camera_id ? `<img class="feed" data-live="${e.camera_id}" alt="Live view ${esc(e.camera_id)}">` : `<div></div>`}
       <div class="acts">${actButtons(e, true)}${l >= 3 ? `<button class="btn amber big" data-a="evac" data-id="${e.event_id}">Full screen</button>` : ""}</div></div>`;
   }
-  if (ppe.length){
-    h += `<div class="violations"><div class="vhead"><h2>▲ SAFETY VIOLATION — ${ppe.length} ACTIVE ${ppe.length > 1 ? "INCIDENTS" : "INCIDENT"}</h2>
-      <span class="small">Each incident is tracked separately and stays here until acknowledged, then on the list until resolved.</span></div><div class="vgrid">`;
-    for (const e of ppe){
-      h += `<div class="vcard"><div class="vtop"><div>
-        <div class="vt">${e.type === "unauthorized_entry" ? "⛔ NOT AUTHORISED — RESTRICTED ZONE" : "▲ REQUIRED PPE MISSING"}</div>
-        <div class="items">${e.type === "ppe_missing" ? (e.items_missing||[]).map(i => `<span class="item">✖ NO ${iname(i)}</span>`).join("") : `<span class="item">✖ ${esc(e.worker_name || e.worker_id || "person")}</span>`}</div></div>
-        ${e.snapshot ? `<img src="${e.snapshot}?v=${e.updated_at}" alt="Snapshot" data-a="view" data-id="${e.event_id}">` : ""}</div>
-        <div class="facts"><span><b>Zone:</b> ${esc(e.zone_name || e.zone_id)}</span><span><b>Camera:</b> ${esc(e.camera_id)}</span>
-          <span><b>Time:</b> ${fmtT(e.started_at, false)} (${ago(e.started_at)})</span>${who(e) ? `<span><b>Worker:</b> ${esc(who(e))}</span>` : ""}<span><b>Severity:</b> ${esc(e.severity)}</span></div>
-        <div class="row">${actButtons(e)}</div></div>`;
-    }
-    h += `</div></div>`;
-  }
-  if (acked.length) h += `<div class="strip" role="status"><b>◐ ${acked.length} acknowledged violation${acked.length>1?"s":""} — awaiting resolution</b>
-    <span class="small">newest: ${esc(title(acked.sort((a,b) => b.started_at - a.started_at)[0]))} · ${esc(acked[0].zone_name || "")} · ${fmtT(acked[0].started_at, false)}</span>
-    <span class="grow"></span><button class="btn" data-tab="ack">Show list</button></div>`;
   const az = $("alertzone"); const sig = h; if (az.dataset.sig !== sig){ az.innerHTML = h; az.dataset.sig = sig; }
   // Level 3 overlay
   const l3 = fires.find(e => (e.fire_level||0) >= 3 && e.status !== "acknowledged" && e.status !== "verifying" && !EVAC_MIN.has(e.event_id));
@@ -489,7 +466,9 @@ function renderCams(){
     if (!st) continue;
     const icon = {ONLINE:"●", DEGRADED:"◐", OFFLINE:"✖", OFF:"○", STANDBY:"○"}[c.status] || "?";
     const age = FRAME_AGE[c.camera_id];
-    st.textContent = `${icon} ${c.status}${c.status === "ONLINE" || c.status === "DEGRADED" ? ` · ${c.fps} fps${age != null ? ` · ${age} ms` : ""}` : ""}`;
+    const vf = NetraxVideo.fps[c.camera_id];
+    st.textContent = `${icon} ${c.status === "ONLINE" ? "LIVE" : c.status}${c.status === "ONLINE" || c.status === "DEGRADED" ? `${vf ? ` · ${Math.round(vf)} fps` : ""} · AI ${c.fps}/s${age != null ? ` · ${age} ms` : ""}` : ""}`;
+    st.title = "video pictures per second · AI checks per second · picture age";
     if (off) off.innerHTML = c.status === "OFF" ? `<div class="offmsg"><b>Camera not connected</b><span>Connect a phone with IP Webcam to the same Wi-Fi, then run tools.find_phones --write.</span></div>`
       : `<div class="offmsg"><b>No picture</b><span>${esc(c.detail || "No signal")}</span></div>`;
     const b = c.badge || "";
@@ -523,13 +502,12 @@ function renderBand(){
   $("kbFireS").textContent = fires.length ? fires.map(e => `${e.type} · ${e.zone_name || e.zone_id}`).join(" · ") : (evs.some(e => e.status === "verifying") ? "checking a possible fire…" : "no fire or smoke");
   const cams = monitors(), on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED");
   setKb("kbCamN", `${on.length} / ${cams.filter(c => c.status !== "OFF").length}`);
-  $("kbCamS").textContent = CAMS.edge_online ? (on.length ? on.map(c => `${c.camera_id} ${c.fps} fps`).join(" · ") : "no camera picture") : "edge computer offline";
+  $("kbCamS").textContent = CAMS.edge_online ? (on.length ? on.map(c => `${c.camera_id} AI ${c.fps}/s`).join(" · ") : "no camera picture") : "edge computer offline";
   const dayS = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
   const here = PRESENT.filter(p => p.since >= dayS), bad = here.filter(p => p.access === "DENIED");
   setKb("kbInN", here.length);
   $("kbIn").classList.toggle("hot", bad.length > 0);
   $("kbInS").textContent = here.length ? here.map(p => p.name + (p.access === "DENIED" ? " ⚠" : "")).join(", ") : "nobody checked in";
-  setKb("kbCompN", ANALYTICS && ANALYTICS.compliance_rate != null ? ANALYTICS.compliance_rate + "%" : "–");
   const day0 = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
   const today = [...NOTIFS.values()].filter(n => (n.queued_at || n.at) >= day0 && n.event_id && !String(n.event_id).startsWith("test_"));
   const ok = today.filter(n => n.status === "delivered" || n.status === "sent").length, failed = today.filter(n => n.status === "failed").length;
@@ -537,35 +515,9 @@ function renderBand(){
   $("kbMsgS").textContent = failed ? `${failed} failed today — see Alert delivery` : "Telegram + e-mail, provider-confirmed";
 }
 
-/* live pictures: one loop per camera, newest frame only; measures picture age with the server clock */
-const FRAME_AGE = {}, LOOPS = new Set();
-function startFrameLoop(cam){
-  if (LOOPS.has(cam)) return; LOOPS.add(cam);
-  (async function loop(){
-    let url = null;
-    while (true){
-      const imgs = document.querySelectorAll(`img[data-live="${cam}"]`);
-      const want = imgs.length && !document.hidden;
-      if (!want){ await new Promise(r => setTimeout(r, 400)); continue; }
-      const t0 = performance.now();
-      try {
-        const r = await fetch(`/api/frame/${cam}?t=${Date.now()}`, {cache:"no-store"});
-        if (r.status === 200){
-          const cap = parseFloat(r.headers.get("X-Captured-At")), srv = parseFloat(r.headers.get("X-Server-Time"));
-          const blob = await r.blob(); const rtt = performance.now() - t0;
-          const nu = URL.createObjectURL(blob);
-          document.querySelectorAll(`img[data-live="${cam}"]`).forEach(i => i.src = nu);
-          if (url) URL.revokeObjectURL(url); url = nu;
-          if (cap && srv){ const age = Math.round((srv - cap) * 1000 + rtt / 2); FRAME_AGE[cam] = age; PERF.preview_age_ms.push(age);
-            CLOCK_OFF = srv - (Date.now() - rtt / 2) / 1000; }
-        }
-      } catch {}
-      const spent = performance.now() - t0;
-      await new Promise(r => setTimeout(r, Math.max(15, 80 - spent)));
-    }
-  })();
-}
-setInterval(() => (CAMS.cameras||[]).forEach(c => startFrameLoop(c.camera_id)), 1000);
+/* live pictures: video.js pushes every camera's newest picture over one WebSocket (4 Nov) */
+const FRAME_AGE = NetraxVideo.age;
+NetraxVideo.onAge((cam, a) => { if (PERF.preview_age_ms.length < 600) PERF.preview_age_ms.push(a); });
 
 /* ---------- incidents ---------- */
 function inFilter(e){
@@ -575,22 +527,52 @@ function inFilter(e){
   if (FILTER === "done") return DONE.has(e.status);
   return true;
 }
-const PRIO = e => (fireActive(e) ? -10 - (e.fire_level||0) : 0) + ({Critical:0, High:1, Medium:2, Low:3}[e.severity] ?? 4);
+const PRIO = e => (fireActive(e) ? -10 - (e.fire_level||0) : 0);
+const CARDS = new Map(), CARD_SIG = new Map(), FRESH = new Map();   // event id -> node / signature / {at, added}
+function cardHtml(e){
+  const s = sev(e), f = FRESH.get(e.event_id), isNew = f && Date.now() - f.at < 12000;
+  const ackd = (e.actions||[]).filter(a => a.action === "ack").pop(), res = (e.actions||[]).filter(a => ["resolve","dismiss","auto_resolve"].includes(a.action)).pop();
+  const ppe = e.type === "ppe_missing";
+  const chips = ppe ? `<div class="items" style="grid-column:1/-1">${(e.items_missing||[]).map(i => `<span class="item${f && (f.added||[]).includes(i) ? " fresh" : ""}">✖ NO ${iname(i)}</span>`).join("")}</div>` : "";
+  const person = ppe || e.type === "unauthorized_entry" ? (e.worker_id === "W-***" ? "Registered worker (name hidden)" : e.worker_id && String(e.worker_id).startsWith("W-") ? `${e.worker_id} · ${e.worker_name || ""}` : "Unregistered person") : "";
+  return `<div class="state">${s.label}${isNew ? `<span class="newpill">${f.added && f.added.length ? "UPDATED" : "NEW"}</span>` : ""}</div><div class="when" title="${fmtT(e.started_at)}">${fmtT(e.started_at, false)}<br><span class="ago" data-t="${e.started_at}">${ago(e.started_at)}</span></div>
+    <div class="ttl">${ppe ? "Required PPE missing" : esc(title(e))}${e.type === "fire" || e.type === "smoke" ? ` · L${e.fire_level || "?"}` : ""}</div>
+    ${chips}${person ? `<div class="who">👷 ${esc(person)}</div>` : ""}
+    <div class="meta"><b>${esc(e.zone_name || e.zone_id || "")}</b> · ${esc(e.camera_id || "safety station")} · ${esc(e.severity || "")}</div>
+    ${ackd ? `<div class="meta">Acknowledged by <b>${esc(ackd.by_user)}</b> at ${fmtT(ackd.at, false)}</div>` : ""}
+    ${res && DONE.has(e.status) ? `<div class="meta">${esc(res.action.replace("_"," "))} by <b>${esc(res.by_user)}</b> at ${fmtT(res.at, false)}${res.note ? " — " + esc(res.note) : ""}</div>` : ""}
+    <div class="row">${actButtons(e)}${e.snapshot ? `<img src="${e.snapshot}?v=${e.updated_at}" alt="Snapshot" data-a="view" data-id="${e.event_id}" loading="lazy">` : ""}</div>`;
+}
 function renderIncidents(){
   const list = [...EVENTS.values()].filter(e => e.type !== "test").filter(inFilter)
     .sort((a,b) => (ACTIVE.has(b.status) - ACTIVE.has(a.status)) || PRIO(a) - PRIO(b) || b.started_at - a.started_at).slice(0, 80);
-  $("nActive").textContent = `${[...EVENTS.values()].filter(e => ACTIVE.has(e.status)).length} active`;
-  $("incidents").innerHTML = list.length ? list.map(e => { const s = sev(e);
-    const ackd = (e.actions||[]).filter(a => a.action === "ack").pop(), res = (e.actions||[]).filter(a => ["resolve","dismiss","auto_resolve"].includes(a.action)).pop();
-    return `<div class="inc ${s.cls}"><div class="state">${s.label}</div><div class="when" title="${fmtT(e.started_at)}">${fmtT(e.started_at, false)}<br>${ago(e.started_at)}</div>
-      <div class="ttl">${esc(title(e))}${e.type === "fire" || e.type === "smoke" ? ` · L${e.fire_level || "?"}` : ""}</div>
-      <div class="meta"><b>${esc(e.zone_name || e.zone_id || "")}</b> · ${esc(e.camera_id || "safety station")}${who(e) ? " · " + esc(who(e)) : ""} · ${esc(e.severity || "")}</div>
-      ${ackd ? `<div class="meta">Acknowledged by <b>${esc(ackd.by_user)}</b> at ${fmtT(ackd.at, false)}</div>` : ""}
-      ${res && DONE.has(e.status) ? `<div class="meta">${esc(res.action.replace("_"," "))} by <b>${esc(res.by_user)}</b> at ${fmtT(res.at, false)}${res.note ? " — " + esc(res.note) : ""}</div>` : ""}
-      <div class="row">${actButtons(e)}${e.snapshot ? `<img src="${e.snapshot}?v=${e.updated_at}" alt="Snapshot" data-a="view" data-id="${e.event_id}" loading="lazy">` : ""}</div></div>`; }).join("")
-    : `<div class="empty">${FILTER === "active" ? "✓ No active incidents." : "Nothing in this list."}</div>`;
+  const nAct = [...EVENTS.values()].filter(e => ACTIVE.has(e.status) && e.type !== "entrance_check").length;
+  $("nActive").textContent = `${nAct} active`;
+  $("alertHead").classList.toggle("hot", nAct > 0);
+  const box = $("incidents"), keep = new Set();
+  const empty = box.querySelector(".empty"); if (empty) empty.remove();
+  let prev = null;
+  for (const e of list){
+    const id = e.event_id; keep.add(id);
+    const html = cardHtml(e), sigNow = html.replace(/<span class="ago"[^<]*<\/span>/, "");
+    let node = CARDS.get(id);
+    if (!node){ node = document.createElement("div"); CARDS.set(id, node); }
+    if (CARD_SIG.get(id) !== sigNow){
+      node.className = "inc " + sev(e).cls;
+      const f = FRESH.get(id);
+      if (f && !f.shown){ f.shown = true; node.classList.add(f.added && f.added.length ? "nx-upd" : "nx-new"); }
+      node.innerHTML = html; CARD_SIG.set(id, sigNow);
+    }
+    const want = prev ? prev.nextSibling : box.firstChild;
+    if (want !== node) box.insertBefore(node, want);
+    prev = node;
+  }
+  for (const [id, node] of CARDS) if (!keep.has(id)){ node.remove(); CARDS.delete(id); CARD_SIG.delete(id); }
+  box.querySelectorAll(".ago").forEach(x => { x.textContent = ago(+x.dataset.t); });
+  if (!list.length) box.innerHTML = `<div class="empty">${FILTER === "active" ? "✓ No active alerts. New violations appear here instantly." : "Nothing in this list."}</div>`;
 }
-document.querySelectorAll(".tab").forEach(t => t.onclick = () => { FILTER = t.dataset.f; document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-pressed", x === t)); renderIncidents(); });
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => { FILTER = t.dataset.f; document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-pressed", x === t));
+  CARDS.forEach(n => n.remove()); CARDS.clear(); CARD_SIG.clear(); renderIncidents(); });
 
 document.addEventListener("click", async ev => {
   const el = ev.target.closest("[data-a]"); if (!el) return;
@@ -647,6 +629,7 @@ function renderGate(){
 
 /* ---------- zones, notifications, health, perf, location ---------- */
 function renderZones(){
+  if (!$("zones")) return;
   $("zones").innerHTML = ZONES.map(z => { const bad = z.status !== "Compliant";
     return `<tr><td><b>${esc(z.name)}</b>${z.allowed ? `<div class="small">🔒 only ${z.allowed.map(esc).join(", ")}</div>` : ""}</td><td class="small">${z.required_ppe.map(iname).join(", ")}</td>
       <td><span class="risk ${z.risk}">${z.risk.toUpperCase()}</span></td><td><span class="pill ${bad ? (/fire|smoke/i.test(z.status) ? "p-crit" : "p-warn") : "p-ok"}">${bad ? "⚠ " : "✓ "}${esc(z.status)}</span></td></tr>`; }).join("");
@@ -658,6 +641,7 @@ function statusPill(s){
 }
 const CH = {telegram:"✈ Telegram", call:"☎ Phone call", sms:"✉ SMS", email:"@ E-mail", mock:"(mock)"};
 function renderNotifs(){
+  if (!$("notifs")) return;
   const rows = [...NOTIFS.values()].sort((a,b) => b.id - a.id).slice(0, 10);
   $("notifs").innerHTML = rows.length ? rows.map(n => `<tr><td>${CH[n.channel] || esc(n.channel)}</td><td>${statusPill(n.status)}${n.attempts > 1 ? ` <span class="small">try ${n.attempts}</span>` : ""}</td>
     <td class="small"><a href="#event=${encodeURIComponent(n.event_id)}">${esc(n.event_id)}</a>${n.latency_ms != null ? ` · ${(n.latency_ms/1000).toFixed(1)} s` : ""}${n.error && n.status !== "delivered" ? `<br>${esc(String(n.error).slice(0, 80))}` : ""}</td></tr>`).join("")
@@ -666,7 +650,7 @@ function renderNotifs(){
 function renderHealth(){
   if (!HEALTH) return;
   const icon = {ok:"✓", warn:"⚠", fail:"✖", off:"○"}, cls = {ok:"p-ok", warn:"p-warn", fail:"p-crit", off:"p-grey"};
-  $("health").innerHTML = HEALTH.components.map(c => `<tr><td style="width:32%"><b>${esc(c.name)}</b></td><td style="width:16%"><span class="pill ${cls[c.state]}">${icon[c.state]} ${c.state.toUpperCase()}</span></td><td class="small">${esc(c.message)}</td></tr>`).join("");
+  if ($("health")) $("health").innerHTML = HEALTH.components.map(c => `<tr><td style="width:32%"><b>${esc(c.name)}</b></td><td style="width:16%"><span class="pill ${cls[c.state]}">${icon[c.state]} ${c.state.toUpperCase()}</span></td><td class="small">${esc(c.message)}</td></tr>`).join("");
   const bad = HEALTH.components.filter(c => c.state === "fail" || c.state === "warn");
   const fails = bad.filter(c => c.state === "fail");
   const hc = $("healthChip"); hc.className = "chip " + (fails.length ? "fail" : bad.length ? "warn" : "ok");
@@ -683,7 +667,7 @@ function renderHealth(){
     <div class="hdet">${important.map(c => `<div><b>${c.state === "fail" ? "✖" : "⚠"} ${esc(c.name)}:</b> ${esc(c.message)}</div>`).join("")}</div>` : "";
   const tg = $("hbToggle"); if (tg) tg.onclick = () => { hb.classList.toggle("open"); tg.textContent = hb.classList.contains("open") ? "Hide details" : "Details"; };
   const chans = HEALTH.components.filter(c => c.name.startsWith("Alerts:"));
-  $("chanState").textContent = chans.filter(c => c.state === "ok").length + " of " + chans.length + " channels ready";
+  if ($("chanState")) $("chanState").textContent = chans.filter(c => c.state === "ok").length + " of " + chans.length + " channels ready";
 }
 function renderLoc(){
   const c = LOC && LOC.current, ch = $("locChip");
@@ -700,6 +684,7 @@ function useGps(){
   }, err => toast("Location not available", err.message, "crit"), {enableHighAccuracy:true, timeout:15000, maximumAge:60000});
 }
 async function renderPerf(){
+  if (!$("perf")) return;
   try {
     const p = await api("/api/perf"); const m = p.metrics || {};
     const box = (k, label) => m[k] ? `<div class="perf"><small>${label}</small><b>${m[k].p50 < 1000 ? Math.round(m[k].p50) + " ms" : (m[k].p50/1000).toFixed(1) + " s"}</b><small>95%: ${m[k].p95 < 1000 ? Math.round(m[k].p95) + " ms" : (m[k].p95/1000).toFixed(1) + " s"} · n=${m[k].n}</small></div>` : "";
@@ -742,6 +727,7 @@ function toast(head, body, kind){
   t.innerHTML = `<b>${esc(head)}</b>${esc(body)}`; $("toasts").prepend(t); setTimeout(() => t.remove(), 8000);
 }
 function alarmTone(){
+  if (MUTED) return;
   try { audio = audio || new (window.AudioContext || window.webkitAudioContext)();
     [0, .3, .6, .9].forEach(t => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = t % .6 ? 660 : 990;
       o.connect(g); g.connect(audio.destination); g.gain.setValueAtTime(.18, audio.currentTime + t); o.start(audio.currentTime + t); o.stop(audio.currentTime + t + .25); }); } catch {}
@@ -755,8 +741,19 @@ function upsert(e){
   EVENTS.set(e.event_id, e);
   if (isNew && SEEN.size && e.captured_at){ const cap = Date.parse(e.captured_at) / 1000; const now = Date.now()/1000 + CLOCK_OFF;
     if (cap && now - cap < 60) PERF.dashboard_event_ms.push(Math.round((now - cap) * 1000)); }
+  const before = SIGS.get(e.event_id), now = (e.items_missing||[]).slice().sort().join(",") + "|" + (e.fire_level||0);
+  SIGS.set(e.event_id, now);
+  if (SEEN.has("_boot") && ACTIVE.has(e.status) && before !== now && e.type !== "entrance_check" && e.type !== "test"){
+    const was = before ? before.split("|")[0].split(",") : null;
+    const added = was ? (e.items_missing||[]).filter(i => !was.includes(i)) : [];
+    if (!before || added.length || (e.fire_level||0) > +(before.split("|")[1]||0)){
+      FRESH.set(e.event_id, {at: Date.now(), added, shown: false});
+      if (e.status !== "verifying") alarmTone();
+      if (FILTER !== "active" && FILTER !== "all"){ const t = document.querySelector('.tab[data-f="active"]'); if (t) t.click(); }
+    }
+  }
   SEEN.add(e.event_id);
-  NetraxAlerts.offer(e);                       // new or worse incident -> popup + tone (alerts.js)
+  NetraxAlerts.offer(e);                       // fire -> red frame (alerts.js); PPE alerts stay in the panel
   renderIncidents(); renderAlertZone(); renderBand();
 }
 function connect(){
@@ -788,15 +785,19 @@ async function boot(){
   $("userChip").textContent = `👤 ${ME.user || "local"} · ${String(ME.role).toUpperCase()}`;
   $("logoutBtn").hidden = !ME.auth;
   try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
-  NetraxAlerts.init({canAct, onEvent: upsert, view: openEvent, tone: alarmTone, skipL3: true});
-  try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs); evs.forEach(e => { EVENTS.set(e.event_id, e); SEEN.add(e.event_id); }); } catch {}
+  NetraxAlerts.init({canAct, onEvent: upsert, view: openEvent, tone: () => {}, mode: "none", fireBanner: false});
+  try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs);
+    evs.forEach(e => { EVENTS.set(e.event_id, e); SEEN.add(e.event_id); SIGS.set(e.event_id, (e.items_missing||[]).slice().sort().join(",") + "|" + (e.fire_level||0)); }); } catch {}
+  try { MUTED = localStorage.getItem("netrax-mute") === "1"; } catch {}
+  $("muteBtn").textContent = MUTED ? "🔕" : "🔔"; $("muteBtn").setAttribute("aria-pressed", MUTED);
+  $("muteBtn").onclick = () => { MUTED = !MUTED; $("muteBtn").textContent = MUTED ? "🔕" : "🔔"; $("muteBtn").setAttribute("aria-pressed", MUTED); try { localStorage.setItem("netrax-mute", MUTED ? "1" : "0"); } catch {} };
   try { (await api("/api/notifications?limit=100")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
   try { ENTR = await api("/api/entrance?limit=20"); renderGate(); } catch {}
   try { LOC = await api("/api/location"); renderLoc(); } catch {}
   SEEN.add("_boot");
-  renderIncidents(); renderAlertZone(); refreshSlow(); renderPerf();
+  renderIncidents(); renderAlertZone(); refreshSlow();
   connect();
-  setInterval(refreshSlow, 5000); setInterval(renderPerf, 10000); setInterval(renderIncidents, 15000);
+  setInterval(refreshSlow, 5000); setInterval(renderIncidents, 15000);
   const h = location.hash.match(/^#event=(.+)$/); if (h) openEvent(decodeURIComponent(h[1]));
   window.addEventListener("hashchange", () => { const m = location.hash.match(/^#event=(.+)$/); if (m) openEvent(decodeURIComponent(m[1])); });
 }

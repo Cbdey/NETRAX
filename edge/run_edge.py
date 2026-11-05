@@ -5,6 +5,11 @@ Run from the project root:   python -m edge.run_edge
 import os
 import time
 
+for _k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+    os.environ.setdefault(_k, "4")      # 4 Nov: measured AI 2 fps -> 6.7 fps with this cap (laptop, 2 cameras)
+
+import cv2                              # noqa: E402
+
 from .config import load_all, path
 from .detector import Detector
 from .engine import InferenceEngine
@@ -36,6 +41,13 @@ def _lat(w):
 
 
 def main():
+    cv2.setNumThreads(4)
+    try:
+        import torch
+        torch.set_num_threads(4)
+        torch.backends.cudnn.benchmark = True        # fixed input sizes per camera -> fastest kernels picked once
+    except Exception:                                # noqa: BLE001
+        pass
     settings, zones, cameras = load_all()
     os.makedirs(path("data"), exist_ok=True)
     backend = settings["backend"]["url"]
@@ -43,6 +55,8 @@ def main():
     publisher = Publisher(backend, settings["backend"]["preview_fps"])
     fps = settings["processing"]["target_fps"]
     identity = IdentityService(settings.get("identity"), backend)     # shared by all cameras
+    if (settings.get("identity") or {}).get("async", True):
+        identity.start_async()                                          # 4 Nov: face ID off the AI loop
     clips = ClipRecorder(settings.get("clips"), backend, path(settings.get("clips", {}).get("dir", "data/clips")),
                          face_model=path("models/face_detection_yunet_2023mar.onnx"),
                          blur=settings.get("privacy", {}).get("blur_faces_in_snapshots", True))
@@ -55,7 +69,16 @@ def main():
     # ONE copy of every model for all cameras, batched on the GPU (edge/engine.py)
     proc = settings.get("processing", {})
     engine = None
-    if proc.get("shared_engine", True):
+    if proc.get("shared_engine", True) and proc.get("engine_process", True):
+        # 4 Nov: models in their own process -> no fight with the camera / video threads for Python's lock
+        try:
+            from .engine_proc import ProcessEngine
+            engine = ProcessEngine(settings, max_batch=proc.get("max_batch", 4), gather_ms=proc.get("batch_gather_ms", 3))
+            print(f"[edge] AI engine in its own process: models loaded once, batch up to {engine.max_batch} cameras")
+        except Exception as e:                       # noqa: BLE001 - fall back to the in-process engine
+            print(f"[edge] AI process could not start ({e!r}) - using the in-process engine")
+            engine = None
+    if engine is None and proc.get("shared_engine", True):
         engine = InferenceEngine(Detector(settings), max_batch=proc.get("max_batch", 4),
                                  gather_ms=proc.get("batch_gather_ms", 3))
         engine.start()

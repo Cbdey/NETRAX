@@ -73,13 +73,20 @@ class InferenceEngine(threading.Thread):
                 newest[r.cam] = r
             batch = sorted(newest.values(), key=lambda r: (0 if r.fire == "urgent" else r.rank, r.t))
             t0 = time.perf_counter()
-            try:
-                res = self.det.detect_batch([r.frame for r in batch], [bool(r.fire) for r in batch])
-                for r, out in zip(batch, res):
-                    r.result = out
-            except Exception as e:                # noqa: BLE001 - hand the error to every waiting camera
-                for r in batch:
-                    r.error = e
+            # 4 Nov, measured on the GTX 1650: a phone (portrait) and the webcam (landscape) in ONE call took 56 ms
+            # for ppe_v2 against 19 + 24 ms separately (ultralytics pads mixed shapes to squares). Same-shape frames
+            # (2 phones) do batch well (34 vs 39 ms). So: one call per frame shape, in priority order.
+            groups = {}
+            for r in batch:
+                groups.setdefault(getattr(r.frame, "shape", None), []).append(r)
+            for grp in groups.values():
+                try:
+                    res = self.det.detect_batch([r.frame for r in grp], [bool(r.fire) for r in grp])
+                    for r, out in zip(grp, res):
+                        r.result = out
+                except Exception as e:            # noqa: BLE001 - hand the error to every waiting camera
+                    for r in grp:
+                        r.error = e
             t1 = time.perf_counter()
             ms = (t1 - t0) * 1000
             self.busy.append((t0, t1))

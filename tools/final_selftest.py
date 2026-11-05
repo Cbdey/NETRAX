@@ -690,11 +690,13 @@ async def main():
             if abs(ts - (t0 + 5)) < 1e-6 + 1 / 12:
                 rec.start("cam_01", "evt_t09", ts, "ppe_missing")
         f = os.path.join(cdir, "evt_t09.mp4")
-        for _ in range(100):
-            if os.path.exists(f) and os.path.getsize(f) > 0 and not rec.jobs and rec.todo.empty():
+        last = -1
+        for _ in range(200):                           # wait until the encoder has finished writing the file
+            size = os.path.getsize(f) if os.path.exists(f) else 0
+            if size > 0 and size == last and not rec.jobs and rec.todo.empty():
                 break
-            time.sleep(0.1)
-        time.sleep(0.3)
+            last = size
+            time.sleep(0.25)
         try:
             import av
             with av.open(f) as vf:
@@ -726,6 +728,25 @@ async def main():
         check("CLIP", "retention: clips older than snapshot_retention_days are deleted like snapshots",
               purge(m.CLIP_DIR, 30, None, ("*.mp4", "*.webm")) == ["evt_t09"] and not os.path.exists(old))
     os.environ["SENTINELEYE_AUTH"] = "0"
+    # ---------------- 4 Nov: live video pushed over one WebSocket (newest picture per camera, only the cameras asked for)
+    with TestClient(m.app) as c:
+        m.FRAMES["cam_01"] = (b"\xff\xd8jpeg-one", time.time(), time.time() - 0.05)
+        m.FRAMES["cam_02"] = (b"\xff\xd8jpeg-two", time.time(), time.time() - 0.05)
+        with c.websocket_connect("/ws/video") as v:
+            v.send_text(json.dumps({"cams": ["cam_02"]}))
+            first = v.receive_bytes()
+            m.FRAMES["cam_01"] = (b"\xff\xd8jpeg-one-b", time.time(), time.time() - 0.04)
+            m.FRAMES["cam_02"] = (b"\xff\xd8jpeg-two-b", time.time(), time.time() - 0.04)
+            second = v.receive_bytes()
+        heads = [x.split(b"\n", 1) for x in (first, second)]
+        check("12", "live video: pictures are pushed over one WebSocket with camera + capture time; a viewer gets only its cameras",
+              all(h[0].startswith(b"cam_02|") and h[0].count(b"|") == 2 for h in heads) and heads[1][1] == b"\xff\xd8jpeg-two-b",
+              f"{[h[0].decode() for h in heads]}")
+    from edge.stream import StreamReader
+    sr = StreamReader("cam_x", 0, 12)
+    sr.frame_ts, sr.active_since, sr.fps = time.time(), 0, 30.0
+    check("12", "camera health: a fresh 30 fps camera is ONLINE although the shared AI checks it only 3.5x/s (live video is separate)",
+          sr.health(3.5) == "ONLINE" and sr.health(0.4) == "DEGRADED")
     # ---------------- shared engine: batching, priority, mapping back
     class FakeDet:
         device = "cpu"
@@ -753,6 +774,23 @@ async def main():
     check("12", "3 cameras at once -> ONE batched GPU call, each camera gets its own result back",
           det.batches[0] == 3 and all(res[i]["persons"][0]["cam"] == f"frame_{i}" for i in range(3))
           and res[2]["fire"] == [] and res[0]["fire"] is None, f"batches {det.batches}, {took:.0f} ms for 3 cameras")
+    # ---------------- 4 Nov: models in their own process (shared memory frames, results back, mixed frame sizes)
+    from edge.engine_proc import ProcessEngine
+    import numpy as _np
+    pe = ProcessEngine({}, max_batch=4, gather_ms=5, factory="echo", start_timeout=60)
+    got = {}
+
+    def _cam(i, shape):
+        got[i] = pe.infer(f"cam_{i}", _np.full(shape, i * 10, _np.uint8), i == 1, rank=1)
+    ths = [threading.Thread(target=_cam, args=(i, sh)) for i, sh in enumerate([(48, 64, 3), (64, 48, 3), (48, 64, 3)])]
+    [t.start() for t in ths]
+    [t.join() for t in ths]
+    big = pe.infer("cam_0", _np.full((96, 128, 3), 77, _np.uint8), False)       # larger frame -> new buffer
+    check("12", "AI process: every camera gets ITS OWN frame's result back (portrait + landscape + a resized camera)",
+          all(abs(got[i]["persons"][0]["mean"] - i * 10) < 1e-6 for i in range(3)) and got[1]["fire"] == []
+          and got[0]["fire"] is None and abs(big["persons"][0]["mean"] - 77) < 1e-6 and pe.det.supported == {"helmet", "vest"},
+          f"stats {pe.stats()}")
+    pe.close()
     # ---------------- whole edge pipeline with fake models (worker -> shared engine -> entrance / state machine)
     pipeline_test()
     # ---------------- report

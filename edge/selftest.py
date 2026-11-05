@@ -659,6 +659,25 @@ ids.update("cam_01", frame, [dict(PERSON, tid=22)], 0)                      # on
 ids.update("cam_01", frame, [dict(PERSON, tid=22)], 2)
 ff.emb = E1
 check("one or two odd frames do not rename W-001 to W-002", named == "W-001" and seen_as(22, 4) == "W-001")
+#    4 Nov: face ID in its own thread - the AI loop only hands frames over and reads the names known so far
+ida = IdentityService(S["identity"] | {"debug_log": None}, backend_url=None, engine=ff)
+ida.set_gallery([{"worker_id": "W-001", "name": "Ravi", "embeddings": [E1.tolist()]}])
+ida.start_async()
+ff.emb = E1
+first = ida.annotate("cam_01", [dict(PERSON, tid=31)])[0]["worker_id"]
+t0 = time.time()
+for k in range(40):                                   # ~4 AI frames per second: submit, never wait
+    ps = [dict(PERSON, tid=31)]
+    if ida.wants("cam_01", ps, k):
+        ida.submit("cam_01", frame, ps, k)
+    name = ida.annotate("cam_01", ps)[0]["worker_id"]
+    if name:
+        break
+    time.sleep(0.05)
+check(f"async face ID: AI loop never waits, the name arrives a moment later ({time.time() - t0:.2f} s) and is correct",
+      first is None and name == "W-001")
+fb = ida.face_boxes("cam_01", [31])
+check("async face ID keeps the last face box per person (snapshot blur without a 2nd face detection)", 31 in fb and fb[31][2] == 60)
 
 
 print("\nALL TESTS PASSED" if ok_all else "\nSOME TESTS FAILED")

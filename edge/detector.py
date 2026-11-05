@@ -206,14 +206,24 @@ class Detector:
         import time as _t
         n = len(frames)
         t0 = _t.perf_counter()
-        main = self._run_many(self.ppe, frames, self.min_ppe if self.person else min(self.ppe_conf.values()))
-        aux = self._run_many(self.aux, frames, self.min_ppe) if self.aux is not None else [[] for _ in range(n)]
-        t1 = _t.perf_counter()
+        # 4 Nov: people first. PPE items only matter on a person, so the two PPE models (the most expensive part,
+        # ~45 ms per frame) run only on frames where somebody is in view - an empty camera costs pose + fire only.
         if self.person is not None and self.pose:
             persons = self._run_many(self.person, frames, self.ppe_conf["person"], classes=[0], pose=True)
         elif self.person is not None:
             persons = self._run_many(self.person, frames, self.ppe_conf["person"], classes=[0])
         else:
+            persons = None
+        t1 = _t.perf_counter()
+        idx = [i for i in range(n) if persons is None or persons[i]]
+        main, aux = [[] for _ in range(n)], [[] for _ in range(n)]
+        for i, dets in zip(idx, self._run_many(self.ppe, [frames[i] for i in idx],
+                                               self.min_ppe if self.person else min(self.ppe_conf.values()))):
+            main[i] = dets
+        if self.aux is not None:
+            for i, dets in zip(idx, self._run_many(self.aux, [frames[i] for i in idx], self.min_ppe)):
+                aux[i] = dets
+        if persons is None:
             persons = [[d for d in m if d["cls"] == "person" and d["conf"] >= self.ppe_conf["person"]] for m in main]
         t2 = _t.perf_counter()
         fire_idx = [i for i in range(n) if fire_flags[i]]
@@ -238,7 +248,7 @@ class Detector:
                 p["cls"] = "person"
             out.append({"persons": persons[i], "items": items, "parts": parts, "fire": fire[i]})
         t4 = _t.perf_counter()
-        tm = {"ppe_ms": (t1 - t0) * 1000, "person_ms": (t2 - t1) * 1000, "fire_ms": (t3 - t2) * 1000,
+        tm = {"person_ms": (t1 - t0) * 1000, "ppe_ms": (t2 - t1) * 1000, "fire_ms": (t3 - t2) * 1000,
               "shoe_ms": (t4 - t3) * 1000, "total_ms": (t4 - t0) * 1000, "batch": n}
         for o in out:
             o["timings"] = tm

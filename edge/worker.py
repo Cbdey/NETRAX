@@ -157,7 +157,12 @@ class CameraWorker(threading.Thread):
                     p["kps"] = m["kps"]
         tp = self._t("tracker", tp)
         if self.identity is not None:
-            persons = self.identity.update(self.cam_id, frame, persons, n)
+            if getattr(self.identity, "async_mode", False):      # 4 Nov: face work in its own thread
+                if self.identity.wants(self.cam_id, persons, n):
+                    self.identity.submit(self.cam_id, frame, persons, n)
+                persons = self.identity.annotate(self.cam_id, persons)
+            else:
+                persons = self.identity.update(self.cam_id, frame, persons, n)
             self._stable_ids(persons)
         tp = self._t("face_id", tp)
         zone_of = {p["tid"]: self.zonemap.zone_of(p["bbox"], w, h) for p in persons}
@@ -285,6 +290,28 @@ class CameraWorker(threading.Thread):
         the face model - the top of every person box."""
         if not self.s.get("privacy", {}).get("blur_faces_in_snapshots", True):
             return []
+        if getattr(self.identity, "async_mode", False):
+            # 4 Nov: no extra face detection at alert time (it cost ~100 ms right when the alert should leave):
+            # the face box the face thread saw last for each person, else the head from the body keypoints,
+            # else the top of the person box. Errs on blurring more, never less.
+            known = self.identity.face_boxes(self.cam_id, [p.get("track_id", p["tid"]) for p in persons])
+            out = []
+            for p in persons:
+                f = known.get(p.get("track_id", p["tid"]))
+                if f:
+                    x, y, fw, fh = f
+                    out.append((x - 0.35 * fw, y - 0.45 * fh, x + 1.35 * fw, y + 1.3 * fh))
+                    continue
+                kp = [k for k in (p.get("kps") or [])[:5] if k and len(k) > 2 and k[2] > 0.3]
+                x1, y1, x2, y2 = p["bbox"]
+                if kp:
+                    xs, ys = [k[0] for k in kp], [k[1] for k in kp]
+                    r = max(max(xs) - min(xs), (x2 - x1) * 0.18)
+                    cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+                    out.append((cx - r, cy - r * 1.2, cx + r, cy + r))
+                else:
+                    out.append((x1, y1, x2, y1 + 0.2 * (y2 - y1)))
+            return out
         eng = getattr(self.identity, "engine", None)
         if eng is not None:
             out = []

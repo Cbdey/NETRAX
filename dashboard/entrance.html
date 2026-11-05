@@ -123,6 +123,7 @@ td img{width:78px;height:50px;object-fit:cover;border-radius:8px;display:block;b
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script src="/static/alerts.js"></script>
+<script src="/static/video.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -189,7 +190,7 @@ function renderDevices(){
   $("tagL").textContent = "● LIVE"; $("tagL").hidden = !live;
   $("tagR").textContent = c.badge || (live ? "READY" : "");
   const f = $("feed"); let img = f.querySelector("img"), sc = f.querySelector(".scan");
-  if (live && !img){ img = document.createElement("img"); img.alt = "Live entrance camera"; img.id = "liveImg"; f.prepend(img); sc = document.createElement("div"); sc.className = "scan"; f.append(sc); startLoop(c.camera_id); }
+  if (live && !img){ img = document.createElement("img"); img.alt = "Live entrance camera"; img.id = "liveImg"; img.dataset.live = c.camera_id; f.prepend(img); sc = document.createElement("div"); sc.className = "scan"; f.append(sc); }
   if (!live){ if (img) img.remove(); if (sc) sc.remove();
     $("feedMsg").innerHTML = `<b>USB webcam not connected</b><span>${esc(c.detail || "No picture from the entrance camera.")}</span><span class="small">Plug in the USB webcam, then restart the edge (<code>python -m edge.run_edge</code>). If it still stays offline, try <code>source: 2</code> for cam_04 in config/cameras.yaml.</span>`; }
   const rd = (s.readers||[])[0];

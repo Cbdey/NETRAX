@@ -1139,6 +1139,46 @@ async def ws_alerts(ws: WebSocket):
         CLIENTS.pop(ws, None)
 
 
+@app.websocket("/ws/video")
+async def ws_video(ws: WebSocket):
+    """4 Nov, smooth live video: every camera's newest picture is PUSHED to the dashboard the moment it arrives,
+    over one connection for all cameras (was: one HTTP request per picture per camera from the browser, which
+    capped the frame rate at the round-trip time and queued behind other requests).
+    Message = header line 'camera_id|captured_at|server_time' + newline + the JPEG. The client may send
+    {"cams": [...]} to receive only the cameras it shows. A slow client simply gets fewer, always newest, pictures."""
+    if auth.enabled() and not auth.read_token(ws.cookies.get(auth.COOKIE)):
+        await ws.close(code=4401)
+        return
+    await ws.accept()
+    want = {"cams": None}
+
+    async def listen():
+        while True:
+            try:
+                msg = json.loads(await ws.receive_text())
+                want["cams"] = set(msg.get("cams") or []) or None
+            except (ValueError, AttributeError, TypeError):
+                pass
+
+    reader = asyncio.create_task(listen())
+    sent = {}
+    await asyncio.sleep(0.15)                           # let the viewer say which cameras it shows first
+    try:
+        while not reader.done():
+            for cam, (jpg, t, cap) in list(FRAMES.items()):
+                if sent.get(cam) == t or (want["cams"] is not None and cam not in want["cams"]):
+                    continue
+                sent[cam] = t
+                await ws.send_bytes(f"{cam}|{cap:.3f}|{time.time():.3f}\n".encode() + jpg)
+            await asyncio.sleep(0.012)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    except Exception:                                   # noqa: BLE001 - a broken viewer must not affect anything
+        pass
+    finally:
+        reader.cancel()
+
+
 @app.get("/")
 def index():
     return FileResponse(os.path.join(ROOT, "dashboard", "index.html"))

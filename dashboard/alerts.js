@@ -1,126 +1,84 @@
-/* NETRAX popups (guide's request, 2 Nov), shared by the control room, entrance and admin pages.
-   Alert popup: every NEW PPE / restricted-zone / fire / smoke incident pops up; several at once are kept separately
-   ("1 of 3", brief section 2). Closing with "Later" only hides the popup - the incident stays active on the dashboard.
-   It pops again when the incident gets worse (more PPE missing, higher fire level).
-   Entrance popup: green = verified / may enter, red = do not enter, amber = manual check, with the person's name. */
+/* NETRAX alerts on every page (4 Nov rework, user: "big popups cover 40 % of the screen and get irritating").
+   - PPE / restricted-zone alerts are NOT popped up any more. On the control room they appear in the alert panel
+     (index.html handles that: the new card slides in with a glowing border). Other pages (admin, entrance) show a
+     small corner card with a coloured border that hides itself after a few seconds (mode "toast").
+   - FIRE / SMOKE: the whole page gets a red frame and a slim red banner with the fire level on EVERY page, until the
+     fire is acknowledged or resolved (Level 3 keeps the full-screen evacuation screen on the control room).
+   - Entrance decision: the full green / red / amber screen only on the entrance display (/entrance); everywhere else a
+     compact corner card (green VERIFIED, red DO NOT ENTER, amber MANUAL CHECK with Allow / Refuse). */
 window.NetraxAlerts = (function () {
   const ITEM = {helmet:"HELMET", vest:"SAFETY VEST", gloves:"GLOVES", boots:"SAFETY SHOES", goggles:"GOGGLES", mask:"MASK"};
   const iname = i => ITEM[i] || String(i).toUpperCase();
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-  const fmt = t => t ? new Date(t * 1000).toLocaleTimeString("en-IN", {timeZone:"Asia/Kolkata", hour12:false}) + " IST" : "–";
+  const fmt = t => t ? new Date(t * 1000).toLocaleTimeString("en-IN", {timeZone:"Asia/Kolkata", hour12:false}) : "–";
   const POP = new Set(["ppe_missing", "unauthorized_entry", "fire", "smoke"]);
-  let opt = {canAct: () => false, onEvent: () => {}, view: null, tone: () => {}, skipL3: false, role: () => "viewer"};
-  const queue = [], sigs = new Map(), fresh = new Map();
-  let idx = 0, el = null, gateEl = null, miniEl = null, gateT = null, miniT = null, liveCam = null, liveUrl = null, liveOn = false;
+  let opt = {canAct: () => false, onEvent: () => {}, view: null, tone: () => {}, mode: "toast", fireBanner: true};
+  const sigs = new Map(), fires = new Map();
+  let stack = null, fireEl = null, gateEl = null, gateT = null;
 
   function mount() {
-    if (el) return;
-    el = document.createElement("div"); el.className = "nxp"; el.setAttribute("role", "alertdialog"); el.setAttribute("aria-modal", "true");
+    if (stack) return;
+    stack = document.createElement("div"); stack.className = "nxt-stack"; stack.setAttribute("aria-live", "assertive");
+    fireEl = document.createElement("div"); fireEl.className = "nxfire"; fireEl.setAttribute("role", "alert");
     gateEl = document.createElement("div"); gateEl.className = "nxg"; gateEl.setAttribute("role", "alertdialog");
-    miniEl = document.createElement("div"); miniEl.className = "nxmini"; miniEl.setAttribute("role", "status");
-    document.body.append(el, gateEl, miniEl);
-    el.addEventListener("click", onClick); gateEl.addEventListener("click", onGateClick);
-    miniEl.addEventListener("click", () => miniEl.classList.remove("show"));
-    document.addEventListener("keydown", ev => { if (ev.key === "Escape") { closeGate(); if (el.classList.contains("show")) later(); } });
+    document.body.append(stack, fireEl, gateEl);
+    document.body.addEventListener("click", onClick);
+    document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeGate(); });
   }
-  const sig = e => [(e.items_missing || []).slice().sort().join(","), e.fire_level || 0, e.type].join("|");
-  const wanted = e => POP.has(e.type) && (e.status === "open" || e.status === "escalated") && !(opt.skipL3 && (e.fire_level || 0) >= 3);
+  const sig = e => [(e.items_missing || []).slice().sort().join(","), e.fire_level || 0, e.status].join("|");
+  const active = e => e.status === "open" || e.status === "escalated";
+  const whoOf = e => e.worker_id === "W-***" ? "Registered worker" : e.worker_id && String(e.worker_id).startsWith("W-")
+    ? `${e.worker_id} ${e.worker_name || ""}`.trim() : "Unregistered person";
 
-  function seed(events) { for (const e of events) if (POP.has(e.type)) sigs.set(e.event_id, sig(e)); }
+  function seed(events) { for (const e of events) if (POP.has(e.type)) { sigs.set(e.event_id, sig(e)); fireTrack(e); } renderFire(); }
+
+  /* ---------- incidents ---------- */
   function offer(e) {
     if (!e || !POP.has(e.type)) return;
     mount();
-    const at = queue.findIndex(x => x.event_id === e.event_id);
-    if (!wanted(e)) {                          // acknowledged, resolved, false alarm, or Level 3 (has its own screen)
-      if (at >= 0) { queue.splice(at, 1); if (idx >= queue.length) idx = Math.max(0, queue.length - 1); render(); }
-      if (e.status !== "verifying") sigs.set(e.event_id, sig(e));
-      return;
-    }
+    fireTrack(e); renderFire();
     const old = sigs.get(e.event_id), now = sig(e);
-    if (at >= 0) {
-      queue[at] = e;
-      if (old !== now) { markFresh(e, old); sigs.set(e.event_id, now); idx = at; opt.tone(); }
-      render();
-    } else if (old !== now) {
-      markFresh(e, old); sigs.set(e.event_id, now);
-      queue.push(e);
-      const rank = x => (x.type === "fire" ? 0 : x.type === "smoke" ? 1 : x.severity === "Critical" ? 2 : 3);
-      if (!el.classList.contains("show") || rank(e) < rank(queue[idx] || e)) idx = queue.length - 1;   // fire takes over the view
-      opt.tone(); render();
-    }
+    sigs.set(e.event_id, now);
+    if (!active(e) || old === now) return;
+    const was = old ? old.split("|")[0].split(",") : null;
+    const added = was ? (e.items_missing || []).filter(i => !was.includes(i)) : [];
+    if (old && !added.length && (e.fire_level || 0) <= +(old.split("|")[1] || 0)) return;   // not worse: no new signal
+    opt.tone(e);
+    if (opt.mode === "toast" && e.type !== "fire" && e.type !== "smoke") toast(e, added);
   }
-  function markFresh(e, old) {
-    const was = (old || "").split("|")[0].split(",");
-    fresh.set(e.event_id, old ? (e.items_missing || []).filter(i => !was.includes(i)) : []);
+  function toast(e, added) {
+    const serious = e.severity === "Critical" || e.severity === "High";
+    const t = document.createElement("div");
+    t.className = "nxt " + (serious ? "crit" : "warn");
+    const what = e.type === "unauthorized_entry" ? "Not authorised in this zone"
+      : (added.length ? "Also missing: " : "Missing: ") + (added.length ? added : e.items_missing || []).map(iname).join(", ");
+    t.innerHTML = `<b>${serious ? "▲" : "⚠"} ${esc(what)}</b><span>${esc(whoOf(e))} · ${esc(e.zone_name || e.zone_id || "")} · ${fmt(e.started_at)}</span>`;
+    t.dataset.nxview = e.event_id; t.setAttribute("role", "button"); t.tabIndex = 0;
+    stack.prepend(t);
+    while (stack.children.length > 3) stack.lastElementChild.remove();
+    setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 400); }, 7000);
   }
-  function later() { const e = queue[idx]; if (!e) return; queue.splice(idx, 1); if (idx >= queue.length) idx = Math.max(0, queue.length - 1); render(); }
-  async function onClick(ev) {
-    const b = ev.target.closest("[data-nx]"); if (!b) return;
-    const a = b.dataset.nx, e = queue[idx]; if (!e) return;
-    if (a === "prev") { idx = (idx - 1 + queue.length) % queue.length; return render(); }
-    if (a === "next") { idx = (idx + 1) % queue.length; return render(); }
-    if (a === "later") return later();
-    if (a === "view") { later(); if (opt.view) opt.view(e.event_id); else location.href = "/#event=" + encodeURIComponent(e.event_id); return; }
-    b.disabled = true;
-    try {
-      const r = await fetch(`/api/events/${e.event_id}/${a}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
-      if (!r.ok) throw new Error(r.status);
-      const u = await r.json(); offer(u); opt.onEvent(u);
-    } catch (x) { b.disabled = false; b.textContent = "Failed - try again"; }
+
+  /* ---------- fire: red frame + banner on every page ---------- */
+  function fireTrack(e) {
+    if (e.type !== "fire" && e.type !== "smoke") return;
+    if (["open", "escalated", "acknowledged"].includes(e.status)) fires.set(e.event_id, e);   // red until the fire is resolved
+    else fires.delete(e.event_id);
   }
-  function card(e) {
-    const fire = e.type === "fire" || e.type === "smoke", lvl = e.fire_level || 0, w = e.type === "smoke" ? "SMOKE" : "FIRE";
-    const warn = fire ? lvl === 1 : e.severity !== "Critical" && e.severity !== "High";
-    const tone = fire ? (lvl === 1 ? "warn" : "fire") : warn ? "warn" : "";
-    const icon = fire ? "🔥" : e.type === "unauthorized_entry" ? "⛔" : "▲";
-    const small = fire ? `${w} · LEVEL ${lvl || "?"} OF 3` : e.type === "unauthorized_entry" ? "RESTRICTED ZONE" : `SAFETY VIOLATION · ${String(e.severity || "").toUpperCase()}`;
-    const head = fire ? `${w} DETECTED` : e.type === "unauthorized_entry" ? "Not authorised in this zone" : "Required PPE missing";
-    const msg = fire ? {1:"Small " + w.toLowerCase() + " detected. Immediate inspection required.", 2:"Immediate emergency response required.", 3:"EVACUATE THE AFFECTED AREA IMMEDIATELY."}[lvl || 2] : "";
-    const nw = fresh.get(e.event_id) || [];
-    const items = e.type === "ppe_missing" ? (e.items_missing || []).map(i => `<span class="item${nw.includes(i) ? " fresh" : ""}">✖ NO ${iname(i)}</span>`).join("") : "";
-    const who = e.worker_id === "W-***" ? "Registered worker (name hidden)" : e.worker_id ? (String(e.worker_id).startsWith("W-") ? `${e.worker_id} ${e.worker_name || ""}` : "Unregistered person") : (fire ? "" : "Not identified");
-    const useSnap = !fire && e.snapshot;
-    liveCam = useSnap ? null : (e.camera_id || null);
-    const can = opt.canAct();
-    const acts = can ? `<button class="btn red" data-nx="ack">Acknowledge</button><button class="btn" data-nx="resolve">Resolve</button>` : `<small>View only - a supervisor must act</small>`;
-    return `<div class="nxp-card ${tone}">
-      <div class="nxp-band"><span class="nxp-ring" aria-hidden="true">${icon}</span><div><small>${esc(small)}</small><h2 id="nxpT">${esc(head)}</h2></div><span class="sp"></span>
-        ${queue.length > 1 ? `<span class="nxp-nav"><button data-nx="prev" aria-label="Previous incident">‹</button>${idx + 1} of ${queue.length}<button data-nx="next" aria-label="Next incident">›</button></span>` : ""}
-        <button class="nxp-x" data-nx="later" aria-label="Hide this popup">✕</button></div>
-      <div class="nxp-body"><figure class="nxp-shot">${useSnap ? `<img src="${esc(e.snapshot)}?v=${e.updated_at || ""}" alt="Snapshot of the incident"><figcaption>📸 AT THE ALERT</figcaption>` : `<img id="nxLive" alt="Live view of the affected camera" hidden><div class="nolive" id="nxNoLive">${e.camera_id ? "Connecting to the camera…" : "Reported by the safety station"}</div><figcaption id="nxLiveTag" hidden>● LIVE</figcaption>`}</figure>
-        <div>${items ? `<div class="nxp-items">${items}</div>` : ""}${msg ? `<p class="nxp-msg">${esc(msg)}</p>` : ""}
-          <dl class="nxp-kv">${who ? `<dt>Worker</dt><dd>${esc(who)}</dd>` : ""}<dt>Zone</dt><dd>${esc(e.zone_name || e.zone_id || "—")}</dd>
-            <dt>Camera</dt><dd>${esc(e.camera_name || "")} ${esc(e.camera_id || "safety station")}</dd><dt>Time</dt><dd>${fmt(e.started_at)}</dd>
-            ${e.status === "escalated" ? `<dt>Status</dt><dd>ESCALATED</dd>` : ""}</dl></div></div>
-      <div class="nxp-acts">${acts}<button class="btn" data-nx="view">Details</button><span class="sp"></span><button class="btn" data-nx="later">Later</button></div></div>`;
-  }
-  function render() {
-    if (!el) return;
-    const e = queue[idx];
-    el.classList.toggle("show", !!e);
-    if (!e) { el.innerHTML = ""; liveCam = null; return; }
-    el.innerHTML = card(e);
-    el.setAttribute("aria-labelledby", "nxpT");
-    startLive();
-  }
-  async function startLive() {
-    if (liveOn) return; liveOn = true;
-    while (el.classList.contains("show") && liveCam) {
-      try {
-        const r = await fetch(`/api/frame/${liveCam}?t=${Date.now()}`, {cache:"no-store"});
-        const img = document.getElementById("nxLive");
-        if (r.status === 200 && img) {
-          const u = URL.createObjectURL(await r.blob()); img.src = u; img.hidden = false;
-          const n = document.getElementById("nxNoLive"); if (n) n.hidden = true;
-          const t = document.getElementById("nxLiveTag"); if (t) t.hidden = false;
-          if (liveUrl) URL.revokeObjectURL(liveUrl); liveUrl = u;
-        } else if (r.status !== 200) {
-          const n = document.getElementById("nxNoLive"); if (n) n.textContent = "No picture from this camera right now";
-        }
-      } catch {}
-      await new Promise(r => setTimeout(r, 200));
-    }
-    liveOn = false;
+  function renderFire() {
+    if (!fireEl) return;
+    const list = [...fires.values()].sort((a, b) => (b.fire_level || 0) - (a.fire_level || 0));
+    const on = list.length > 0;
+    document.body.classList.toggle("nx-fire", on);
+    fireEl.classList.toggle("show", on && opt.fireBanner);
+    document.body.classList.toggle("nx-firebar", on && opt.fireBanner);
+    if (!on || !opt.fireBanner) return;
+    const e = list[0], l = e.fire_level || 2, w = e.type === "smoke" ? "SMOKE" : "FIRE";
+    const msg = {1: "Small " + w.toLowerCase() + " - immediate inspection required", 2: "Immediate emergency response required",
+                 3: "EVACUATE THE AFFECTED AREA IMMEDIATELY"}[l] || "";
+    fireEl.innerHTML = `<span class="lv">LEVEL ${l}</span><b>🔥 ${w} DETECTED</b><span>${esc(msg)}</span>
+      <span class="sp"></span><span>${esc(e.zone_name || e.zone_id || "")} · ${esc(e.camera_id || "safety station")} · ${fmt(e.started_at)}</span>
+      ${list.length > 1 ? `<span>+${list.length - 1} more</span>` : ""}<a class="btn sm" href="/#event=${encodeURIComponent(e.event_id)}">Open</a>`;
   }
 
   /* ---------- entrance verdict ---------- */
@@ -138,15 +96,19 @@ window.NetraxAlerts = (function () {
   function gate(g, o) {
     mount(); o = o || {};
     if (g.override) { closeGate(); return; }
-    const w = who(g);
-    if (o.compact && g.result === "approved") {
-      miniEl.innerHTML = `<span class="ic" aria-hidden="true">✓</span><div><b>${esc(w.name)}</b><span>Entrance: ${esc((g.verdict || "").replace(/^.*? - |^.*? verified - /, "")) || "verified"}</span></div>`;
-      miniEl.classList.add("show"); clearTimeout(miniT); miniT = setTimeout(() => miniEl.classList.remove("show"), 6000);
+    const w = who(g), can = opt.canAct() && g.result === "manual";
+    const head = {approved:"VERIFIED — YOU MAY ENTER", denied:"DO NOT ENTER", manual:"MANUAL CHECK REQUIRED"}[g.result] || g.result;
+    if (o.compact) {
+      const t = document.createElement("div");
+      t.className = "nxt " + ({approved: "ok", denied: "crit", manual: "warn"}[g.result] || "warn");
+      t.innerHTML = `<b>🚪 ${esc(head)}</b><span>${esc(w.name)} · ${esc(g.verdict || "")}</span>
+        ${can ? `<span class="acts"><button class="btn sm pri" data-gate="approved" data-id="${esc(g.event_id)}">Allow</button><button class="btn sm red" data-gate="denied" data-id="${esc(g.event_id)}">Refuse</button></span>` : ""}`;
+      stack.prepend(t);
+      while (stack.children.length > 3) stack.lastElementChild.remove();
+      if (g.result !== "manual") setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 400); }, 6000);
       return;
     }
-    const head = {approved:"VERIFIED — YOU MAY ENTER", denied:"DO NOT ENTER", manual:"MANUAL CHECK REQUIRED"}[g.result] || g.result;
     const ms = {approved:6000, denied:12000}[g.result];
-    const can = opt.canAct() && g.result === "manual";
     gateEl.className = "nxg show " + g.result;
     gateEl.innerHTML = `<div class="nxg-card"><svg class="nxg-mark" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45" transform="rotate(-90 50 50)"/>${MARK[g.result] || ""}</svg>
       <h1 class="nxg-head">${esc(head)}</h1>
@@ -160,7 +122,13 @@ window.NetraxAlerts = (function () {
       ${ms ? `<div class="nxg-bar" style="--t:${ms}ms"></div>` : ""}</div>`;
     clearTimeout(gateT); if (ms) gateT = setTimeout(closeGate, ms);
   }
-  async function onGateClick(ev) {
+  async function onClick(ev) {
+    const v = ev.target.closest("[data-nxview]");
+    if (v && !ev.target.closest("button")) {
+      v.remove();
+      if (opt.view) opt.view(v.dataset.nxview); else location.href = "/#event=" + encodeURIComponent(v.dataset.nxview);
+      return;
+    }
     const b = ev.target.closest("[data-gate]"); if (!b) return;
     if (b.dataset.gate === "close") return closeGate();
     b.disabled = true;
@@ -168,7 +136,8 @@ window.NetraxAlerts = (function () {
       const r = await fetch(`/api/entrance/${b.dataset.id}/decide`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({decision:b.dataset.gate, note:"manual check at the entrance"})});
       if (!r.ok) throw new Error(r.status);
       closeGate();
+      const t = b.closest(".nxt"); if (t) t.remove();
     } catch { b.disabled = false; b.textContent = "Not saved - try again"; }
   }
-  return {init: o => { Object.assign(opt, o); mount(); }, seed, offer, gate, closeGate, chips, who, iname};
+  return {init: o => { Object.assign(opt, o); mount(); }, seed, offer, gate, closeGate, chips, who, iname, whoOf};
 })();
