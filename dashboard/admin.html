@@ -326,6 +326,7 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script src="/static/alerts.js"></script>
+<script src="/static/zentrix.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -739,6 +740,21 @@ async function boot(){
   $("logoutBtn").hidden = !ME.auth;
   try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
   NetraxAlerts.init({canAct, onEvent: upsert, rail: "dock", view: id => openEvent(id)});
+  NetraxZentrix.init({handlers: {                       // 5 Nov: Zentrix commands that run on this page
+    event: o => openEvent(o.id),
+    report: o => {                                      // "generate today's report (as PDF)"
+      if (location.hash !== "#reports") location.hash = "reports";
+      setTimeout(() => {
+        initReports();
+        $("rFrom").value = toLocal(new Date(o.start * 1000)); $("rTo").value = toLocal(new Date(o.end * 1000));
+        document.querySelectorAll("[data-pre]").forEach(b => b.classList.remove("pri"));
+        const pick = (id, v) => { const el = $(id); if (!v) { el.value = ""; return; }
+          const opt = [...el.options].find(x => x.value === v || x.value.split(",").includes(v.split(",")[0])); el.value = opt ? opt.value : ""; };
+        pick("rType", o.type); pick("rZone", (o.zone || "").split(",")[0]); pick("rCam", (o.camera || "").split(",")[0]); pick("rWorker", (o.worker || "").split(",")[0]);
+        $("rForm").requestSubmit();
+        if (o.format === "pdf") setTimeout(() => $("rPdf").click(), 600); else if (o.format === "csv") setTimeout(() => $("rCsv").click(), 600);
+      }, 300);
+    }}});
   try { NetraxAlerts.seedGates(await api("/api/entrance?limit=10")); } catch {}
   try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs); evs.forEach(e => EVENTS.set(e.event_id, e)); } catch {}
   try { (await api("/api/notifications?limit=150")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}

@@ -175,6 +175,100 @@ def fire_payload(eid, bbox, growth=1.0, action="open", typ="fire", cam="cam_02",
             "frame_w": 1280, "frame_h": 720}
 
 
+def zentrix_tests():
+    """5 Nov: Zentrix command agent - chat / voice commands of the supervisor; acts ONLY on command."""
+    from fastapi.testclient import TestClient
+    from backend import agent
+
+    def live(badges):
+        m.EDGE.update(at=time.time(), state={"cameras": [{"camera_id": c, "status": "ONLINE", "fps": 5, "badge": b}
+                                                         for c, b in badges.items()]})
+
+    def zx(c, text):
+        return c.post("/api/zentrix", json={"text": text}).json()
+
+    def nav(text):
+        ui = agent.plan(text, "t", "admin", {"zones": m.ZONES, "cameras": m.CAMERAS})["ui"]
+        return ui[0] if ui else None
+    check("ZX", "commands open pages and sections (wake word + misspellings: 'hey zentrix open the admin pannel')",
+          nav("hey zentrix open the admin pannel") == {"op": "navigate", "url": "/admin"}
+          and nav("Zentrix, open the report generator") == {"op": "navigate", "url": "/admin#reports"}
+          and nav("go to hardware page") == {"op": "navigate", "url": "/hardware"}
+          and nav("take me to the control panel") == {"op": "navigate", "url": "/"}
+          and nav("open entrance dashboard") == {"op": "navigate", "url": "/entrance"}
+          and nav("entrance denied today") is None,
+          [nav("hey zentrix open the admin pannel"), nav("entrance denied today")])
+    check("ZX", "camera commands: enlarge by zone or number, back to all cameras; a PPE question is not a camera command",
+          nav("enlarge the welding bay camera") == {"op": "focus", "cam": "cam_01"}
+          and nav("zentrix enlarge camera two") == {"op": "focus", "cam": "cam_02"}
+          and nav("show all cameras") == {"op": "unfocus"}
+          and nav("show helmet violations in the welding bay") is None,
+          [nav("enlarge the welding bay camera"), nav("zentrix enlarge camera two")])
+    with TestClient(m.app) as c:
+        now = time.time()
+        c.post("/api/events", json=ppe_payload("evt_zx_live", ["helmet", "vest"], t=now - 20))
+        c.post("/api/events", json=ppe_payload("evt_zx_gone", ["gloves"], cam="cam_02", zone="warehouse", t=now - 300))
+        live({"cam_01": "NO HELMET / VEST", "cam_02": None})
+        a = zx(c, "hey zentrix pls analyse the recent alerts")
+        byid = {x["event_id"]: x for x in a["analysis"]}
+        st0 = (db.get_event("evt_zx_live")["status"], db.get_event("evt_zx_gone")["status"])
+        check("ZX", "analyse = live verification: violation still on camera -> acknowledge; no longer seen -> resolve; "
+                    "NOTHING changes without a command",
+              byid["evt_zx_live"]["verdict"].startswith("STILL HAPPENING") and byid["evt_zx_live"]["recommend"] == "ack"
+              and byid["evt_zx_gone"]["recommend"] == "resolve" and a["suggest"] and st0 == ("open", "open"),
+              f"{byid['evt_zx_live']['verdict']} / {byid['evt_zx_gone']['verdict']} / {a['reply'][:120]}")
+        live({"cam_01": "NO HELMET / VEST", "cam_02": None})
+        b = zx(c, "apply")
+        e1, e2 = db.get_event("evt_zx_live"), db.get_event("evt_zx_gone")
+        check("ZX", "'apply' carries out the recommendations through the normal actions (audited: user + 'via Zentrix')",
+              e1["status"] == "acknowledged" and e2["status"] == "resolved" and b["reply"].startswith("Done")
+              and any("via Zentrix" in (x.get("note") or "") for x in e1["actions"]), b["reply"])
+        c.post("/api/events", json=ppe_payload("evt_zx_a", ["helmet"], t=now - 3))
+        c.post("/api/events", json=ppe_payload("evt_zx_b", ["vest"], cam="cam_02", zone="warehouse", t=now - 1))
+        r1 = zx(c, "acknowlege the latest alert")
+        check("ZX", "a single clear command runs at once ('acknowlege the latest alert' -> newest alert acknowledged)",
+              db.get_event("evt_zx_b")["status"] == "acknowledged" and db.get_event("evt_zx_a")["status"] == "open"
+              and r1["done"] == 1, r1["reply"])
+        r2 = zx(c, "resolve all the alerts")
+        unchanged = db.get_event("evt_zx_a")["status"] == "open"
+        r3 = zx(c, "cancel")
+        r4 = zx(c, "resolve all the alerts")
+        r5 = zx(c, "yes confirm")
+        check("ZX", "bulk resolve asks for confirmation first; 'cancel' changes nothing; 'confirm' resolves them all",
+              r2["confirm"] and unchanged and "Cancelled" in r3["reply"] and db.get_event("evt_zx_a")["status"] == "resolved"
+              and db.get_event("evt_zx_b")["status"] == "resolved" and r5["reply"].startswith("Done"),
+              f"{r2['reply'][:90]} | {r5['reply'][:80]}")
+        c.post("/api/events", json=ppe_payload("evt_zx_c", ["helmet"], t=now - 5))
+        r6 = zx(c, "analyse the recent alerts and acknowledge them")
+        check("ZX", "'analyse ... and acknowledge them' = analysis + the commanded action on exactly those alerts",
+              "analyse" in r6["intents"] and "action" in r6["intents"] and db.get_event("evt_zx_c")["status"] == "acknowledged",
+              r6["reply"][:140])
+        c.post("/api/events", json=ppe_payload("evt_zx_d", ["helmet", "vest"], t=now - 2))
+        c.post("/api/events", json=ppe_payload("evt_zx_e", ["mask"], cam="cam_02", zone="warehouse", t=now - 240))
+        live({"cam_01": "NO HELMET / VEST", "cam_02": None})
+        r7 = zx(c, "hey zentrix pls analyse the recenmt alerts and acknowlege or mark resolve")
+        check("ZX", "'analyse the recent alerts and acknowledge OR resolve' (user's words, misspelt) -> each alert gets "
+                    "the verified choice: still on camera = acknowledged, no longer seen = resolved",
+              db.get_event("evt_zx_d")["status"] == "acknowledged" and db.get_event("evt_zx_e")["status"] == "resolved",
+              r7["reply"][:160])
+        q = zx(c, "any fire today?")
+        check("ZX", "questions about the past are answered from the records (grounded history assistant)",
+              q["history"] and q["history"]["grounded"] and "question" in q["intents"], q["reply"][:100])
+    vw = agent.plan("resolve all alerts", "v", "viewer", {"zones": m.ZONES, "cameras": m.CAMERAS})
+    vn = agent.plan("open admin", "v", "viewer", {"zones": m.ZONES, "cameras": m.CAMERAS})
+    check("ZX", "a viewer can ask and move around but cannot change records",
+          not vw["execute"] and not vw["confirm"] and "cannot" in vw["reply"] and vn["ui"][0]["url"] == "/admin", vw["reply"])
+    ent = [agent._entrance_decision(agent.normalise(x)) for x in
+           ("allow the person at the entrance", "refuse entry at the gate", "acknowledge the alert")]
+    check("ZX", "entrance commands: allow / refuse the person at the entrance", ent == ["approved", "denied", None], ent)
+    m.EDGE.update(at=0.0, state=None)
+    import numpy as _np
+    from edge.stream import black_picture
+    check("12", "camera health: a black picture (covered lens / stuck USB camera, seen live 5 Nov) is reported as such",
+          black_picture(_np.zeros((480, 640, 3), _np.uint8)) and not black_picture(_np.full((480, 640, 3), 90, _np.uint8))
+          and not black_picture(None))
+
+
 def pipeline_test():
     import types
     import numpy as np
@@ -758,6 +852,7 @@ async def main():
     check("REP", "PDF and CSV downloads (named by the time range); end before start refused",
           pdf.status_code == 200 and pdf.content[:4] == b"%PDF" and "netrax_report_" in pdf.headers.get("content-disposition", "")
           and csvr.status_code == 200 and csvr.text.startswith("event_id") and bad.status_code == 400)
+    zentrix_tests()
     from edge.stream import StreamReader
     sr = StreamReader("cam_x", 0, 12)
     sr.frame_ts, sr.active_since, sr.fps = time.time(), 0, 30.0

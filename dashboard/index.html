@@ -173,6 +173,9 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 .popup .approved{border-color:var(--ok)} .popup .approved h1{color:var(--ok)}
 .popup .denied{border-color:var(--crit)} .popup .denied h1{color:var(--crit)}
 .popup .manual{border-color:var(--warn)} .popup .manual h1{color:var(--warn)}
+/* 5 Nov: two separate alert sections (entrance / PPE + fire + smoke) */
+.secbox{border-top:4px solid var(--line)} .sec-gate{border-top-color:var(--ok)} .sec-ppe{border-top-color:var(--crit)}
+.secscroll{max-height:330px;overflow:auto;padding-right:2px}
 /* assistant */
 .ask{display:flex;gap:8px}
 .ask input{flex:1;padding:11px 13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:16px}
@@ -241,26 +244,18 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
         <button class="btn" id="unfocus" hidden>Show all cameras</button></h2>
       <div class="cams" id="cams"></div>
     </section>
-    <section class="panel" aria-label="AI assistant">
-      <h2>🤖 AI assistant · event history <span class="sp"></span><span class="small">answers only from saved records</span></h2>
-      <form class="ask" id="askForm"><label class="sr" for="askQ">Question</label>
-        <input id="askQ" placeholder="e.g. What happened yesterday at 4:00 PM?" autocomplete="off" maxlength="300">
-        <button class="btn pri" type="submit">Ask</button></form>
-      <div class="chips" id="askChips"></div>
-      <div id="askOut"></div>
-    </section>
   </div>
 
   <div class="stack">
-    <section class="panel nxside" aria-label="Entrance results" id="gatePanel">
-      <div class="alerthead"><h2 style="margin:0">🚪 Entrance</h2><span class="sp" style="flex:1"></span><a class="small" href="/entrance">Entrance dashboard ›</a></div>
+    <section class="panel nxside secbox sec-gate" aria-label="Entrance alerts" id="gatePanel">
+      <div class="alerthead"><h2 style="margin:0">🚪 Entrance alerts</h2><span class="sp" style="flex:1"></span><span class="small" id="gateCount"></span><a class="small" href="/entrance">Entrance dashboard ›</a></div>
       <p class="small" style="margin:4px 0 10px">Green = verified, may enter · Red = do not enter · Amber = manual check</p>
-      <div class="nxlist" id="gateSide"></div>
+      <div class="nxlist secscroll" id="gateSide"></div>
     </section>
-    <section class="panel" aria-label="Live alerts" id="alertPanel">
-      <div class="alerthead" id="alertHead"><h2 style="margin:0">Live alerts</h2><span class="sp" style="flex:1"></span><span class="pill p-crit" id="nActive">0 active</span>
+    <section class="panel secbox sec-ppe" aria-label="PPE, fire and smoke alerts" id="alertPanel">
+      <div class="alerthead" id="alertHead"><h2 style="margin:0">⚠ PPE · 🔥 Fire · Smoke alerts</h2><span class="sp" style="flex:1"></span><span class="pill p-crit" id="nActive">0 active</span>
         <button class="btn" id="muteBtn" style="font-size:12px;padding:4px 9px" aria-pressed="false" title="Alert sound on / off">🔔</button></div>
-      <p class="small" style="margin:4px 0 10px">Every violation appears here at once, newest first, and stays until it is acknowledged and resolved.</p>
+      <p class="small" style="margin:4px 0 10px">One alert per violation, newest first. A new missing item glows on the same card. Stays until acknowledged and resolved.</p>
       <div class="tabs" role="group" aria-label="Incident filter">
         <button class="tab" data-f="active" aria-pressed="true">Active</button>
         <button class="tab" data-f="ack" aria-pressed="false">Acknowledged</button>
@@ -289,6 +284,7 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 
 <script src="/static/alerts.js"></script>
 <script src="/static/video.js"></script>
+<script src="/static/zentrix.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -472,7 +468,8 @@ function renderCams(){
     const icon = {ONLINE:"●", DEGRADED:"◐", OFFLINE:"✖", OFF:"○", STANDBY:"○"}[c.status] || "?";
     const age = FRAME_AGE[c.camera_id];
     const vf = NetraxVideo.fps[c.camera_id];
-    st.textContent = `${icon} ${c.status === "ONLINE" ? "LIVE" : c.status}${c.status === "ONLINE" || c.status === "DEGRADED" ? `${vf ? ` · ${Math.round(vf)} fps` : ""} · AI ${c.fps}/s${age != null ? ` · ${age} ms` : ""}` : ""}`;
+    if (/^picture is black/.test(c.detail || "")){ st.textContent = "◐ BLACK PICTURE · re-plug camera"; st.title = c.detail; }
+    else st.textContent = `${icon} ${c.status === "ONLINE" ? "LIVE" : c.status}${c.status === "ONLINE" || c.status === "DEGRADED" ? `${vf ? ` · ${Math.round(vf)} fps` : ""} · AI ${c.fps}/s${age != null ? ` · ${age} ms` : ""}` : ""}`;
     st.title = "video pictures per second · AI checks per second · picture age";
     if (off) off.innerHTML = c.status === "OFF" ? `<div class="offmsg"><b>Camera not connected</b><span>Connect a phone with IP Webcam to the same Wi-Fi, then run tools.find_phones --write.</span></div>`
       : `<div class="offmsg"><b>No picture</b><span>${esc(c.detail || "No signal")}</span></div>`;
@@ -526,7 +523,7 @@ NetraxVideo.onAge((cam, a) => { if (PERF.preview_age_ms.length < 600) PERF.previ
 
 /* ---------- incidents ---------- */
 function inFilter(e){
-  if (e.type === "entrance_check" && e.status === "closed" && FILTER !== "all" && FILTER !== "done") return false;
+  if (e.type === "entrance_check") return false;        // 5 Nov: entrance results have their own section
   if (FILTER === "active") return ACTIVE.has(e.status);
   if (FILTER === "ack") return e.status === "acknowledged";
   if (FILTER === "done") return DONE.has(e.status);
@@ -623,6 +620,9 @@ document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeModal
 /* ---------- entrance ---------- */
 function renderGateSide(){
   const box = $("gateSide"); if (!box) return;
+  const day0 = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
+  const td = ENTR.filter(g => g.at >= day0), r = g => g.override ? g.override.decision : g.result;
+  $("gateCount").textContent = td.length ? `today ✓ ${td.filter(g => r(g) === "approved").length} · ✖ ${td.filter(g => r(g) === "denied").length} · ⚠ ${td.filter(g => r(g) === "manual").length}` : "";
   NetraxAlerts.keyed(box, ENTR.filter(g => Date.now() / 1000 - g.at < 3 * 3600).slice(0, 4), g => g.event_id, NetraxAlerts.gateCard,
     "No entrance checks in the last 3 hours. The USB entrance camera decides when a person stands in front of it.");
 }
@@ -711,27 +711,6 @@ async function renderPerf(){
 }
 setInterval(() => { const b = {}; for (const k in PERF){ b[k] = PERF[k].splice(0); } if (b.preview_age_ms.length || b.dashboard_event_ms.length) post("/api/perf/client", b).catch(()=>{}); }, 10000);
 
-/* ---------- AI assistant ---------- */
-const EXAMPLES = ["What happened yesterday at 4:00 PM?", "Any fire or smoke today?", "Show helmet violations in the last 2 hours", "Entrance denied today", "Open alerts in the welding bay", "Who entered the welding bay today?"];
-$("askChips").innerHTML = EXAMPLES.map(q => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("");
-$("askChips").onclick = ev => { const b = ev.target.closest("[data-q]"); if (b){ $("askQ").value = b.dataset.q; ask(); } };
-$("askForm").onsubmit = ev => { ev.preventDefault(); ask(); };
-async function ask(){
-  const q = $("askQ").value.trim(); if (!q) return;
-  $("askOut").innerHTML = `<div class="answer"><span class="small">Searching the event database…</span></div>`;
-  try {
-    const r = await post("/api/assistant", {question: q});
-    $("askOut").innerHTML = `<div class="answer"><div class="ans">${esc(r.answer)}</div>
-      ${r.details && r.details.length ? `<ul>${r.details.map(d => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
-      <div class="note">Searched ${esc(r.interpretation.from)} → ${esc(r.interpretation.to)}${Object.keys(r.interpretation.filters).length ? " · filters: " + esc(Object.entries(r.interpretation.filters).map(([k,v]) => k + "=" + (Array.isArray(v) ? v.join("/") : v)).join(", ")) : ""}.
-        ${r.notes.length ? esc(r.notes.join(". ")) + "." : ""} ${r.unavailable.length ? "Unavailable: " + esc(r.unavailable.join("; ")) + "." : ""} ${r.llm ? "Worded by an LLM from these records only." : "Answer built only from database records."}</div>
-      ${r.records.length ? `<div class="recs">${r.records.slice().reverse().map(c => `<div class="rec" data-a="view" data-id="${esc(c.event_id)}" role="button" tabindex="0">
-        ${c.snapshot ? `<img src="${c.snapshot}" alt="" loading="lazy">` : `<span class="small" style="width:72px;text-align:center">no image</span>`}
-        <div><b>${esc(c.what)}</b>${c.clip ? ` <span class="pill p-info">▶ clip</span>` : ""}<br><small>${esc(c.time)} · ${esc(c.zone || "")} · ${esc(c.camera || "station")} · ${esc(c.status)}${c.worker ? " · " + esc(c.worker) : ""}</small></div></div>`).join("")}</div>` : ""}
-      ${r.attendance && r.attendance.length ? `<div class="note">RFID: ${r.attendance.map(a => esc(`${a.time} ${a.name || a.worker_id || "?"} ${a.event || ""}`)).join(" · ")}</div>` : ""}</div>`;
-  } catch (x){ $("askOut").innerHTML = `<div class="answer">Could not answer: ${esc(x.message)}</div>`; }
-}
-
 /* ---------- toasts, sound ---------- */
 function toast(head, body, kind){
   const t = document.createElement("div"); t.className = "toast";
@@ -806,6 +785,15 @@ async function boot(){
   try { (await api("/api/notifications?limit=100")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
   try { ENTR = await api("/api/entrance?limit=20"); renderGate(); } catch {}
   try { LOC = await api("/api/location"); renderLoc(); } catch {}
+  NetraxZentrix.init({handlers: {                       // 5 Nov: what Zentrix may do on this page (on command only)
+    focus: o => { FOCUS = o.cam; renderCams(); $("camPanel").scrollIntoView({behavior: "smooth", block: "start"}); },
+    unfocus: () => { FOCUS = null; VIEW = "grid"; renderCams(); $("camPanel").scrollIntoView({behavior: "smooth", block: "start"}); },
+    view: o => { FOCUS = null; VIEW = o.mode; try { localStorage.setItem("netrax-cam-view", VIEW); } catch {} renderCams(); },
+    fullscreen: () => { const p = $("camPanel"); if (p.requestFullscreen) p.requestFullscreen().catch(() => { FOCUS = null; VIEW = "big"; renderCams();
+      toast("Full screen", "The browser allows full screen only after a click - press ⛶ Full screen. Focus view is on."); }); },
+    event: o => openEvent(o.id),
+    mute: o => { MUTED = o.on; $("muteBtn").textContent = MUTED ? "🔕" : "🔔"; $("muteBtn").setAttribute("aria-pressed", MUTED); try { localStorage.setItem("netrax-mute", MUTED ? "1" : "0"); } catch {} },
+    theme: o => { document.documentElement.dataset.theme = o.mode; try { localStorage.setItem("netrax-cr-theme", o.mode); } catch {} }}});
   SEEN.add("_boot");
   renderIncidents(); renderAlertZone(); refreshSlow();
   connect();

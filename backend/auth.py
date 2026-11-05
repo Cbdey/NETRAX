@@ -157,7 +157,7 @@ PUBLIC = ("/login", "/api/login", "/api/logout", "/static/theme.css", "/static/t
           "/favicon.ico")
 LOCAL_ONLY = ("/api/workers/gallery",)
 ADMIN_PREFIX = ("/api/workers", "/api/notify/test", "/api/users", "/api/cameras/")
-VIEWER_POST_OK = ("/api/assistant", "/api/perf/client", "/api/logout")
+VIEWER_POST_OK = ("/api/assistant", "/api/zentrix", "/api/perf/client", "/api/logout")
 
 
 def is_local(ip):

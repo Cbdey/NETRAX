@@ -304,3 +304,24 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
 - 5 Nov entrance id_wait_s 2.0 -> 1.0 (entrance decision was ~6 s with a manual result).
 - 5 Nov LIVE measurement (real cameras, docs/eval/latency_report.md): laptop cam 12 fps live, picture age 39 ms median; USB C270 7.5 fps
   (camera limit in a dim room); AI 6.9 / 4.0 checks/s; frame -> alert on the dashboard 0.28 s.
+- 5 Nov evening ZENTRIX command agent (teacher: "portal run by the AI when supervisor/admin is absent, but only on their command"):
+  backend/agent.py plan() (pure) + POST /api/zentrix (main.zentrix, _zx_execute through the normal _act / entrance_override paths,
+  audit 'zentrix_command', action note "via Zentrix: <command>"). Understands typed + spoken commands, wake word "hey zentrix",
+  misspellings (difflib onto VOCAB): navigate (pages + admin sections), cameras (enlarge by zone/number, all cameras, focus view,
+  full screen), analyse = LIVE VERIFICATION per alert (camera tile badge still shows it / station confirmed / camera offline /
+  weak confidence / acked but unfixed) -> verdict + recommendation; 'apply' runs them; act on alerts (ack / resolve / false alarm /
+  escalate; "acknowledge OR resolve" = per alert the verified choice), entrance allow / refuse, reports, mute, theme, questions ->
+  assistant.answer. NEVER automatic. Confirmation (ZX_PENDING per user, 120 s) for bulk resolve / dismiss, fire, >1 escalation,
+  overriding an entrance refusal. Viewer: questions + navigation only, names masked. dashboard/zentrix.js on every page
+  (floating bottom-left panel, Alt+Z, push-to-talk 🎙 Alt+M, 👂 always-listen for "Hey Zentrix", spoken replies; Web Speech API
+  needs Edge/Chrome, a secure page (http://127.0.0.1:8000 or https) and internet; commands for another page are queued in
+  sessionStorage and finish there). Pages register handlers (index: focus/unfocus/view/fullscreen/event/mute/theme; admin:
+  event/report). Old control-room assistant panel removed (Zentrix answers history questions). Tests: final_selftest [ZX] x11.
+- 5 Nov evening control room: two separate sections - "Entrance alerts" (green/red/amber, today's counts) and "PPE · Fire · Smoke
+  alerts" (entrance checks no longer in that list).
+- 5 Nov evening: rearm_s 5.0 -> 2.5 (fixed PPE then took it off again: new alert 3.8 s -> 1.4-1.8 s; edge.selftest test added).
+  live_fps 12 -> 15. video.js decodes each picture off-screen and swaps only decoded ones, newest-only while busy.
+  edge/stream.black_picture: a black picture -> DEGRADED + detail "picture is black ..." (tile: BLACK PICTURE · re-plug camera).
+  USB C270 gave black frames at 1 fps until the edge reopened it after a stop (then 7.5 fps again).
+- 5 Nov evening live video measured (20 s, 3 cameras, /ws/video): laptop 14.9 fps, longest gap 98 ms, age 32 ms; phone 13.5 fps,
+  max gap 157 ms, age 42 ms (after the edge receives it; phone already 960x720 q49); USB 7.4 fps (camera), age 31 ms.

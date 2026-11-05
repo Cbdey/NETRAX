@@ -123,6 +123,7 @@ td img{width:78px;height:50px;object-fit:cover;border-radius:8px;display:block;b
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script src="/static/alerts.js"></script>
+<script src="/static/zentrix.js"></script>
 <script src="/static/video.js"></script>
 <script>
 const $ = id => document.getElementById(id);
@@ -240,6 +241,7 @@ function connect(){
   try { ME = await api("/api/me"); } catch { return; }
   $("userChip").textContent = `👤 ${ME.user || "local"} · ${String(ME.role).toUpperCase()}`;
   NA.init({canAct, role: () => ME.role, tone: () => {}, rail: "dock", railGate: false, view: id => { location.href = "/#event=" + encodeURIComponent(id); }});
+  NetraxZentrix.init({});
   try { NA.seed(await api("/api/events?limit=300")); } catch {}
   try { LOG = await api("/api/entrance?limit=200"); } catch {}
   renderAll(); await slow(); connect();

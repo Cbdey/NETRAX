@@ -18,7 +18,7 @@ from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketD
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import actuators, assistant, auth, db, fire_levels, location, notify, perf, reports, timeutil
+from . import actuators, agent, assistant, auth, db, fire_levels, location, notify, perf, reports, timeutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.environ.get("SENTINELEYE_DATA_DIR") or os.path.join(ROOT, "data")   # override: tests only
@@ -1263,6 +1263,93 @@ async def ask(request: Request, body: dict = Body(...)):
     perf.add("assistant_ms", res["ms"])
     db.audit(u.get("user"), u.get("role"), "assistant_query", None, q[:200], _ip(request))
     return res
+
+
+# ---------- Zentrix command agent (5 Nov): chat + voice commands of the supervisor / admin ----------
+ZX_PENDING = {}      # user -> {"execute": [...], "at": t}: waiting for "confirm" (expires after ZX_CONFIRM_S)
+ZX_CONFIRM_S = 120
+
+
+async def _zx_execute(steps, text, request, role):
+    """Run the agent's record actions through the normal supervisor paths (same checks, audit log, broadcasts)."""
+    done, skipped = [], []
+    if role not in ("supervisor", "admin"):
+        return done, [f"your role ({role}) cannot change records"]
+    note = f"via Zentrix: {text[:150]}"
+    for s in steps:
+        try:
+            if s["kind"] == "event":
+                e = db.get_event(s["event_id"])
+                if not e or e["status"] not in agent.APPLIES[s["action"]]:     # changed meanwhile: leave it
+                    skipped.append(f"{agent._title(e) if e else s['event_id']} is already {e['status'] if e else 'gone'}")
+                    continue
+                await _act(s["event_id"], s["action"], agent.STATUS_OF[s["action"]], {"note": note}, request)
+                done.append((s["action"], agent._title(e)))
+            elif s["kind"] == "entrance":
+                await entrance_override(s["event_id"], request, {"decision": s["decision"], "note": note})
+                done.append(("entrance_" + s["decision"], s["event_id"]))
+        except HTTPException as x:
+            skipped.append(str(x.detail))
+    return done, skipped
+
+
+@app.post("/api/zentrix")
+async def zentrix(request: Request, body: dict = Body(...)):
+    """One typed or spoken command -> reply + UI operations for the browser + record actions (ONLY on command)."""
+    text = ((body or {}).get("text") or "").strip()[:400]
+    if not text:
+        raise HTTPException(400, "say or type a command, e.g. 'analyse the recent alerts'")
+    t0 = time.time()
+    u = current_user(request)
+    user, role = u.get("user") or "local", u.get("role") or "viewer"
+    pend = ZX_PENDING.get(user)
+    if pend and t0 - pend["at"] > ZX_CONFIRM_S:
+        ZX_PENDING.pop(user, None)
+        pend = None
+    ctx = {"workers": db.q("SELECT worker_id, name FROM workers"), "zones": ZONES, "cameras": CAMERAS,
+           "live": cameras_payload(), "now": t0, "page": (body or {}).get("page"), "mask": role == "viewer"}
+    res = await asyncio.to_thread(agent.plan, text, user, role, ctx, pend)
+    confirming = "confirm" in res["intents"]
+    if confirming or res.get("cancel") or res["execute"] or res["confirm"] or res.get("suggest") or \
+            set(res["intents"]) - {"question", "help"}:
+        ZX_PENDING.pop(user, None)                 # a new command replaces an old unconfirmed plan
+    done, skipped = await _zx_execute(res["execute"], text, request, role) if res["execute"] else ([], [])
+    if confirming:
+        if done:
+            n = {}
+            for a, _ in done:
+                n[a] = n.get(a, 0) + 1
+            words = {"ack": "acknowledged", "resolve": "resolved", "dismiss": "marked as false alarm",
+                     "escalate": "escalated", "entrance_approved": "allowed at the entrance",
+                     "entrance_denied": "refused at the entrance"}
+            res["reply"] = "Done: " + ", ".join(f"{k} {words.get(a, a)}" for a, k in n.items()) + "."
+        else:
+            res["reply"] = "Nothing was changed."
+    if skipped:
+        res["reply"] += " Skipped: " + "; ".join(skipped[:4]) + "."
+    if res["confirm"] and role in ("supervisor", "admin"):
+        ZX_PENDING[user] = {"execute": res["confirm"]["execute"], "at": t0}
+    elif res.get("suggest") and role in ("supervisor", "admin"):
+        ZX_PENDING[user] = {"execute": res["suggest"]["execute"], "at": t0}
+    hist = None
+    if res.get("ask_history"):
+        sec = notify.load_secrets().get("assistant") or {}
+        hist = await asyncio.to_thread(assistant.answer, res["ask_history"][:500], user, role, ctx["workers"], ZONES,
+                                       CAMERAS, None, sec.get("anthropic_api_key") or None, sec.get("model"))
+        res["reply"] = (res["reply"] + " " + hist["answer"]).strip()
+    res["speak"] = res["reply"][:400]
+    ms = round((time.time() - t0) * 1000, 1)
+    perf.add("assistant_ms", ms)
+    db.audit(user, role, "zentrix_command", None, text[:200], _ip(request))
+    analysis = res["analysis"]
+    if role == "viewer":
+        for a in analysis:
+            a["snapshot"] = None
+    return {"reply": res["reply"], "speak": res["speak"], "ui": res["ui"], "heard": res["heard"],
+            "intents": res["intents"], "analysis": analysis, "done": len(done),
+            "confirm": res["confirm"] if res["confirm"] and role in ("supervisor", "admin") else None,
+            "suggest": bool(res.get("suggest")) and role in ("supervisor", "admin"),
+            "history": hist, "ms": ms}
 
 
 # ---------- history search (section 10) ----------

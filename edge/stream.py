@@ -38,6 +38,7 @@ class StreamReader(threading.Thread):
         self.frame, self.frame_ts, self.frame_no = None, 0.0, 0
         self.running = True
         self.fps = 0.0
+        self.black = False              # 5 Nov: black picture (covered lens / stuck USB camera)
         self.state = "OFFLINE"
         self.detail = "starting"
         self.is_file = isinstance(source, str) and not source.startswith(("http", "rtsp"))
@@ -140,6 +141,12 @@ class StreamReader(threading.Thread):
                 if time.time() - t_count >= 2.0:
                     self.fps = n_count / (time.time() - t_count)
                     t_count, n_count = time.time(), 0
+                    # 5 Nov: a stuck / covered USB camera delivers BLACK pictures at ~1 fps - say so instead of 'DEGRADED'
+                    self.black = black_picture(frame)
+                    if self.black:
+                        self.detail = "picture is black - lens covered or camera stuck: unplug and re-plug the camera"
+                    elif self.detail.startswith("picture is black"):
+                        self.detail = "ok"
                 if period:
                     time.sleep(max(0.0, period - (time.time() - t0)))
             cap.release()
@@ -158,7 +165,7 @@ class StreamReader(threading.Thread):
             return self.state
         if age > 10:
             self.state = "OFFLINE"
-        elif age > 2 or (self.fps and self.fps < 4) or processed_fps < 1.0:
+        elif age > 2 or (self.fps and self.fps < 4) or processed_fps < 1.0 or getattr(self, "black", False):
             # 4 Nov: degraded = the CAMERA is slow / stale or the AI has (almost) stopped. The AI rate itself is
             # shared by all cameras on one GPU (3-6 checks/s each with 3 cameras); the live video runs separately.
             self.state = "DEGRADED"
@@ -168,3 +175,11 @@ class StreamReader(threading.Thread):
 
     def stop(self):
         self.running = False
+
+
+def black_picture(frame, level=4.0):
+    """True if the picture is (almost) completely black: covered lens or a stuck camera driver."""
+    try:
+        return frame is not None and float(frame[::16, ::16].mean()) < level
+    except Exception:              # noqa: BLE001
+        return False

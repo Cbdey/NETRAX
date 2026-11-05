@@ -1,6 +1,6 @@
 # NETRAX final acceptance self-test
 
-Run: 05 Nov 2026, 19:59:11 IST - `python -m tools.final_selftest`
+Run: 05 Nov 2026, 20:35:14 IST - `python -m tools.final_selftest`
 
 Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the real services; the live-provider and camera tests are in docs/NETRAX_Final_Test_Guide.pdf.
 
@@ -34,7 +34,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 09 | SMS: first try fails (HTTP 503) -> retried -> delivered, attempts logged | PASS | attempts 2 |
 | 09 | SMS text has type, severity, location, time and recommended action | PASS |  |
 | 09 | e-mail: SMTP drop -> retried -> accepted by the mail server ('sent', never claimed 'delivered') | PASS |  |
-| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 18 ms |
+| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 19 ms |
 | 13 | Telegram failure retried (bounded) then shown as FAILED with the reason - never 'delivered' | PASS |  |
 | 13 | system health shows the failing channel | PASS |  |
 | 13 | no credentials -> NOT CONFIGURED (clearly labelled), nothing claimed as sent | PASS |  |
@@ -45,7 +45,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 10 | type filter (smoke) + whole day | PASS |  |
 | 10 | viewer role: worker names hidden in the answer | PASS |  |
 | 10 | every question logged | PASS |  |
-| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 3, "p50": 1.0, "p95": 1.0, "max": 1.0, "mean": 0.7} |
+| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 8, "p50": 0.0, "p95": 0.0, "max": 0.0, "mean": 0.0} |
 | 14 | no GPS + no configured site -> 'Location unavailable' + zone label (never invented) | PASS |  |
 | 14 | valid device GPS -> shown with source, accuracy and map link | PASS |  |
 | 14 | 1-hour-old reading -> marked STALE and not used | PASS |  |
@@ -87,17 +87,28 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | CLIP | viewer role: clip hidden (no link, file 403) | PASS |  |
 | CLIP | supervisor: dashboard record has the clip and it downloads (video/mp4) | PASS |  |
 | CLIP | retention: clips older than snapshot_retention_days are deleted like snapshots | PASS |  |
-| 12 | live video: pictures are pushed over one WebSocket with camera + capture time; a viewer gets only its cameras | PASS | ['cam_02/1793888932.347/1793888932.564', 'cam_02/1793888932.524/1793888932.564'] |
-| REP | report generator: time range -> summary (totals, most missed PPE, by zone / camera / worker) + records | PASS | ['Period: 29 Oct 2026 19:59 to 05 Nov 2026 19:59 (IST) - 20 record(s).', 'By type: Entrance check 12, PPE violation 6, Smoke 1, Fire 1.'] |
+| 12 | live video: pictures are pushed over one WebSocket with camera + capture time; a viewer gets only its cameras | PASS | ['cam_02/1793891097.364/1793891097.569', 'cam_02/1793891097.529/1793891097.569'] |
+| REP | report generator: time range -> summary (totals, most missed PPE, by zone / camera / worker) + records | PASS | ['Period: 29 Oct 2026 20:35 to 05 Nov 2026 20:35 (IST) - 20 record(s).', 'By type: Entrance check 12, PPE violation 6, Smoke 1, Fire 1.'] |
 | REP | filters work (PPE violations in the welding bay only) | PASS |  |
 | REP | PDF and CSV downloads (named by the time range); end before start refused | PASS |  |
+| ZX | commands open pages and sections (wake word + misspellings: 'hey zentrix open the admin pannel') | PASS | [{'op': 'navigate', 'url': '/admin'}, None] |
+| ZX | camera commands: enlarge by zone or number, back to all cameras; a PPE question is not a camera command | PASS | [{'op': 'focus', 'cam': 'cam_01'}, {'op': 'focus', 'cam': 'cam_02'}] |
+| ZX | analyse = live verification: violation still on camera -> acknowledge; no longer seen -> resolve; NOTHING changes without a command | PASS | STILL HAPPENING: Chinmaya without helmet, safety vest / No longer seen - looks finished / I checked 7 active alerts. 4 still need attention, 2 look finished and can be resolved, 1 cannot be verified because the |
+| ZX | 'apply' carries out the recommendations through the normal actions (audited: user + 'via Zentrix') | PASS | Done: 3 acknowledged, 2 resolved. |
+| ZX | a single clear command runs at once ('acknowlege the latest alert' -> newest alert acknowledged) | PASS | Acknowledged: Missing safety vest - Chinmaya. |
+| ZX | bulk resolve asks for confirmation first; 'cancel' changes nothing; 'confirm' resolves them all | PASS | Please confirm: Resolve 7 alerts: Missing safety vest - Chinmaya; Missing helmet - Chinmay / Done: 7 resolved. |
+| ZX | 'analyse ... and acknowledge them' = analysis + the commanded action on exactly those alerts | PASS | I checked 1 active alert. 1 still need attention. Acknowledged: Missing helmet - Chinmaya. |
+| ZX | 'analyse the recent alerts and acknowledge OR resolve' (user's words, misspelt) -> each alert gets the verified choice: still on camera = acknowledged, no longer seen = resolved | PASS | I checked 3 active alerts. 2 still need attention, 1 look finished and can be resolved. 1 alert left for you to decide (cannot be verified). Done as verified: a |
+| ZX | questions about the past are answered from the records (grounded history assistant) | PASS | Between 05 Nov 2026, 00:00:00 IST to 20:34:58 IST: 1 incident - 1 fire (level 3). |
+| ZX | a viewer can ask and move around but cannot change records | PASS | Your role (viewer) cannot resolve alerts - ask a supervisor or admin. |
+| ZX | entrance commands: allow / refuse the person at the entrance | PASS | ['approved', 'denied', None] |
 | 12 | camera health: a fresh 30 fps camera is ONLINE although the shared AI checks it only 3.5x/s (live video is separate) | PASS |  |
-| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 48 ms for 3 cameras |
-| 12 | AI process: every camera gets ITS OWN frame's result back (portrait + landscape + a resized camera) | PASS | stats {'batch_ms_p50': 11.7, 'batch_ms_p95': 11.7, 'wait_ms_p50': 18.3, 'wait_ms_p95': 29.1, 'batch_size_avg': 1.5, 'gpu_busy_share': 0.01, 'process': True} |
-| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1109 ms, 11 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 11, 'missing': 0, 'unverifiable': 0, 'frames': 11}, 'vest': {'compliant': 11, 'missing': 0, 'unverifiable': 0, 'frames': 11}, 'boots': {'compliant': 11, 'missing': 0, 'unverifiable': 0, 'frames': 11}} |
+| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 51 ms for 3 cameras |
+| 12 | AI process: every camera gets ITS OWN frame's result back (portrait + landscape + a resized camera) | PASS | stats {'batch_ms_p50': 10.7, 'batch_ms_p95': 10.7, 'wait_ms_p50': 12.9, 'wait_ms_p95': 23.2, 'batch_size_avg': 1.5, 'gpu_busy_share': 0.01, 'process': True} |
+| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1092 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
 | 04 | edge pipeline: monitored zone, helmet off -> one PPE alert naming the helmet | PASS | items ['goggles', 'helmet'] after ? |
 | 12 | edge pipeline: per-camera latency samples recorded (capture -> processed) | PASS |  |
-| LIVE | profiler: every AI stage of a camera is timed (engine, tracker, face ID, PPE match, decisions, drawing) | PASS | ai_engine 23.9 ms, tracker 1.4 ms, face_id 0.0 ms, ppe_match 0.5 ms, decisions_fire 2.1 ms, draw_emit 0.1 ms |
-| LIVE | AI at ~1 fps, live picture still ~12 fps (video no longer hangs at the AI rate) | PASS | 12.0 pictures/s at [640] px, draw 1.2 ms |
+| LIVE | profiler: every AI stage of a camera is timed (engine, tracker, face ID, PPE match, decisions, drawing) | PASS | ai_engine 14.9 ms, tracker 1.7 ms, face_id 0.0 ms, ppe_match 0.6 ms, decisions_fire 2.7 ms, draw_emit 0.1 ms |
+| LIVE | AI at ~1 fps, live picture still ~12 fps (video no longer hangs at the AI rate) | PASS | 12.0 pictures/s at [640] px, draw 1.6 ms |
 | LIVE | incident clips are fed from the smooth live picture | PASS |  |
 | LIVE | face detection runs on a <= 960 px copy (phone frames are 1920 px) and boxes map back exactly | PASS | detector input (540, 960), face x=540 y=480 |

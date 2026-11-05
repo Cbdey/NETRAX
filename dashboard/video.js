@@ -7,10 +7,26 @@ window.NetraxVideo = (function () {
   let ws = null, live = false, lastWanted = "", onAge = null;
   const dec = new TextDecoder();
 
+  // 5 Nov: decode OFF-screen first, swap only a fully decoded picture (no half-drawn / blank frames, no main-thread
+  // decode stall); while one is decoding only the NEWEST waiting picture is kept, so the video never builds up lag.
+  const busy = {}, waiting = {};
   function show(cam, blob, cap, srv, sent) {
+    if (busy[cam]) { waiting[cam] = [blob, cap, srv, sent]; return; }
+    busy[cam] = true;
+    const u = URL.createObjectURL(blob), pre = new Image();
+    pre.src = u;
+    const done = () => {
+      busy[cam] = false;
+      const w = waiting[cam]; waiting[cam] = null;
+      if (w) show(cam, ...w);
+    };
+    (pre.decode ? pre.decode() : Promise.resolve()).then(() => {
+      requestAnimationFrame(() => { paint(cam, u, cap, srv, sent); done(); });
+    }, () => { URL.revokeObjectURL(u); done(); });
+  }
+  function paint(cam, u, cap, srv, sent) {
     const imgs = document.querySelectorAll(`img[data-live="${cam}"]`);
-    if (!imgs.length) return;
-    const u = URL.createObjectURL(blob);
+    if (!imgs.length) { URL.revokeObjectURL(u); return; }
     imgs.forEach(i => { i.src = u; });
     const old = urls[cam]; urls[cam] = u;
     if (old) setTimeout(() => URL.revokeObjectURL(old), 1000);

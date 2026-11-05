@@ -100,6 +100,7 @@ td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 <script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/nx.css">
 <script src="/static/alerts.js"></script>
+<script src="/static/zentrix.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -398,6 +399,7 @@ function connect(){
   if (!window.__nxRail){ window.__nxRail = true;           // 5 Nov: same side panel for alerts as the other pages
     fetch("/api/me").then(r => r.json()).then(me => {
       NetraxAlerts.init({canAct: () => me.role === "admin" || me.role === "supervisor", rail: "dock"});
+      NetraxZentrix.init({});
       fetch("/api/events?limit=300").then(r => r.json()).then(NetraxAlerts.seed).catch(() => {});
       fetch("/api/entrance?limit=10").then(r => r.json()).then(NetraxAlerts.seedGates).catch(() => {});
     }).catch(() => {}); }

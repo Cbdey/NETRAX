@@ -54,3 +54,17 @@ Runtime: PyTorch (ultralytics) + shared batched engine; GPU engine: {'batch_ms_p
 | live picture age on the dashboard | 1731 | 39 ms | 92 ms | 186 ms |
 | live frame edge -> backend | 1925 | 36 ms | 90 ms | 181 ms |
 | entrance: person seen -> APPROVED/DENIED/MANUAL | 2 | 5.91 s | 6.45 s | 6.51 s |
+
+## 5 Nov 2026 evening - live video after live_fps 15 + decode-before-swap (real cameras)
+
+Measured by a client on /ws/video for 20 s, all three cameras at once (edge AI running, 3 cameras):
+
+| Camera | Pictures / s | Gap p50 | Gap p95 | Longest gap | Picture age p50 | p95 |
+|---|---|---|---|---|---|---|
+| cam_01 laptop (welding bay) | 14.9 | 67 ms | 79 ms | 98 ms | 32 ms | 54 ms |
+| cam_02 phone (warehouse) | 13.5 | 69 ms | 134 ms | 157 ms | 42 ms | 78 ms |
+| cam_04 USB C270 (entrance) | 7.4 | 132 ms | 206 ms | 272 ms | 31 ms | 87 ms |
+
+Picture age = edge capture -> received by the client on the same computer (the phone's own encode delay before the edge is not
+included). No freeze longer than 0.3 s. USB rate is the camera's own limit in this light. AI: 6-10 / 4 / 4 checks per second.
+Re-violation (PPE fixed, then taken off again): alert 1.4 s after it comes off (state-machine replay, edge.selftest).

@@ -112,9 +112,19 @@ check(f"same worker takes the helmet off again after fixing it -> new alert (ope
       len(opens) == 2)
 acts, sm, _ = simulate([VEST, GLOVES], "welding_bay", 4)
 acts += simulate([HELMET, VEST, GLOVES], "welding_bay", 2.2, sm=sm, t0=1004.0)[0]   # resolves at ~1006
-acts += simulate([VEST, GLOVES], "welding_bay", 3, sm=sm, t0=1006.2)[0]             # flaps back < rearm_s
+REARM = S["state_machine"].get("rearm_s", 5.0)
+acts += simulate([VEST, GLOVES], "welding_bay", REARM - 0.3, sm=sm, t0=1006.2)[0]   # flaps back < rearm_s
 check("helmet flapping on/off within rearm_s -> no alert spam",
       len([a for a in acts if a["action"] == "open"]) == 1)
+# 5 Nov (user: "same person wears the kit after the alert, then forgets one -> quick alert"): a re-violation after
+# rearm_s alerts as fast as a first one (~2 s), not after the old 5 s hold
+acts, sm, _ = simulate([VEST, GLOVES], "welding_bay", 4)
+acts += simulate([HELMET, VEST, GLOVES], "welding_bay", 3.5, sm=sm, t0=1004.0)[0]   # fixed, resolved ~1006
+off_at = 1007.5 + max(0.0, REARM - 1.5)
+acts2 = simulate([VEST, GLOVES], "welding_bay", 5, sm=sm, t0=off_at)[0]
+reopen = [a for a in acts2 if a["action"] == "open"]
+check(f"helmet off again after fixing it -> new alert within ~2.5 s "
+      f"({round(reopen[0]['at'] - off_at, 2) if reopen else None} s)", reopen and reopen[0]["at"] - off_at <= 2.6)
 
 # 7. fire / smoke look-alikes and real fire
 ORANGE = (0, 140, 255)          # BGR flame-ish orange
