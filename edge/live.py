@@ -48,20 +48,27 @@ class LiveView(threading.Thread):
         self.sent = {}                     # cam -> frames sent (diagnostics)
 
     def run(self):
+        # 5 Nov (user: "still looks hanging"): a fixed 15/s clock sampling a camera that itself delivers ~15/s beats
+        # against it - now and then a frame is skipped and the next one shows twice as late (a visible stutter).
+        # Now every NEW camera frame is sent as soon as it arrives (checked every 4 ms), only capped at `fps`, so each
+        # camera plays at its own natural, even rhythm (laptop 30/s, phone 15/s, USB as fast as it delivers).
+        last_sent = {}
         while True:
-            t0 = time.perf_counter()
             for cam, r in self.readers.items():
+                now = time.perf_counter()
+                if now - last_sent.get(cam, 0.0) < self.gap * 0.8:
+                    continue
                 try:
-                    self._one(cam, r)
+                    if self._one(cam, r):
+                        last_sent[cam] = now
                 except Exception as e:     # noqa: BLE001 - the live view must never stop
                     print(f"[live] {cam}: {e!r}")
-            spent = time.perf_counter() - t0
-            time.sleep(max(0.003, self.gap - spent))
+            time.sleep(0.004)
 
     def _one(self, cam, r):
         frame, ts, no = r.latest()
         if frame is None or no == self.last_no.get(cam):
-            return
+            return False
         self.last_no[cam] = no
         t = time.perf_counter()
         h, w = frame.shape[:2]
@@ -90,3 +97,4 @@ class LiveView(threading.Thread):
         self.ms.append((time.perf_counter() - t) * 1000)
         if len(self.ms) > 400:
             del self.ms[:200]
+        return True

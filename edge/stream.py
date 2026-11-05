@@ -110,6 +110,7 @@ class StreamReader(threading.Thread):
                 period = 1.0 / file_fps               # play clips at real speed
             t_count, n_count = time.time(), 0
             fails = 0
+            black_since = None
             while self.running:
                 if not self.allowed():                 # the other camera of the pair got the slot
                     self.standby = True
@@ -145,8 +146,16 @@ class StreamReader(threading.Thread):
                     self.black = black_picture(frame)
                     if self.black:
                         self.detail = "picture is black - lens covered or camera stuck: unplug and re-plug the camera"
-                    elif self.detail.startswith("picture is black"):
-                        self.detail = "ok"
+                        black_since = black_since or time.time()
+                        # a USB camera that stopped streaming (Windows USB power saving, loose cable) returns an empty
+                        # frame once a second: release it and open it again (every ~10 s) instead of waiting forever
+                        if not self.is_file and isinstance(self.source, int) and time.time() - black_since >= 8:
+                            print(f"[{self.cam_id}] black picture for 8 s - reopening the camera", flush=True)
+                            break
+                    else:
+                        black_since = None
+                        if self.detail.startswith("picture is black"):
+                            self.detail = "ok"
                 if period:
                     time.sleep(max(0.0, period - (time.time() - t0)))
             cap.release()

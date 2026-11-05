@@ -175,6 +175,33 @@ def fire_payload(eid, bbox, growth=1.0, action="open", typ="fire", cam="cam_02",
             "frame_w": 1280, "frame_h": 720}
 
 
+def entrance_object_tests():
+    """5 Nov live bug: a chair with clothes on it was checked as an 'unregistered worker' (conf 0.53-0.60, no head)."""
+    ok_items = {"helmet": ("compliant", .9), "vest": ("compliant", .9), "boots": ("compliant", .9)}
+    head = [[200, 80, .9], [190, 70, .9], [210, 70, .9], [180, 75, .8], [220, 75, .8], [160, 160, .9], [240, 160, .9]] + \
+        [[0, 0, .1]] * 10
+    legs = [[0, 0, .1]] * 13 + [[150, 600, .6], [250, 600, .6], [150, 690, .6], [250, 690, .6]]
+
+    def run(person, n=60, dt=0.15, move=False):
+        ec = EntranceChecker("cam_04", "main_entrance", ["helmet", "vest", "boots"], {})
+        out = []
+        for i in range(n):
+            p = dict(person, tid=1, bbox=[100 + (i % 2) * 40 * move, 40, 300 + (i % 2) * 40 * move, 700])
+            out += ec.update([p], {1: ok_items}, 1280, 720, 1000.0 + i * dt)
+        return out
+    clothes = run({"conf": 0.58, "kps": legs})
+    clothes_conf = run({"conf": 0.72, "kps": legs})
+    weak_still = run({"conf": 0.70, "kps": head}, n=120)
+    real = run({"conf": 0.85, "kps": head})
+    real_still = run({"conf": 0.85, "kps": head}, n=120)
+    check("ENT", "a chair with clothes is not a person: weak detection or no head / shoulders -> no entrance decision at all",
+          not clothes and not clothes_conf, f"{len(clothes)} / {len(clothes_conf)} decisions")
+    check("ENT", "a real person (head + shoulders, confident) is still checked; standing still never turns them into background",
+          len(real) == 1 and real[0]["result"] == "approved" and len(real_still) == 1, f"{len(real)} / {len(real_still)}")
+    check("ENT", "a weak 'person' that never moves for 6 s is remembered as background (one decision at most, no repeats)",
+          len(weak_still) <= 1, f"{len(weak_still)} decisions in 18 s")
+
+
 def zentrix_tests():
     """5 Nov: Zentrix command agent - chat / voice commands of the supervisor; acts ONLY on command."""
     from fastapi.testclient import TestClient
@@ -853,6 +880,7 @@ async def main():
           pdf.status_code == 200 and pdf.content[:4] == b"%PDF" and "netrax_report_" in pdf.headers.get("content-disposition", "")
           and csvr.status_code == 200 and csvr.text.startswith("event_id") and bad.status_code == 400)
     zentrix_tests()
+    entrance_object_tests()
     from edge.stream import StreamReader
     sr = StreamReader("cam_x", 0, 12)
     sr.frame_ts, sr.active_since, sr.fps = time.time(), 0, 30.0

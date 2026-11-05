@@ -34,10 +34,57 @@ class EntranceChecker:
         self.leave_s = float(c.get("leave_s", 2.0))
         self.recheck_s = float(c.get("recheck_s", 3.0))
         self.controller = bool(c.get("controller_connected", False))
+        # 5 Nov (live: a chair with clothes on it was checked as an "unregistered worker" again and again, person conf
+        # 0.53-0.60; real people 0.83+): only a REAL body counts - confident detection + body keypoints incl. head or
+        # shoulders - and a "person" that never moves and shows no face is remembered as background and ignored.
+        self.min_conf = float(c.get("min_person_conf", 0.65))
+        self.min_kps = int(c.get("min_keypoints", 5))
+        self.kp_conf = float(c.get("keypoint_conf", 0.5))
+        self.static_s = float(c.get("static_object_s", 6.0))
+        self.static_move = float(c.get("static_move_frac", 0.02))
+        self.strong_conf = float(c.get("strong_person_conf", 0.8))
+        self.background = []                             # [bbox, until]: still objects that looked like a person
+        self.still = {}                                  # tid -> [first_bbox, since, faced]
         self.s = None                                    # current session
         self.last_result = None
 
-    def _subject(self, persons, h):
+    def _real_body(self, p):
+        """True for a real person: confident box AND (when the pose model gives keypoints) enough body points,
+        including the head or the shoulders. Clothes on a chair / a coat on a hook fail this."""
+        if float(p.get("conf", 0.0)) < self.min_conf:
+            return False
+        k = p.get("kps")
+        if not k:
+            return True                                  # no pose model: confidence alone
+        good = [i for i, q in enumerate(k[:17]) if q and len(q) > 2 and q[2] >= self.kp_conf]
+        return len(good) >= self.min_kps and any(i <= 6 for i in good)     # 0-4 head, 5-6 shoulders
+
+    def _still_object(self, p, now, w):
+        """A detection that has not moved at all for static_s and never showed a recognised face = background."""
+        b, conf = p["bbox"], float(p.get("conf", 0.0))
+        strong = conf >= self.strong_conf                # a clearly-seen person is never treated as furniture
+        for bg, until in self.background:
+            if until > now and iou(bg, b) > 0.7 and not strong:
+                return True
+        st = self.still.get(p["tid"])
+        scale = max(1.0, float(w))
+        if st is None or max(abs(b[i] - st[0][i]) for i in range(4)) > self.static_move * scale:
+            self.still[p["tid"]] = [list(b), now, bool(p.get("worker_id")) or strong]
+            return False
+        st[2] = st[2] or bool(p.get("worker_id")) or strong
+        if not st[2] and now - st[1] >= self.static_s:
+            self.background.append((list(b), now + 600))   # forget after 10 min (furniture can be moved)
+            self.background = [x for x in self.background if x[1] > now][-20:]
+            return True
+        return False
+
+    def _subject(self, persons, h, w=None, now=0.0):
+        persons = [p for p in persons if self._real_body(p)]
+        if w is not None:
+            persons = [p for p in persons if not self._still_object(p, now, w)]
+            alive = {p["tid"] for p in persons}
+            for t in [t for t in self.still if t not in alive and now - self.still[t][1] > 30]:
+                del self.still[t]
         big = [p for p in persons if (p["bbox"][3] - p["bbox"][1]) >= self.min_height_frac * h]
         if not big:
             return None, len(persons) > 0
@@ -48,7 +95,7 @@ class EntranceChecker:
     def update(self, persons, statuses, w, h, now):
         """persons: tracked persons (with tid, bbox, conf, worker_id ...); statuses: association output
         {tid: {item: (status, conf)}} computed with this entrance's required items. Returns actions."""
-        subj, crowd_or_far = self._subject(persons, h)
+        subj, crowd_or_far = self._subject(persons, h, w, now)
         out = []
         s = self.s
         if subj is None:

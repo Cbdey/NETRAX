@@ -334,3 +334,13 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   browser blocks the mic: only http://127.0.0.1:8000 or https). Browser-measured live video (control room, real cameras):
   laptop 14.9 fps max gap 123 ms, phone 13.9 fps max gap 182 ms, USB 7.4 fps. USB C270 intermittently gives BLACK frames at 1 fps
   (brightness 0, every exposure setting, any process) = lens covered / no light / loose USB - hardware, not software.
+- 5 Nov late: ENTRANCE FALSE PERSON fixed (chair with clothes = "unregistered worker", detections 0.53-0.60, people 0.83+):
+  EntranceChecker._real_body (conf >= min_person_conf 0.65 AND >= 5 pose keypoints incl. head/shoulder) + _still_object (a weak
+  < 0.8 detection that never moves 6 s without a face -> background for 10 min). settings entrance.*; final_selftest [ENT] x3.
+- 5 Nov late: USB C270 black at 1 fps = DirectShow "no frame" timeout (camera stopped streaming). Windows USB selective suspend
+  was ON -> switched OFF for the current power plan (powercfg ... 2a737441-... 48e6b7a6-... 0; undo: set 1). Re-plugging needed
+  once (device restart needs admin). edge/stream: black for 8 s -> release + reopen the camera automatically. MSMF backend tested:
+  29 fps but HANGS on read with two cameras -> stay on DirectShow. Index map: DSHOW 0 = USB, 1 = laptop (MSMF reversed).
+- 5 Nov late live view: frames sent AS THEY ARRIVE (4 ms poll), capped by live_fps 16 (fixed 15/s clock beat against the phone's
+  15/s -> skipped frames = stutter). 30 tested: AI 6 -> 1.5/s + hitches -> 16. Server output: laptop 18.9 fps max gap 102 ms,
+  phone 14.7 fps max gap 145 ms. Headless-browser 0.35 s hitches are the software-rendering test browser, not the stream.
