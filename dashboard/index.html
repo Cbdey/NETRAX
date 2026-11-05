@@ -208,7 +208,7 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 @media (max-width:1250px){.main{grid-template-columns:1fr}.three{grid-template-columns:1fr}.two{grid-template-columns:1fr}}
 @media (max-width:700px){.cams{grid-template-columns:1fr}.bigpanel,.bigpanel.withfeed{grid-template-columns:1fr}.bigpanel .acts,.bigpanel .feed{grid-column:auto;grid-row:auto;width:100%}.overlay .grid{grid-template-columns:1fr}.kv{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/static/nx.css">
+<link rel="stylesheet" href="/static/nx.css?v=5nov2">
 </head>
 <body>
 <div class="nxvig" aria-hidden="true"></div>
@@ -282,9 +282,9 @@ td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 <div class="modal" id="modal" role="dialog" aria-labelledby="mTitle"><div class="box" id="mBox"></div></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="/static/alerts.js"></script>
-<script src="/static/video.js"></script>
-<script src="/static/zentrix.js"></script>
+<script src="/static/alerts.js?v=5nov2"></script>
+<script src="/static/video.js?v=5nov2"></script>
+<script src="/static/zentrix.js?v=5nov2"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -635,7 +635,7 @@ function renderGate(){
   const r = g.override ? g.override.decision : g.result, w = NetraxAlerts.who(g);
   const age = Date.now()/1000 - g.at;
   cell.className = "gatecell" + (age < 120 || (r === "manual" && !g.override) ? " " + r : "");
-  box.innerHTML = `<div class="nx-display gh ${r}">${{approved:"✓ VERIFIED — MAY ENTER", denied:"✖ DO NOT ENTER", manual:"⚠ MANUAL CHECK"}[r]}</div>
+  box.innerHTML = `<div class="nx-display gh ${r}">${{approved:"🟢 VERIFIED · PERMITTED", denied:"🔴 NOT VERIFIED · NOT PERMITTED", manual:"🟠 MANUAL CHECK"}[r]}</div>
     <div class="gw">${esc(w.name)}</div><div class="items">${NetraxAlerts.chips(g)}</div><div class="small">${esc(g.time)}${g.decision_ms != null ? ` · ${g.decision_ms} ms` : ""}</div>`;
 }
 

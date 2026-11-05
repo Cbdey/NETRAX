@@ -193,6 +193,20 @@ def current_user(request):
         {"user": None, "role": None}
 
 
+PAGE_PATHS = ("/", "/admin", "/entrance", "/hardware", "/login", "/roi")
+
+
+@app.middleware("http")
+async def no_stale_dashboard(request: Request, call_next):
+    """5 Nov: browsers kept OLD copies of the dashboard pages / scripts (no cache header) - the user never saw the new
+    side panels or Zentrix. Pages and /static files must be re-checked on every load (ETag -> 304 when unchanged)."""
+    resp = await call_next(request)
+    p = request.url.path
+    if p in PAGE_PATHS or p.startswith("/static/"):
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
+
+
 @app.middleware("http")
 async def access_control(request: Request, call_next):
     if not auth.enabled():

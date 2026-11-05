@@ -64,8 +64,9 @@ td img{width:78px;height:50px;object-fit:cover;border-radius:8px;display:block;b
 .toast{border:1px solid var(--line);border-left:5px solid var(--info);padding:10px 14px;font-size:14px}.toast b{display:block;font-size:15px}
 @media (max-width:1150px){.main{grid-template-columns:1fr}.kband{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:640px){.kband{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:auto minmax(0,1fr)}.hero img{grid-column:1/-1;height:auto;width:100%}}
+.secbox{border-top:4px solid var(--ok)}
 </style>
-<link rel="stylesheet" href="/static/nx.css">
+<link rel="stylesheet" href="/static/nx.css?v=5nov2">
 </head>
 <body>
 <div class="nxvig" aria-hidden="true"></div>
@@ -97,9 +98,13 @@ td img{width:78px;height:50px;object-fit:cover;border-radius:8px;display:block;b
       <h2>USB entrance camera <span class="grow"></span><span class="small" id="camInfo"></span></h2>
       <div class="feed" id="feed"><span class="tagL" id="tagL">ENTRANCE</span><span class="tagR" id="tagR"></span><div class="feedmsg" id="feedMsg"></div></div>
     </section>
-    <section class="hero" id="hero" aria-live="polite" aria-label="Latest decision"></section>
   </div>
   <div class="stack">
+    <section class="panel secbox sec-gate" aria-label="Entrance alerts" aria-live="polite">
+      <h2>🚪 Entrance alerts <span class="grow"></span><span class="small" id="gateCount"></span></h2>
+      <p class="small" style="margin:0 0 10px">🟢 Verified · permitted &nbsp; 🔴 Not verified · not permitted &nbsp; 🟠 Manual check</p>
+      <div class="nxlist" id="gateSide" style="max-height:420px;overflow:auto"></div>
+    </section>
     <section class="panel" aria-label="How a person is verified"><h2>How verification works</h2>
       <ol class="steps">
         <li><i>1</i><div><b>Tap the RFID card</b> or look at the camera<br><span class="small">Registered face or card = the worker's name. Neither = unregistered worker.</span></div></li>
@@ -122,9 +127,9 @@ td img{width:78px;height:50px;object-fit:cover;border-radius:8px;display:block;b
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="/static/alerts.js"></script>
-<script src="/static/zentrix.js"></script>
-<script src="/static/video.js"></script>
+<script src="/static/alerts.js?v=5nov2"></script>
+<script src="/static/zentrix.js?v=5nov2"></script>
+<script src="/static/video.js?v=5nov2"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -155,20 +160,14 @@ function renderKpis(){
   $("kIn").textContent = PRESENT.length; $("kInS").textContent = PRESENT.length ? PRESENT.map(p => p.name).slice(0,3).join(", ") : "nobody checked in";
   $("inside").innerHTML = PRESENT.length ? `<table><tbody>${PRESENT.map(p => `<tr style="cursor:default"><td><b>${esc(p.worker_id)} ${esc(p.name)}</b></td><td class="small">since ${esc(fmtT(p.since))}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">Nobody has tapped in.</div>`;
 }
-function renderHero(){
-  const g = LOG[0], h = $("hero");
-  if (!g){ h.className = "hero"; h.innerHTML = `<div class="big">🚪</div><div><h3 class="nx-display">Ready for the next person</h3><p>No entrance checks yet.</p></div>`; $("feed").className = "feed"; return; }
-  const r = shown(g), w = NA.who(g);
-  h.className = "hero " + r;
-  h.innerHTML = `<div class="big" aria-hidden="true">${{approved:"✓", denied:"✖", manual:"!"}[r] || "?"}</div>
-    <div><h3 class="nx-display">${esc({approved:"VERIFIED — MAY ENTER", denied:"DO NOT ENTER", manual:"MANUAL CHECK REQUIRED"}[r])}</h3>
-      <p><b>${esc(w.name)}</b> · ${esc(g.verdict || g.message || "")}${g.override ? ` · decided by ${esc(g.override.by)}` : ""}</p>
-      <div class="items">${NA.chips(g)}</div>
-      <div class="small" style="margin-top:6px">${esc(g.time)} · ${esc(w.how.toLowerCase())}${g.decision_ms != null ? ` · decided in ${g.decision_ms} ms` : ""}${g.reason && r !== "approved" ? " · " + esc(g.reason) : ""}</div>
-      ${g.result === "manual" && !g.override && canAct() ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn pri" data-d="approved" data-id="${esc(g.event_id)}">Checked — allow entry</button><button class="btn red" data-d="denied" data-id="${esc(g.event_id)}">Checked — refuse</button></div>` : ""}</div>
-    ${g.snapshot ? `<img src="${esc(g.snapshot)}" alt="Snapshot of this check">` : ""}`;
-  const recent = Date.now()/1000 - g.at < 15;
-  $("feed").className = "feed" + (recent ? " " + r : "");
+function renderHero(){            // 5 Nov: small entrance alert cards (same as the control room), no big banner
+  const g = LOG[0];
+  NA.keyed($("gateSide"), LOG.slice(0, 8), x => x.event_id, NA.gateCard, "No checks yet. Stand in front of the USB camera, whole body in view.");
+  const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+  const td = LOG.filter(x => x.at >= day0 / 1000);
+  $("gateCount").textContent = td.length ? `today ✓ ${td.filter(x => shown(x) === "approved").length} · ✖ ${td.filter(x => shown(x) === "denied").length} · ⚠ ${td.filter(x => shown(x) === "manual").length}` : "";
+  const recent = g && Date.now()/1000 - g.at < 15;
+  $("feed").className = "feed" + (recent ? " " + shown(g) : "");
 }
 function renderLog(){
   const q = $("q").value.trim().toLowerCase();
@@ -229,7 +228,7 @@ async function slow(){
 function connect(){
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
   ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
-    if (kind === "entrance"){ LOG = [data].concat(LOG.filter(g => g.event_id !== data.event_id)); renderAll(); NA.gate(data, {screen: true}); slow(); }
+    if (kind === "entrance"){ LOG = [data].concat(LOG.filter(g => g.event_id !== data.event_id)); renderAll(); NA.gate(data); slow(); }
     else if (kind === "event") NA.offer(data);
     else if (kind === "attendance"){ toast(`RFID ${data.event || data.status || ""}`, data.message || ""); slow(); }
     else if (kind === "cameras" && STATUS){ STATUS.camera = (data.cameras||[]).find(c => c.role === "entrance") || STATUS.camera; renderDevices(); }

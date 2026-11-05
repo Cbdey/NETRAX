@@ -33,9 +33,10 @@ window.NetraxAlerts = (function () {
   }
   function gateCard(g) {
     const r = g.override ? g.override.decision : g.result, w = who(g), f = fresh.get(g.event_id);
-    const head = {approved: "✓ VERIFIED — MAY ENTER", denied: "✖ DO NOT ENTER", manual: "⚠ MANUAL CHECK"}[r] || r;
+    // 5 Nov (user): green light "VERIFIED · PERMITTED", red light "NOT VERIFIED · NOT PERMITTED" - a small card, never a full screen
+    const head = {approved: "VERIFIED · PERMITTED", denied: "NOT VERIFIED · NOT PERMITTED", manual: "MANUAL CHECK · WAIT"}[r] || r;
     const can = opt.canAct() && g.result === "manual" && !g.override;
-    return {cls: "nxc gate " + ({approved: "ok", denied: "crit", manual: "warn"}[r] || "warn"), html: `<div class="h"><b>${head}</b>${f && Date.now() - f.at < 12000 ? `<span class="newpill">NEW</span>` : ""}<span class="sp"></span><span class="t" data-t="${g.at}">${ago(g.at)}</span></div>
+    return {cls: "nxc gate " + ({approved: "ok", denied: "crit", manual: "warn"}[r] || "warn"), html: `<div class="h"><i class="lamp" aria-hidden="true"></i><b>${head}</b>${f && Date.now() - f.at < 12000 ? `<span class="newpill">NEW</span>` : ""}<span class="sp"></span><span class="t" data-t="${g.at}">${ago(g.at)}</span></div>
       <div class="w">${esc(w.name)}</div><div class="items">${chips(g)}</div>
       <div class="m">${esc(g.verdict || "")}${g.override ? ` · decided by ${esc(g.override.by)}` : ""}</div>
       ${can ? `<div class="a"><button class="btn sm pri" data-gate="approved" data-id="${esc(g.event_id)}">Allow</button><button class="btn sm red" data-gate="denied" data-id="${esc(g.event_id)}">Refuse</button></div>` : ""}`};
@@ -161,7 +162,7 @@ window.NetraxAlerts = (function () {
     gates.unshift(g); gates.splice(8);
     renderRail();
     if (g.override) { closeGate(); return; }
-    if (!o.screen) return;                    // the full screen only on the entrance display
+    if (!o.screen || !opt.gateScreen) return; // 5 Nov: no full-screen entrance overlay any more (small cards only)
     const w = who(g), can = opt.canAct() && g.result === "manual";
     const head = {approved:"VERIFIED — YOU MAY ENTER", denied:"DO NOT ENTER", manual:"MANUAL CHECK REQUIRED"}[g.result] || g.result;
     const ms = {approved:6000, denied:12000}[g.result];

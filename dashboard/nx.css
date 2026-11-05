@@ -194,3 +194,16 @@ body.nx-firebar .nxrail{top:60px}
 /* item chips look the same on every page (admin / hardware have no chip styles of their own) */
 .item{display:inline-block;background:var(--crit);color:#fff;letter-spacing:.02em}
 .item.ok{background:var(--ok);color:#03210f}.item.unk{background:var(--warn);color:#2a1c00}
+
+/* 5 Nov (user): every new alert card "slightly pops up" inside its own container + coloured border glow; entrance lamp */
+@keyframes nxpop{0%{transform:translateY(-10px) scale(.94);opacity:0}55%{transform:translateY(0) scale(1.035);opacity:1}100%{transform:none}}
+@keyframes nxglow{0%,100%{box-shadow:0 0 0 0 transparent}40%{box-shadow:0 0 0 2px var(--ring),0 6px 22px -6px var(--ring)}}
+.inc.nx-new,.nxc.nx-new{animation:nxpop .5s cubic-bezier(.2,1.2,.4,1) both,nxglow 1.2s ease-in-out .3s 3;position:relative;z-index:1}
+.inc.nx-upd,.nxc.nx-upd{animation:nxpop .35s ease-out both,nxglow 1.2s ease-in-out .1s 3}
+.inc{--ring:var(--crit)}.inc.s-warn{--ring:var(--warn)}.inc.s-ok{--ring:var(--ok)}
+.nxc .lamp{width:13px;height:13px;border-radius:50%;flex:none;background:var(--warn);box-shadow:0 0 0 3px rgba(0,0,0,.25),0 0 12px 2px var(--warn)}
+.nxc.gate.ok .lamp{background:var(--ok);box-shadow:0 0 0 3px rgba(0,0,0,.25),0 0 12px 2px var(--ok)}
+.nxc.gate.crit .lamp{background:var(--crit);box-shadow:0 0 0 3px rgba(0,0,0,.25),0 0 12px 2px var(--crit)}
+.nxc.gate.nx-new .lamp{animation:nxlamp .6s ease-in-out 4}
+@keyframes nxlamp{50%{filter:brightness(1.8);transform:scale(1.25)}}
+@media (prefers-reduced-motion:reduce){.inc.nx-new,.nxc.nx-new,.inc.nx-upd,.nxc.nx-upd,.nxc.gate.nx-new .lamp{animation:none}}

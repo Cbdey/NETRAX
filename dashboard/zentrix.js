@@ -13,16 +13,20 @@ window.NetraxZentrix = (function () {
   const HOME = {focus: "/", unfocus: "/", view: "/", fullscreen: "/", report: "/admin#reports"};
   const WAKE = /^\s*(?:(?:hey|hi|hello|ok|okay)\s+)?(?:zentrix|zen\s*trix|zentrex|zentricks|zen\s*tricks|sentrix|centrix|sentry\s*x|zendrix|xentrix|zentrics|sentrics|sun\s*tricks)\b[\s,.:!-]*/i;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let voiceWhy = "";
   let H = {}, me = {role: "viewer", user: ""}, root = null, log, input, micBtn, wakeBtn, spkBtn, stateEl;
   let open = store.get("zx-open", false), busy = false, rec = null, recMode = null, wakeOn = store.get("zx-wake", false, localStorage),
       speakOn = store.get("zx-speak", true, localStorage), armedUntil = 0, inline = false;
   let history = store.get("zx-log", []);
 
   const css = `
-.zx-launch{position:fixed;left:16px;bottom:16px;z-index:96;display:flex;align-items:center;gap:8px;border:1px solid var(--teal,#14b8a6);
-  background:var(--panel,#11222b);color:var(--ink,#eaf3f4);border-radius:999px;padding:9px 15px 9px 11px;font:700 14px/1 inherit;cursor:pointer;
-  box-shadow:0 8px 24px rgba(0,0,0,.35)}
-.zx-launch .dot{width:26px;height:26px;border-radius:50%;background:var(--teal,#14b8a6);color:#05201c;display:grid;place-items:center;font-size:14px}
+.zx-launch{position:fixed;left:16px;bottom:16px;z-index:96;display:flex;align-items:center;gap:10px;border:2px solid var(--teal,#14b8a6);
+  background:var(--panel,#11222b);color:var(--ink,#eaf3f4);border-radius:999px;padding:10px 18px 10px 10px;font:800 16px/1.1 inherit;cursor:pointer;
+  box-shadow:0 8px 28px rgba(0,0,0,.45),0 0 18px -4px var(--teal,#14b8a6)}
+.zx-launch small{display:block;font-weight:600;font-size:11.5px;color:var(--muted,#93aab1)}
+.zx-navbtn{border:1px solid var(--teal,#14b8a6);background:transparent;color:var(--teal,#14b8a6);border-radius:8px;padding:5px 10px;font-weight:800;cursor:pointer;font-size:13px;margin-left:4px}
+.zx-navbtn:hover{background:var(--teal,#14b8a6);color:#05201c}
+.zx-launch .dot{width:34px;height:34px;font-size:17px;border-radius:50%;background:var(--teal,#14b8a6);color:#05201c;display:grid;place-items:center;font-size:14px}
 .zx-launch.listen .dot{animation:zxp 1.2s infinite}
 @keyframes zxp{0%{box-shadow:0 0 0 0 rgba(20,184,166,.6)}100%{box-shadow:0 0 0 12px rgba(20,184,166,0)}}
 .zx{display:flex;flex-direction:column;background:var(--panel,#11222b);color:var(--ink,#eaf3f4);border:1px solid var(--line,#24414b);border-radius:14px;overflow:hidden}
@@ -75,7 +79,7 @@ window.NetraxZentrix = (function () {
       <div class="zx-log" id="zxLog" aria-live="polite"></div>
       <div class="zx-state" id="zxState"></div>
       <div class="zx-chips" id="zxChips"></div>
-      <form class="zx-foot" id="zxForm"><button type="button" id="zxMic" title="Hold a command: click, then speak (Alt+M)">🎙</button>
+      <form class="zx-foot" id="zxForm"><button type="button" id="zxMic" title="Click, then speak your command (Alt+M)">🎙 Speak</button>
         <label class="sr" for="zxIn" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Command</label>
         <input id="zxIn" placeholder="Type or say a command…" autocomplete="off" maxlength="400"><button class="send" type="submit">Send</button></form>`;
     (mount || document.body).appendChild(root);
@@ -91,22 +95,27 @@ window.NetraxZentrix = (function () {
       const e = ev.target.closest("[data-zxev]"); if (e) { ev.preventDefault(); return runOps([{op: "event", id: e.dataset.zxev}]); }
     });
     spkBtn.onclick = () => { speakOn = !speakOn; store.set("zx-speak", speakOn, localStorage); if (!speakOn) try { speechSynthesis.cancel(); } catch {} paint(); };
-    wakeBtn.onclick = () => { wakeOn = !wakeOn; store.set("zx-wake", wakeOn, localStorage); wakeOn ? startWake() : stopRec(); paint(); };
-    micBtn.onclick = () => (recMode === "ptt" ? stopRec() : startPTT());
+    wakeBtn.onclick = () => { if (voiceWhy) return push({who: "a", text: voiceWhy, err: true}); wakeOn = !wakeOn; store.set("zx-wake", wakeOn, localStorage); wakeOn ? startWake() : stopRec(); paint(); };
+    micBtn.onclick = () => (voiceWhy ? push({who: "a", text: voiceWhy, err: true}) : recMode === "ptt" ? stopRec() : startPTT());
     if (!inline) {
       root.querySelector("#zxClose").onclick = () => setOpen(false);
       const l = document.createElement("button"); l.className = "zx-launch"; l.id = "zxLaunch"; l.type = "button";
-      l.innerHTML = `<span class="dot" aria-hidden="true">🤖</span>Zentrix`; l.title = "Zentrix AI assistant (Alt+Z)";
+      l.innerHTML = `<span class="dot" aria-hidden="true">🎙</span><span>Zentrix AI<small>type or speak a command · Alt+Z</small></span>`; l.title = "Zentrix AI assistant (Alt+Z)";
       l.onclick = () => setOpen(true); document.body.appendChild(l);
     }
     document.addEventListener("keydown", ev => {
       if (ev.altKey && (ev.key === "z" || ev.key === "Z")) { ev.preventDefault(); setOpen(inline ? true : !open); if (open || inline) input.focus(); }
-      if (ev.altKey && (ev.key === "m" || ev.key === "M")) { ev.preventDefault(); setOpen(true); recMode === "ptt" ? stopRec() : startPTT(); }
+      if (ev.altKey && (ev.key === "m" || ev.key === "M")) { ev.preventDefault(); setOpen(true); micBtn.click(); }
     });
-    if (!SR || !window.isSecureContext) {
-      const why = !SR ? "This browser has no speech recognition - use Edge or Chrome." :
-        "Voice needs a secure page: open the dashboard as http://127.0.0.1:8000 on this computer (or https).";
-      micBtn.disabled = wakeBtn.disabled = true; micBtn.title = wakeBtn.title = why; wakeOn = false;
+    const nav = document.querySelector(".nxnav");          // a Zentrix button in every page's top menu too
+    if (nav && !document.getElementById("zxNavBtn")) {
+      const b = document.createElement("button"); b.type = "button"; b.id = "zxNavBtn"; b.className = "zx-navbtn"; b.textContent = "🤖 Zentrix";
+      b.title = "Open the Zentrix AI assistant (Alt+Z)"; b.onclick = () => { setOpen(true); input.focus(); }; nav.appendChild(b);
+    }
+    if (!SR || !window.isSecureContext) {                  // keep the buttons visible; explain on click
+      voiceWhy = !SR ? "Voice needs Microsoft Edge or Google Chrome (this browser has no speech recognition). You can type the command." :
+        `The browser allows the microphone only on a secure page. On the laptop open http://127.0.0.1:8000${location.pathname} - voice works there. From another device: type the command.`;
+      micBtn.title = wakeBtn.title = voiceWhy; wakeOn = false; micBtn.style.opacity = wakeBtn.style.opacity = ".6";
     }
     history.forEach(m => render(m, false));
     if (!history.length) render({who: "a", text: "Hello, I am Zentrix. Tell me what to do - type or press 🎙 and speak, or switch on 👂 and say \"Hey Zentrix …\". I act only on your command."}, false);

@@ -325,3 +325,12 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   USB C270 gave black frames at 1 fps until the edge reopened it after a stop (then 7.5 fps again).
 - 5 Nov evening live video measured (20 s, 3 cameras, /ws/video): laptop 14.9 fps, longest gap 98 ms, age 32 ms; phone 13.5 fps,
   max gap 157 ms, age 42 ms (after the edge receives it; phone already 960x720 q49); USB 7.4 fps (camera), age 31 ms.
+- 5 Nov night (user: "nothing you did shows"): ROOT CAUSE = browsers served OLD cached pages/scripts (no cache header). Fix: main
+  middleware no_stale_dashboard (Cache-Control: no-cache on pages + /static) and ?v=5nov2 on every /static link. Bump ?v= when
+  changing dashboard JS/CSS. Entrance: cards say "VERIFIED · PERMITTED" (green lamp) / "NOT VERIFIED · NOT PERMITTED" (red lamp) /
+  "MANUAL CHECK · WAIT"; full-screen entrance overlay OFF everywhere (alerts.js gate needs opt.gateScreen); entrance page shows the
+  same small "Entrance alerts" container (hero banner removed). New alert cards pop (nxpop) + glow in their own container.
+  Zentrix: big "🎙 Zentrix AI" launcher, "🤖 Zentrix" button in every top menu, "🎙 Speak" button always visible (explains when the
+  browser blocks the mic: only http://127.0.0.1:8000 or https). Browser-measured live video (control room, real cameras):
+  laptop 14.9 fps max gap 123 ms, phone 13.9 fps max gap 182 ms, USB 7.4 fps. USB C270 intermittently gives BLACK frames at 1 fps
+  (brightness 0, every exposure setting, any process) = lens covered / no light / loose USB - hardware, not software.
