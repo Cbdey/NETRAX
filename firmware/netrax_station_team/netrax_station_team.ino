@@ -23,11 +23,15 @@
 // 1. WI-FI AND DASHBOARD SETTINGS  (fill in before flashing)
 // =====================================================
 
-const char* WIFI_SSID     = "YOUR_WIFI_NAME";        // the SAME Wi-Fi as the laptop (2.4 GHz - ESP32 has no 5 GHz)
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+// Wi-Fi name + password live in secrets.h next to this file (NOT in git). Copy secrets.example.h -> secrets.h.
+// It must be the SAME Wi-Fi as the laptop (2.4 GHz - the ESP32 has no 5 GHz).
+#include "secrets.h"
+const char* WIFI_SSID     = SECRET_WIFI_SSID;
+const char* WIFI_PASSWORD = SECRET_WIFI_PASSWORD;
 
-// http://<laptop IP>:8000/api/hw/telemetry   (laptop IP on 6 Nov: 192.168.60.49 - check with `ipconfig` if it changes)
-const char* DASHBOARD_URL = "http://192.168.60.49:8000/api/hw/telemetry";
+// http://<laptop IP>:8000/api/hw/telemetry  - laptop on Wi-Fi "NOTHING" (6 Nov): 10.115.43.235.
+// The laptop's IP changes with the Wi-Fi: run `ipconfig` on the laptop, take the Wi-Fi "IPv4 Address".
+const char* DASHBOARD_URL = "http://10.115.43.235:8000/api/hw/telemetry";
 const char* DEVICE_ID     = "esp32-ppe-01";           // must match config/hardware.yaml
 
 const unsigned long SEND_EVERY_MS = 1000;            // NETRAX marks the station OFFLINE after 6 s without data
