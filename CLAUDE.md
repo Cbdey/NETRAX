@@ -355,3 +355,10 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   the USB fix) pictures/s, no gap > 250 ms, longest 105-168 ms, picture age 21-36 ms; server stream after USB fix 19 / 14.6 / 14.7 /
   19 fps, max gap 97-166 ms over 30 s; AI 4-7 checks/s per camera; NETRAX CPU ~20 % of 12 threads, browser ~7.7 %.
   Display method compared (decode-then-swap / plain swap / createImageBitmap+canvas): same CPU, canvas worst -> kept current.
+- 6 Nov: team's industrial safety sketch connected -> firmware/netrax_station_team/netrax_station_team.ino. POSTs JSON every 1 s to
+  http://192.168.60.49:8000/api/hw/telemetry as esp32-ppe-01 (hardware.yaml, zone welding_bay); fields temperature_c, humidity_pct,
+  flame_detected, mq2_adc, mq135_adc, helmet_fsr_adc, pm_adc, pm_sensor_v (raw, NOT calibrated -> no pm2_5 sent), accel/gyro,
+  uptime_s, alarm_level, buzzer_on, relay_on, rssi; reply led red/orange drives the LEDs + buzzer + relay (stronger of local/NETRAX).
+  Fixes vs the team version: never sent anything; URL was old IP + /api/rfid; DHT22 read every 2 s; helmet FSR = WARNING (was
+  CRITICAL -> buzzer always on); Wi-Fi auto-reconnect; 1.2 s HTTP timeout. Verified on a scratch backend (login on): normal -> green,
+  2 flame readings -> CRITICAL red / alarm / relay. Laptop Wi-Fi "CoE In HPC and EmTek" (Public), firewall allows python.
