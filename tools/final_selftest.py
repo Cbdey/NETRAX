@@ -175,6 +175,49 @@ def fire_payload(eid, bbox, growth=1.0, action="open", typ="fire", cam="cam_02",
             "frame_w": 1280, "frame_h": 720}
 
 
+def usb_order_test():
+    """6 Nov live bug: the USB C270 ignored MJPG set BEFORE the size -> uncompressed YUY2 at 7.5 fps (MJPG last: 29.8 fps)."""
+    import cv2 as _cv2
+    import edge.stream as es
+    calls = []
+
+    class FakeCap:
+        def __init__(self, *a): pass
+        def isOpened(self): return True
+        def set(self, prop, val): calls.append(prop); return True
+        def get(self, prop): return _cv2.VideoWriter_fourcc(*"MJPG") if prop == _cv2.CAP_PROP_FOURCC else 0
+    real = es.cv2.VideoCapture
+    es.cv2.VideoCapture = FakeCap
+    try:
+        es.StreamReader("cam_x", 0, 10, 0, {"width": 1280, "height": 720, "fps": 30, "mjpg": True})._open()
+    finally:
+        es.cv2.VideoCapture = real
+    i = {p: calls.index(p) for p in (_cv2.CAP_PROP_FOURCC, _cv2.CAP_PROP_FRAME_WIDTH, _cv2.CAP_PROP_FPS)}
+    check("12", "USB camera: MJPG is requested AFTER size + frame rate (else the C270 stays uncompressed at 7.5 fps)",
+          i[_cv2.CAP_PROP_FOURCC] > i[_cv2.CAP_PROP_FRAME_WIDTH] and i[_cv2.CAP_PROP_FOURCC] > i[_cv2.CAP_PROP_FPS], calls)
+
+
+def motion_tests():
+    """6 Nov: boxes / labels follow a walking person between AI results (display only)."""
+    from edge.live import Motion, predict_overlay
+    mo = Motion()
+
+    def ov(ts, x):
+        return {"ts": ts, "persons": [{"tid": 7, "bbox": [x, 100, x + 100, 400]}],
+                "items": [{"cls": "helmet", "bbox": [x + 30, 100, x + 70, 140]}], "parts": []}
+    o1, o2 = ov(10.0, 100), ov(10.5, 150)            # person walks right at 100 px/s
+    mo.learn("cam_01", o1)
+    mo.learn("cam_01", o2)
+    moved = predict_overlay(o2, mo.shift("cam_01", o2, 10.8, 1280))
+    far = predict_overlay(o2, mo.shift("cam_01", o2, 14.0, 1280))
+    still = predict_overlay(o2, mo.shift("cam_01", o2, 10.5, 1280))
+    check("12", "live view: boxes + their helmet label move WITH the walking person between AI results (100 px/s, 0.3 s -> +30 px)",
+          abs(moved["persons"][0]["bbox"][0] - 180) < 1 and abs(moved["items"][0]["bbox"][0] - 210) < 1
+          and o2["persons"][0]["bbox"][0] == 150, moved["persons"][0]["bbox"])
+    check("12", "live view: prediction never runs ahead more than 0.5 s, and none for the AI's own frame",
+          abs(far["persons"][0]["bbox"][0] - 200) < 1 and still["persons"][0]["bbox"][0] == 150, far["persons"][0]["bbox"])
+
+
 def entrance_object_tests():
     """5 Nov live bug: a chair with clothes on it was checked as an 'unregistered worker' (conf 0.53-0.60, no head)."""
     ok_items = {"helmet": ("compliant", .9), "vest": ("compliant", .9), "boots": ("compliant", .9)}
@@ -881,6 +924,8 @@ async def main():
           and csvr.status_code == 200 and csvr.text.startswith("event_id") and bad.status_code == 400)
     zentrix_tests()
     entrance_object_tests()
+    motion_tests()
+    usb_order_test()
     from edge.stream import StreamReader
     sr = StreamReader("cam_x", 0, 12)
     sr.frame_ts, sr.active_since, sr.fps = time.time(), 0, 30.0

@@ -39,6 +39,7 @@ processing:
   live_view: true       # edge/live.py: newest camera frame + latest AI boxes at live_fps (false = old behaviour)
   live_fps: 16          # MAX live picture rate per camera; each frame is sent as it arrives (even rhythm). 30 tested: AI 6 -> 1.5/s, 0.5 s hitches
   live_width: 800       # live picture width (px) - drawn + JPEG-encoded at this size
+  live_predict: true    # 6 Nov: boxes / labels follow a moving person between AI results (display only; alerts unchanged)
   fire_every_n: 2       # fire model every 2nd frame while the scene is clear; EVERY frame as soon as a
                         # fire/smoke candidate exists (small flames need every hit, idle frames stay fast)
 

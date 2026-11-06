@@ -201,7 +201,7 @@ class CameraWorker(threading.Thread):
 
         shown = self._smooth(statuses)                       # steady on-screen PPE list (no frame flicker)
         if self.live_view:                                   # edge/live.py draws this on every new camera frame
-            self.overlay = {"at": time.time(), "persons": [dict(p) for p in persons], "shown": shown,
+            self.overlay = {"at": time.time(), "ts": frame_ts, "persons": [dict(p) for p in persons], "shown": shown,
                             "items": list(items), "parts": list(parts or []), "fire": list(self.fv.boxes(self.cam_id)),
                             "rejected": list(self.fv.rejected.get(self.cam_id, [])) + list(bad_items),
                             "polys": self.zonemap.polys, "entrance": self.entrance}

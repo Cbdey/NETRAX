@@ -102,7 +102,7 @@ def main():
         # 4 Nov: smooth live picture from the newest camera frame + the latest AI result (edge/live.py)
         live = LiveView(readers, workers, publisher, clips if clips.enabled else None,
                         fps=proc.get("live_fps", settings["backend"]["preview_fps"]),
-                        width=proc.get("live_width", 800))
+                        width=proc.get("live_width", 800), predict=proc.get("live_predict", True))
         live.start()
         print(f"[edge] live view: {live.gap and round(1 / live.gap)} fps per camera, independent of the AI rate")
     print(f"[edge] running {len(cameras)} camera(s). Backend: {backend}. Ctrl+C to stop.")

@@ -344,3 +344,14 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
 - 5 Nov late live view: frames sent AS THEY ARRIVE (4 ms poll), capped by live_fps 16 (fixed 15/s clock beat against the phone's
   15/s -> skipped frames = stutter). 30 tested: AI 6 -> 1.5/s + hitches -> 16. Server output: laptop 18.9 fps max gap 102 ms,
   phone 14.7 fps max gap 145 ms. Headless-browser 0.35 s hitches are the software-rendering test browser, not the stream.
+- 6 Nov: Wi-Fi 192.168.60.x (laptop .49). cam_02 = http://192.168.60.53:8080/video, cam_03 = http://192.168.60.58:8080/video
+  (ENABLED), both rotate 90, phones already 640x480 q49. 4 cameras live.
+- 6 Nov USB C270 7.5 fps ROOT CAUSE: DirectShow ignores MJPG set BEFORE size -> uncompressed YUY2 = 7.5 fps at 720p.
+  edge/stream._open now sets size, fps, THEN MJPG (reads the format back, warns if not MJPG): USB 29.8 fps. Test usb_order_test.
+- 6 Nov live boxes follow the person: edge/live.Motion learns each track's velocity from the last two AI results
+  (worker.overlay now has "ts" = AI frame time) and moves person / item / part boxes to the shown frame's time (<= 0.5 s ahead,
+  <= 1.5 frame widths/s). Display only. settings processing.live_predict. Tests motion_tests x2.
+- 6 Nov measured, 4 cameras (laptop, 2 phones, USB), real headless browser on the control room: 19 / 14.8 / 14.5 / 7.5 (before
+  the USB fix) pictures/s, no gap > 250 ms, longest 105-168 ms, picture age 21-36 ms; server stream after USB fix 19 / 14.6 / 14.7 /
+  19 fps, max gap 97-166 ms over 30 s; AI 4-7 checks/s per camera; NETRAX CPU ~20 % of 12 threads, browser ~7.7 %.
+  Display method compared (decode-then-swap / plain swap / createImageBitmap+canvas): same CPU, canvas worst -> kept current.

@@ -53,13 +53,20 @@ class StreamReader(threading.Thread):
             cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW) if os.name == "nt" else cv2.VideoCapture(idx)
             if cap is not None and cap.isOpened():
                 c = self.capture
-                if c.get("mjpg"):
-                    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+                # 6 Nov: ORDER MATTERS on DirectShow - the Logi C270 silently ignored MJPG when it was set BEFORE the size
+                # and stayed on uncompressed YUY2, which at 1280x720 is limited to 7.5 fps (measured: MJPG first -> YUY2
+                # 7.5 fps; size, fps, THEN MJPG -> MJPG 29.2 fps). Size, fps, then MJPG.
                 if c.get("width"):
                     cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(c["width"]))
                     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(c["height"]))
                 if c.get("fps"):
                     cap.set(cv2.CAP_PROP_FPS, int(c["fps"]))
+                if c.get("mjpg"):
+                    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+                    v = int(cap.get(cv2.CAP_PROP_FOURCC))
+                    self.pixfmt = "".join(chr((v >> 8 * i) & 0xFF) for i in range(4))
+                    if self.pixfmt != "MJPG":
+                        print(f"[{self.cam_id}] camera refused MJPG (format {self.pixfmt!r}) - frame rate may be limited", flush=True)
                 if c.get("exposure") is not None:          # fixed exposure = less motion blur when running
                     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
                     cap.set(cv2.CAP_PROP_EXPOSURE, float(c["exposure"]))

@@ -68,3 +68,18 @@ Measured by a client on /ws/video for 20 s, all three cameras at once (edge AI r
 Picture age = edge capture -> received by the client on the same computer (the phone's own encode delay before the edge is not
 included). No freeze longer than 0.3 s. USB rate is the camera's own limit in this light. AI: 6-10 / 4 / 4 checks per second.
 Re-violation (PPE fixed, then taken off again): alert 1.4 s after it comes off (state-machine replay, edge.selftest).
+
+## 6 Nov 2026 - four cameras (laptop, two phones, USB), after "send frames as they arrive", box motion prediction and the USB MJPG fix
+
+Server stream (/ws/video client, 30 s, all four cameras at once):
+
+| Camera | Pictures / s | Gap p95 | Longest gap | Picture age p50 / p95 |
+|---|---|---|---|---|
+| cam_01 laptop | 19.0 | 66 ms | 119 ms | 31 / 53 ms |
+| cam_02 phone 192.168.60.53 | 14.6 | 111 ms | 166 ms | 18 / 48 ms |
+| cam_03 phone 192.168.60.58 | 14.7 | 108 ms | 156 ms | 19 / 48 ms |
+| cam_04 USB C270 (now MJPG 29.8 fps) | 19.0 | 63 ms | 97 ms | 31 / 53 ms |
+
+Control room in a headless browser (before the USB fix): 19 / 14.8 / 14.5 / 7.5 pictures/s on screen, no gap over 250 ms,
+picture age 21-36 ms. AI 4-7 checks/s per camera. Picture age = capture at the edge -> shown; the phones' own encode delay
+before the edge is not included. The headless test browser renders without a GPU and occasionally pauses itself (0.7 s).

@@ -1,6 +1,6 @@
 # NETRAX final acceptance self-test
 
-Run: 05 Nov 2026, 21:46:11 IST - `python -m tools.final_selftest`
+Run: 06 Nov 2026, 13:27:03 IST - `python -m tools.final_selftest`
 
 Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the real services; the live-provider and camera tests are in docs/NETRAX_Final_Test_Guide.pdf.
 
@@ -34,18 +34,18 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 09 | SMS: first try fails (HTTP 503) -> retried -> delivered, attempts logged | PASS | attempts 2 |
 | 09 | SMS text has type, severity, location, time and recommended action | PASS |  |
 | 09 | e-mail: SMTP drop -> retried -> accepted by the mail server ('sent', never claimed 'delivered') | PASS |  |
-| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 17 ms |
+| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 18 ms |
 | 13 | Telegram failure retried (bounded) then shown as FAILED with the reason - never 'delivered' | PASS |  |
 | 13 | system health shows the failing channel | PASS |  |
 | 13 | no credentials -> NOT CONFIGURED (clearly labelled), nothing claimed as sent | PASS |  |
 | 13 | health lists unconfigured channels as warnings | PASS |  |
 | 05 | same continuous incident is not sent twice on a channel | PASS |  |
-| 10 | 'What happened yesterday at 4:00 PM?' -> the saved record at 16:02 yesterday, nothing else | PASS | Between 04 Nov 2026, 15:30:00 IST to 16:30:00 IST: 1 incident - 1 ppe violation. |
+| 10 | 'What happened yesterday at 4:00 PM?' -> the saved record at 16:02 yesterday, nothing else | PASS | Between 05 Nov 2026, 15:30:00 IST to 16:30:00 IST: 1 incident - 1 ppe violation. |
 | 10 | no record in the window -> says 'No matching record was found' (no invented events) | PASS |  |
 | 10 | type filter (smoke) + whole day | PASS |  |
 | 10 | viewer role: worker names hidden in the answer | PASS |  |
 | 10 | every question logged | PASS |  |
-| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 5, "p50": 0.0, "p95": 0.0, "max": 0.0, "mean": 0.0} |
+| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 6, "p50": 0.0, "p95": 0.0, "max": 0.0, "mean": 0.0} |
 | 14 | no GPS + no configured site -> 'Location unavailable' + zone label (never invented) | PASS |  |
 | 14 | valid device GPS -> shown with source, accuracy and map link | PASS |  |
 | 14 | 1-hour-old reading -> marked STALE and not used | PASS |  |
@@ -87,8 +87,8 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | CLIP | viewer role: clip hidden (no link, file 403) | PASS |  |
 | CLIP | supervisor: dashboard record has the clip and it downloads (video/mp4) | PASS |  |
 | CLIP | retention: clips older than snapshot_retention_days are deleted like snapshots | PASS |  |
-| 12 | live video: pictures are pushed over one WebSocket with camera + capture time; a viewer gets only its cameras | PASS | ['cam_02/1793895347.229/1793895347.445', 'cam_02/1793895347.407/1793895347.447'] |
-| REP | report generator: time range -> summary (totals, most missed PPE, by zone / camera / worker) + records | PASS | ['Period: 29 Oct 2026 21:46 to 05 Nov 2026 21:46 (IST) - 20 record(s).', 'By type: Entrance check 12, PPE violation 6, Smoke 1, Fire 1.'] |
+| 12 | live video: pictures are pushed over one WebSocket with camera + capture time; a viewer gets only its cameras | PASS | ['cam_02/1793951803.097/1793951803.304', 'cam_02/1793951803.264/1793951803.305'] |
+| REP | report generator: time range -> summary (totals, most missed PPE, by zone / camera / worker) + records | PASS | ['Period: 30 Oct 2026 13:27 to 06 Nov 2026 13:27 (IST) - 20 record(s).', 'By type: Entrance check 12, PPE violation 6, Smoke 1, Fire 1.'] |
 | REP | filters work (PPE violations in the welding bay only) | PASS |  |
 | REP | PDF and CSV downloads (named by the time range); end before start refused | PASS |  |
 | ZX | commands open pages and sections (wake word + misspellings: 'hey zentrix open the admin pannel') | PASS | [{'op': 'navigate', 'url': '/admin'}, None] |
@@ -99,20 +99,23 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | ZX | bulk resolve asks for confirmation first; 'cancel' changes nothing; 'confirm' resolves them all | PASS | Please confirm: Resolve 7 alerts: Missing safety vest - Chinmaya; Missing helmet - Chinmay / Done: 7 resolved. |
 | ZX | 'analyse ... and acknowledge them' = analysis + the commanded action on exactly those alerts | PASS | I checked 1 active alert. 1 still need attention. Acknowledged: Missing helmet - Chinmaya. |
 | ZX | 'analyse the recent alerts and acknowledge OR resolve' (user's words, misspelt) -> each alert gets the verified choice: still on camera = acknowledged, no longer seen = resolved | PASS | I checked 3 active alerts. 2 still need attention, 1 look finished and can be resolved. 1 alert left for you to decide (cannot be verified). Done as verified: a |
-| ZX | questions about the past are answered from the records (grounded history assistant) | PASS | Between 05 Nov 2026, 00:00:00 IST to 21:45:48 IST: 1 incident - 1 fire (level 3). |
+| ZX | questions about the past are answered from the records (grounded history assistant) | PASS | Between 06 Nov 2026, 00:00:00 IST to 13:26:43 IST: 1 incident - 1 fire (level 3). |
 | ZX | a viewer can ask and move around but cannot change records | PASS | Your role (viewer) cannot resolve alerts - ask a supervisor or admin. |
 | ZX | entrance commands: allow / refuse the person at the entrance | PASS | ['approved', 'denied', None] |
 | 12 | camera health: a black picture (covered lens / stuck USB camera, seen live 5 Nov) is reported as such | PASS |  |
 | ENT | a chair with clothes is not a person: weak detection or no head / shoulders -> no entrance decision at all | PASS | 0 / 0 decisions |
 | ENT | a real person (head + shoulders, confident) is still checked; standing still never turns them into background | PASS | 1 / 1 |
 | ENT | a weak 'person' that never moves for 6 s is remembered as background (one decision at most, no repeats) | PASS | 1 decisions in 18 s |
+| 12 | live view: boxes + their helmet label move WITH the walking person between AI results (100 px/s, 0.3 s -> +30 px) | PASS | [180.00000000000006, 100.0, 280.00000000000006, 400.0] |
+| 12 | live view: prediction never runs ahead more than 0.5 s, and none for the AI's own frame | PASS | [200.0, 100.0, 300.0, 400.0] |
+| 12 | USB camera: MJPG is requested AFTER size + frame rate (else the C270 stays uncompressed at 7.5 fps) | PASS | [3, 4, 5, 6, 38] |
 | 12 | camera health: a fresh 30 fps camera is ONLINE although the shared AI checks it only 3.5x/s (live video is separate) | PASS |  |
-| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 38 ms for 3 cameras |
-| 12 | AI process: every camera gets ITS OWN frame's result back (portrait + landscape + a resized camera) | PASS | stats {'batch_ms_p50': 11.1, 'batch_ms_p95': 11.1, 'wait_ms_p50': 10.0, 'wait_ms_p95': 17.1, 'batch_size_avg': 1.5, 'gpu_busy_share': 0.01, 'process': True} |
-| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1015 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
+| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 53 ms for 3 cameras |
+| 12 | AI process: every camera gets ITS OWN frame's result back (portrait + landscape + a resized camera) | PASS | stats {'batch_ms_p50': 11.3, 'batch_ms_p95': 11.3, 'wait_ms_p50': 14.5, 'wait_ms_p95': 25.1, 'batch_size_avg': 1.5, 'gpu_busy_share': 0.01, 'process': True} |
+| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1064 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
 | 04 | edge pipeline: monitored zone, helmet off -> one PPE alert naming the helmet | PASS | items ['goggles', 'helmet'] after ? |
 | 12 | edge pipeline: per-camera latency samples recorded (capture -> processed) | PASS |  |
-| LIVE | profiler: every AI stage of a camera is timed (engine, tracker, face ID, PPE match, decisions, drawing) | PASS | ai_engine 9.4 ms, tracker 1.4 ms, face_id 0.0 ms, ppe_match 0.4 ms, decisions_fire 1.7 ms, draw_emit 0.1 ms |
-| LIVE | AI at ~1 fps, live picture still ~12 fps (video no longer hangs at the AI rate) | PASS | 15.0 pictures/s at [640] px, draw 1.1 ms |
+| LIVE | profiler: every AI stage of a camera is timed (engine, tracker, face ID, PPE match, decisions, drawing) | PASS | ai_engine 10.7 ms, tracker 1.3 ms, face_id 0.0 ms, ppe_match 0.4 ms, decisions_fire 1.8 ms, draw_emit 0.1 ms |
+| LIVE | AI at ~1 fps, live picture still ~12 fps (video no longer hangs at the AI rate) | PASS | 15.0 pictures/s at [640] px, draw 1.7 ms |
 | LIVE | incident clips are fed from the smooth live picture | PASS |  |
 | LIVE | face detection runs on a <= 960 px copy (phone frames are 1920 px) and boxes map back exactly | PASS | detector input (540, 960), face x=540 y=480 |
