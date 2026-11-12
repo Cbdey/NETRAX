@@ -59,6 +59,9 @@ EMERGENCY_SEV = set((SETTINGS.get("incidents") or {}).get("emergency_severities"
 SPEAKER = actuators.Speaker(SPK)
 ALARM = actuators.Alarm(ALM)
 ACCESS_ALIAS = {}    # camera 'unauthorized_entry' id -> the RFID alert for the same person (merged)
+PPE_ALIAS = {}       # 11 Nov: edge ppe alert id -> the active alert of the same person on that camera (merged)
+PPE_SOURCES = {}     # alert id -> edge alert ids still live for it (resolve only when all have ended)
+ACCESS_REOPEN = {}   # 12 Nov: new edge access alert id -> the earlier alert of the same person it re-opened
 CALLS = {}           # ppe event_id -> {"n": announcements made, "last": time, "items": (items, worker)}
 SPOKEN = {}          # (camera, person, type) -> (last time the speaker called that person, items said then)
 OP_CLOSED = {}       # event_id -> (camera_id, time): supervisor resolved it; the camera re-checks that person
@@ -144,13 +147,53 @@ async def fire_level_loop():
             for r in db.q("SELECT event_id FROM events WHERE type IN ('fire','smoke') AND status IN "
                           "('open','acknowledged','escalated') AND ended_at IS NULL"):
                 await regrade_fire(db.get_event(r["event_id"]), time.time())
+            await fire_call_tick(time.time())
         except Exception as ex:                 # noqa: BLE001
             print(f"[fire-level] loop error: {ex!r}")
 
 
+async def fire_call_tick(now):
+    """12 Nov (prompt pack step 8): a fire / smoke phone call is REPEATED until a supervisor acknowledges or resolves.
+    Every phone.repeat_every_s (60 s) while the alert is open / escalated; a busy / no-answer / failed / network attempt
+    is retried after phone.retry_after_failed_s (20 s); at most phone.max_calls per event. Each attempt = its own row
+    in the delivery log. Acknowledge / resolve / dismiss stops it (only open + escalated alerts are called)."""
+    ph = notify.load_policy().get("phone") or {}
+    if "call" not in notify.enabled_channels() or not ph.get("repeat_until_ack", True):
+        return
+    every, retry, cap = float(ph.get("repeat_every_s", 60)), float(ph.get("retry_after_failed_s", 20)), int(ph.get("max_calls", 10))
+    for r in db.q("SELECT event_id FROM events WHERE type IN ('fire','smoke') AND status IN ('open','escalated') AND ended_at IS NULL"):
+        e = db.get_event(r["event_id"])
+        if not e or not notify.call_allowed(e):
+            continue
+        calls = db.q("SELECT status, queued_at, finished_at FROM notifications WHERE event_id=? AND channel='call' "
+                     "AND kind != 'test' ORDER BY id", (e["event_id"],))
+        if not calls or len(calls) >= cap:
+            continue                                  # the first call comes from the normal alert path
+        last = calls[-1]
+        if last["status"] in ("queued", "sending", "retrying", "waiting"):
+            continue                                  # still ringing / waiting for internet
+        wait = retry if last["status"] == "failed" else every
+        since = (last["finished_at"] or last["queued_at"]) if last["status"] == "failed" else last["queued_at"]
+        if now - (since or now) >= wait:
+            await _call_again(e, len(calls) + 1)
+
+
+async def _call_again(e, n):
+    rows = await asyncio.to_thread(notify.enqueue, e, f"call {n} (not acknowledged yet)", None, f"call #{n}", ["call"])
+    for row in rows:
+        await broadcast("notification", row)
+
+
 async def health_loop():
+    tick = 0
     while True:
         await asyncio.sleep(3.0)
+        tick += 1
+        if tick % 10 == 0:                          # every 30 s: the 15-min e-mail digest when it is due
+            try:
+                await asyncio.to_thread(notify.send_digest)
+            except Exception as ex:                 # noqa: BLE001
+                print(f"[notify] digest error: {ex!r}")
         try:
             await broadcast("health", system_health())
         except Exception as ex:                 # noqa: BLE001
@@ -164,6 +207,14 @@ async def lifespan(app):
         auth.ensure_users()
     notify.DISPATCHER.on_update = lambda row: broadcast_threadsafe("notification", row)
     notify.DISPATCHER.start()
+    notify.TG_ACTION["fn"] = _telegram_action      # 12 Nov: Acknowledge / Resolve buttons in the Telegram message
+    notify.start_telegram_buttons()
+    try:                                         # 12 Nov: messages left unsent by a crash / restart are sent now
+        n_re = notify.requeue_unfinished()
+        if n_re:
+            print(f"[notify] {n_re} unsent message(s) from before the restart queued again")
+    except Exception as ex:                      # noqa: BLE001
+        print(f"[notify] requeue after restart failed: {ex!r}")
     timeutil.set_tz(notify.load_policy().get("timezone"))
     hw_api.setup(broadcast=broadcast, respond=respond, notify_async=notify_async, announce=announce,
                  ALARM=ALARM, ZONES=ZONES, list_workers=list_workers, entrance_scan=entrance_scan)
@@ -193,7 +244,7 @@ def current_user(request):
         {"user": None, "role": None}
 
 
-PAGE_PATHS = ("/", "/admin", "/entrance", "/hardware", "/login", "/roi")
+PAGE_PATHS = ("/", "/admin", "/entrance", "/hardware", "/login", "/roi", "/intelligence")
 
 
 @app.middleware("http")
@@ -238,11 +289,150 @@ def _ts(iso_str, default):
     return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).timestamp() if iso_str else default
 
 
+def _regrace():
+    return float((notify.load_policy().get("one_alert") or {}).get("regrace_s", 120))
+
+
+def _near(b1, b2):
+    """Same place in the picture: box centres closer than 0.75 x the box diagonal (a tracker split / short loss)."""
+    try:
+        c1, c2 = ((b1[0] + b1[2]) / 2, (b1[1] + b1[3]) / 2), ((b2[0] + b2[2]) / 2, (b2[1] + b2[3]) / 2)
+        diag = max(1.0, ((b1[2] - b1[0]) ** 2 + (b1[3] - b1[1]) ** 2) ** 0.5)
+        return ((c1[0] - c2[0]) ** 2 + (c1[1] - c2[1]) ** 2) ** 0.5 < 0.75 * diag
+    except (TypeError, IndexError):
+        return False
+
+
+def _same_violation(p, now, typ="ppe_missing"):
+    """12 Nov (prompt pack step 6, "one alert per violation"): the alert this detection belongs to, or None.
+    Key = worker ID + type + ZONE (the same worker seen by two cameras of one zone = one alert). Unidentified people
+    (no ID): same camera + zone + nearby position. Visitor ids (V-...) only within one edge run (they restart at V-001).
+    Matches an ACTIVE alert, or one that ended less than regrace_s ago (left view, PPE back on, AI restart, supervisor
+    resolve) - that one is RE-OPENED instead of creating a new alert. Returns (event row, 'active' | 'ended')."""
+    wid, zone, cam = p.get("worker_id"), p.get("zone_id"), p.get("camera_id")
+    since = now - _regrace()
+    base = ("SELECT event_id, status, started_at, ended_at, end_reason, closed_by, bbox, worker_id, camera_id, updated_at "
+            "FROM events WHERE type=? AND zone_id=? AND (status IN ('open','acknowledged','escalated') OR ended_at >= ?) ")
+    if wid and str(wid).startswith(("W-", "V-")):
+        rows = db.q(base + "AND worker_id=? ORDER BY started_at DESC LIMIT 1", (typ, zone, since, wid))
+        if rows and str(wid).startswith("V-") and rows[0]["started_at"] < EDGE.get("started", 0):
+            rows = []
+    elif typ == "ppe_missing" and cam:
+        cands = db.q(base + "AND camera_id=? AND (worker_id IS NULL OR worker_id NOT LIKE 'W-%') "
+                     "AND COALESCE(updated_at, started_at) >= ? ORDER BY started_at DESC LIMIT 5", (typ, zone, since, cam, since))
+        box = p.get("bbox")
+        rows = [r for r in cands if _near(box, json.loads(r["bbox"] or "null"))][:1]
+    else:
+        rows = []
+    if not rows:
+        return None, None
+    r = rows[0]
+    return r, ("active" if r["status"] in ("open", "acknowledged", "escalated") else "ended")
+
+
+def _reopen(r, eid, p, now):
+    """Bring an alert of the same violation back instead of opening a new one (one alert per violation)."""
+    why = r.get("end_reason") or r["status"]
+    db.x("UPDATE events SET status='open', ended_at=NULL, end_reason=NULL, updated_at=? WHERE event_id=?", (now, r["event_id"]))
+    db.add_action(r["event_id"], "reopened", "edge", f"same person, same violation again within {int(_regrace())} s (was: {why})")
+    # the person put the PPE back on, or a supervisor resolved it -> the voice may say it ONCE again
+    if why == "compliant" or str(why).startswith(("resolve by", "dismiss by")) or r["status"] in ("resolved", "closed") and r.get("closed_by"):
+        ev = db.get_event(r["event_id"])
+        if ev:
+            SPOKEN.pop(_speech_key(ev), None)
+    return why
+
+
+def _ppe_person_open(p, now):
+    """Kept for older callers: the ACTIVE alert of the same person (see _same_violation)."""
+    r, kind = _same_violation(p, now)
+    return r["event_id"] if r and kind == "active" else None
+
+
+def _ppe_merge(eid, action, p, now):
+    """11 Nov (user: "one alert for one violation; repetition irritates"): ONE active PPE alert per person per camera.
+    Live 20:21-20:23 the same worker got 5 separate open alerts (edge restarts / tracker ID splits = new edge alert ids
+    for the same person). A new edge alert for a person who already has an active one becomes an UPDATE of that alert
+    (new items -> one 'more PPE missing' message, same items -> silent); the alert resolves only when every edge
+    alert merged into it has resolved. Returns (event id to use, action, 'merged' | 'held' | None)."""
+    if not (SETTINGS.get("incidents") or {}).get("merge_same_person", True):
+        return eid, action, None
+    target = PPE_ALIAS.get(eid)
+    if target is None and action == "open" and not db.get_event(eid):
+        r, kind = _same_violation(p, now)
+        if r and r["status"] == "dismissed":         # marked a false alarm moments ago: stay quiet (no new alert)
+            PPE_ALIAS[eid] = r["event_id"]
+            return r["event_id"], "update", "held"
+        if r:
+            target = r["event_id"]
+            if kind == "ended":                         # 12 Nov: same violation again within regrace_s -> RE-OPEN it
+                p["_reopened"] = _reopen(r, eid, p, now)
+                PPE_SOURCES[target] = {eid}
+            else:
+                PPE_SOURCES.setdefault(target, set()).add(eid)
+                db.add_action(target, "seen", "edge", "same person seen again - merged into this alert (no duplicate)")
+            PPE_ALIAS[eid] = target
+            return target, "update", "merged"
+    if target is None:
+        if action == "open":
+            PPE_SOURCES.setdefault(eid, set()).add(eid)
+        elif action == "resolve" and len(PPE_SOURCES.get(eid, ())) > 1:
+            PPE_SOURCES[eid].discard(eid)              # the first edge alert ended; a merged one still sees it
+            return eid, action, "held"
+        return eid, action, None
+    if action == "resolve":
+        live = PPE_SOURCES.setdefault(target, set())
+        live.discard(eid)
+        PPE_ALIAS.pop(eid, None)
+        if live:
+            return target, action, "held"
+    return target, ("update" if action == "open" else action), "merged"
+
+
+async def close_orphaned_ppe(started, cams, now):
+    """11 Nov: the edge restarted (camera problems) -> its old PPE alerts can never resolve (new track ids) and stayed
+    'open' for ever, next to the new alert for the same person. Close them; a person still without PPE gets a fresh
+    look from the new edge within ~2 s (merged into nothing, so a normal new alert)."""
+    if not cams:
+        return 0
+    marks = ",".join("?" * len(cams))
+    rows = db.q(f"SELECT event_id FROM events WHERE type='ppe_missing' AND status IN ('open','acknowledged','escalated') "
+                f"AND ended_at IS NULL AND updated_at < ? AND camera_id IN ({marks})", (started, *cams))
+    for r in rows:
+        db.x("UPDATE events SET status='resolved', ended_at=?, end_reason=?, updated_at=? WHERE event_id=?",
+             (now, "edge_restarted", now, r["event_id"]))
+        db.add_action(r["event_id"], "auto_resolve", "system", "camera AI restarted - this alert can no longer be tracked")
+        PPE_SOURCES.pop(r["event_id"], None)
+        await broadcast("event", db.get_event(r["event_id"]))
+    return len(rows)
+
+
+def _store_items(eid, p):
+    """12 Nov polish: what was seen worn / could not be seen / was required (PPE icons). Only when the edge sent
+    them - an update without them keeps the stored lists; old events stay None (= unknown)."""
+    if p.get("items_required") is None and p.get("items_ok") is None:
+        return
+    db.x("UPDATE events SET items_ok=?, items_uncertain=?, items_required=? WHERE event_id=?",
+         (json.dumps(p.get("items_ok") or []), json.dumps(p.get("items_uncertain") or []),
+          json.dumps(p.get("items_required") or []), eid))
+
+
+def _fill_name(p):
+    """A registered worker id always comes with the name (same rule on screen, Telegram, e-mail and voice)."""
+    wid = p.get("worker_id")
+    if wid and str(wid).startswith("W-") and wid != "W-***" and not p.get("worker_name"):
+        r = db.q("SELECT name FROM workers WHERE worker_id=?", (wid,))
+        if r and r[0]["name"]:
+            p["worker_name"] = r[0]["name"]
+    return p
+
+
 @app.post("/api/events")
 async def ingest_event(p: dict = Body(...)):
     eid = p.get("event_id")
     if not eid:
         raise HTTPException(400, "event_id required")
+    _fill_name(p)
     now = time.time()
     snap = None
     if p.get("snapshot_b64"):
@@ -259,13 +449,25 @@ async def ingest_event(p: dict = Body(...)):
         return await ingest_entrance(p, snap, now)
     if eid in ACCESS_ALIAS:              # same person already alerted by RFID / camera: one alert, not two
         return {"ok": True, "merged_into": ACCESS_ALIAS[eid]}
-    if p.get("type") == "unauthorized_entry" and action == "open" and not db.get_event(eid):
+    if eid in ACCESS_REOPEN:             # 12 Nov: this edge alert drives a re-opened earlier alert of the same person
+        eid = ACCESS_REOPEN[eid]
+        action = "update" if action == "open" else action
+    elif p.get("type") == "unauthorized_entry" and action == "open" and not db.get_event(eid):
         same = db.q("SELECT event_id FROM events WHERE type='unauthorized_entry' AND worker_id=? AND zone_id=? "
                     "AND status IN ('open','acknowledged','escalated') LIMIT 1", (p.get("worker_id"), p.get("zone_id")))
         if same:
             ACCESS_ALIAS[eid] = same[0]["event_id"]
             db.add_action(same[0]["event_id"], "seen", "edge", f"also seen on {p.get('camera_id')} (face ID)")
             return {"ok": True, "merged_into": same[0]["event_id"]}
+        r, kind = _same_violation(p, now, "unauthorized_entry")
+        if r and kind == "ended" and r["status"] != "dismissed":    # back in the zone within regrace_s: same alert
+            _reopen(r, eid, p, now)
+            ACCESS_REOPEN[eid] = r["event_id"]
+            eid, action = r["event_id"], "update"
+    if p.get("type") == "ppe_missing":
+        eid, action, merged = _ppe_merge(eid, action, p, now)
+        if merged == "held":
+            return {"ok": True, "merged_into": eid, "held": True}
     existing = db.get_event(eid)
     started = _ts(p.get("started_at"), now)
     if existing is None:
@@ -284,6 +486,7 @@ async def ingest_event(p: dict = Body(...)):
         db.x("UPDATE events SET frame_w=?, frame_h=?, location=? WHERE event_id=?",
              (p.get("frame_w"), p.get("frame_h"), json.dumps(location.current(p.get("zone_id"), p.get("camera_id"), now)),
               eid))
+        _store_items(eid, p)
         for ext in (".mp4", ".webm"):
             if os.path.exists(os.path.join(CLIP_DIR, eid + ext)):
                 db.x("UPDATE events SET clip_path=? WHERE event_id=?", (os.path.join(CLIP_DIR, eid + ext), eid))
@@ -323,6 +526,7 @@ async def ingest_event(p: dict = Body(...)):
               p.get("worker_id"), p.get("worker_name"), eid))
         db.x("UPDATE events SET frame_w=COALESCE(?, frame_w), frame_h=COALESCE(?, frame_h) WHERE event_id=?",
              (p.get("frame_w"), p.get("frame_h"), eid))
+        _store_items(eid, p)
         e = db.get_event(eid)
         if e["type"] in ("fire", "smoke"):
             await regrade_fire(e, now, broadcast_always=False)
@@ -334,6 +538,9 @@ async def ingest_event(p: dict = Body(...)):
         elif added and e["type"] == "ppe_missing" and e["status"] in ("open", "escalated", "acknowledged"):
             # more PPE found missing on the same person = a new finding: one message per new item set
             await notify_async(e, "more PPE missing: " + ", ".join(i.upper() for i in added))
+        elif str(p.get("_reopened") or "").startswith(("resolve by", "dismiss by")):
+            # 12 Nov: resolved by a supervisor but still missing -> the SAME alert is back, one Telegram update
+            await notify_async(e, "still missing after resolve")
     return {"ok": True}
 
 
@@ -590,17 +797,42 @@ def spoken_id(wid):
     return " ".join(wid.replace("-", "")) if wid else ""
 
 
-def ppe_text(e):
-    zone = e.get("zone_name") or e.get("zone_id")
+VOICE_ORDER = ["helmet", "vest", "gloves", "goggles", "mask", "boots"]      # same order as the dashboard icons
+
+
+def _in_order(items):
+    return [i for i in VOICE_ORDER if i in items] + sorted(i for i in items if i not in VOICE_ORDER)
+
+
+def _who_spoken(e):
+    """'Ritika, worker W 0 0 4' for a registered worker (name only if we know it); None for anyone else."""
     wid = e.get("worker_id") or ""
-    if wid.startswith("W-"):
-        who = f"worker {spoken_id(wid)}, {e.get('worker_name') or ''}".rstrip(", ")
-    else:
-        who = f"unregistered person in the {zone}"
-    items = e.get("items_missing") or []
-    added = [i for i in (e.get("_added") or []) if i in items]
-    also = f" Also missing: {_words(added)}." if added else ""
-    return f"Attention {who}.{also} Please wear your {_words(items)} now." if items else ""
+    if not wid.startswith("W-") or wid == "W-***":
+        return None
+    name = e.get("worker_name")
+    return f"{name}, worker {spoken_id(wid)}" if name else f"worker {spoken_id(wid)}"
+
+
+def ppe_text(e):
+    """12 Nov (prompt pack step 7): ONE fixed sentence, name first, ALL missing items in icon order.
+    registered:   'Attention Ritika, worker W 0 0 4. Helmet and gloves missing. Please wear them now.'
+    unregistered: 'Attention, unregistered person in the Welding bay. Helmet missing. Please wear it now. Report to the supervisor.'
+    item added:   'Ritika, gloves also missing.'"""
+    zone = e.get("zone_name") or e.get("zone_id")
+    items = _in_order(e.get("items_missing") or [])
+    if not items:
+        return ""
+    added = _in_order([i for i in (e.get("_added") or []) if i in items])
+    who = _who_spoken(e)
+    if added:                                     # an item was ADDED to an open alert: say only what is new
+        lead = (e.get("worker_name") or f"Worker {spoken_id(e['worker_id'])}") if who else f"Unregistered person in the {zone}"
+        return f"{lead}, {_words(added)} also missing."
+    what = _words(items)
+    what = what[0].upper() + what[1:]
+    them = "them" if len(items) > 1 else "it"
+    if who:
+        return f"Attention {who}. {what} missing. Please wear {them} now."
+    return f"Attention, unregistered person in the {zone}. {what} missing. Please wear {them} now. Report to the supervisor."
 
 
 def ok_text(e):
@@ -629,9 +861,8 @@ def voice_rank(zone, kind, priority="normal"):
 
 def access_text(e):
     zone = e.get("zone_name") or e.get("zone_id")
-    wid = e.get("worker_id") or ""
-    who = f"{e.get('worker_name') or ''}, worker {spoken_id(wid)}".strip(", ")
-    return f"Attention {who}. You are not authorised in the {zone}. Please leave the {zone} now."
+    who = _who_spoken(e) or "unregistered person"
+    return f"Attention {who}. You are not authorised in the {zone}. Please leave now."
 
 
 def alert_text(e):
@@ -864,6 +1095,14 @@ async def delete_worker(worker_id: str):
 @app.post("/api/edge/health")
 async def edge_health(p: dict = Body(...)):
     EDGE["state"], EDGE["at"] = p, time.time()
+    started = p.get("edge_started")
+    if started and started != EDGE.get("started"):
+        first = EDGE.get("started") is None
+        EDGE["started"] = started
+        cams = [c.get("id") or c.get("camera_id") for c in (p.get("cameras") or []) if c.get("id") or c.get("camera_id")]
+        n = await close_orphaned_ppe(float(started), cams, time.time())
+        if n:
+            print(f"[backend] edge {'started' if first else 'restarted'}: closed {n} PPE alert(s) it can no longer track")
     await broadcast("cameras", cameras_payload())
     return {"ok": True}
 
@@ -922,12 +1161,17 @@ def _hw_badge(zone_id, badge):
 
 
 def cameras_payload():
+    from edge.power import read_off
     edge_alive = time.time() - EDGE["at"] < 5
     by_id = {c["camera_id"]: c for c in (EDGE["state"] or {}).get("cameras", [])} if edge_alive else {}
+    off = read_off()
     out = []
     for cam_id, cam in CAMERAS.items():
         z = ZONES[cam["default_zone"]]
         h = by_id.get(cam_id, {})
+        if cam_id in off and cam.get("enabled", True) is not False:
+            # 11 Nov: switched off from the dashboard - the edge has released it (STANDBY); no picture, no AI, no alarms
+            h = {"status": "OFF", "detail": "Switched off from the dashboard", "fps": 0, "badge": None}
         out.append({
             "camera_id": cam_id, "name": cam.get("name", cam_id), "zone_id": cam["default_zone"],
             "zone_name": z["name"], "risk": z["risk"],
@@ -936,6 +1180,8 @@ def cameras_payload():
                       h.get("detail", "edge not running" if not edge_alive else "no data"),
             "fps": h.get("fps", 0), "badge": _hw_badge(cam["default_zone"], h.get("badge")),
             "infer_ms": h.get("infer_ms"), "share": cam.get("share"), "role": cam.get("role", "monitor"),
+            "power": "off" if cam_id in off else "on", "can_power": cam.get("enabled", True) is not False,
+            "people": h.get("people") if h.get("status") in ("ONLINE", "DEGRADED") else None,   # 12 Nov KPI tiles
         })
     st = EDGE["state"] or {}
     return {"edge_online": edge_alive, "cameras": out,
@@ -959,6 +1205,26 @@ def activate_camera(camera_id: str):
         raise HTTPException(400, "camera is not part of a camera pair")
     write_choice(str(cam["share"]), camera_id)
     return {"ok": True, "pair": cam["share"], "active": camera_id}
+
+
+@app.post("/api/cameras/{camera_id}/power")
+async def camera_power(camera_id: str, request: Request, body: dict = Body(...)):
+    """11 Nov: turn a camera ON / OFF from the dashboard (supervisor / admin). OFF = the edge releases the camera within ~1 s:
+    no picture, no AI checks, no alarms from it, until it is turned on again (also after a restart)."""
+    from edge.power import write_power
+    cam = CAMERAS.get(camera_id)
+    if not cam:
+        raise HTTPException(404, "unknown camera")
+    if cam.get("enabled", True) is False:
+        raise HTTPException(400, "this camera is switched off in config/cameras.yaml (enabled: false) - change it there")
+    on = bool((body or {}).get("on"))
+    write_power(camera_id, on)
+    u = current_user(request) or {}
+    db.audit(u.get("user"), u.get("role"), "camera_on" if on else "camera_off", camera_id,
+             f"{cam.get('name', camera_id)} turned {'ON' if on else 'OFF'} from the dashboard", _ip(request))
+    payload = cameras_payload()
+    await broadcast("cameras", payload)
+    return next(c for c in payload["cameras"] if c["camera_id"] == camera_id)
 
 
 @app.get("/api/zones")
@@ -1033,6 +1299,22 @@ async def _act(event_id, action, status, body, request=None):
     if action == "escalate":
         await notify_async(e, "ESCALATED by supervisor", "Plant safety manager")
     return e
+
+
+def _telegram_action(event_id, action, user):
+    """A button pressed in the Telegram group (called from the polling thread). Same path as the dashboard button:
+    status, audit log ('telegram:<name>'), calls / siren stopped. A stale press on a finished alert changes nothing."""
+    e = db.get_event(event_id)
+    if not e:
+        return False, "Alert not found."
+    if action == "ack" and e["status"] not in ("open", "escalated", "verifying"):
+        return False, f"Already {e['status']}."
+    if action == "resolve" and e["status"] not in ("open", "escalated", "acknowledged", "verifying"):
+        return False, f"Already {e['status']}."
+    status = {"ack": "acknowledged", "resolve": "resolved"}[action]
+    fut = asyncio.run_coroutine_threadsafe(_act(event_id, action, status, {"note": "via Telegram", "by_user": user}), LOOP["loop"])
+    fut.result(timeout=15)
+    return True, f"{'Acknowledged' if action == 'ack' else 'Resolved'} · {e.get('zone_name') or ''}"
 
 
 @app.post("/api/events/{event_id}/ack")
@@ -1302,6 +1584,18 @@ async def _zx_execute(steps, text, request, role):
             elif s["kind"] == "entrance":
                 await entrance_override(s["event_id"], request, {"decision": s["decision"], "note": note})
                 done.append(("entrance_" + s["decision"], s["event_id"]))
+            elif s["kind"] == "camera_power":                       # 11 Nov: same path as the dashboard button
+                await camera_power(s["camera_id"], request, {"on": bool(s["on"])})
+                done.append(("camera_on" if s["on"] else "camera_off", s["camera_id"]))
+            elif s["kind"] == "silence":
+                await silence({"by_user": f"{(current_user(request) or {}).get('user') or 'supervisor'} via Zentrix"})
+                done.append(("silence", "siren"))
+            elif s["kind"] == "notify_test":
+                if role != "admin":
+                    skipped.append("only an admin can send test messages")
+                    continue
+                await notify_test(request, {"channels": list(s["channels"])})
+                done.append(("notify_test", ",".join(s["channels"])))
         except HTTPException as x:
             skipped.append(str(x.detail))
     return done, skipped
@@ -1335,7 +1629,8 @@ async def zentrix(request: Request, body: dict = Body(...)):
                 n[a] = n.get(a, 0) + 1
             words = {"ack": "acknowledged", "resolve": "resolved", "dismiss": "marked as false alarm",
                      "escalate": "escalated", "entrance_approved": "allowed at the entrance",
-                     "entrance_denied": "refused at the entrance"}
+                     "entrance_denied": "refused at the entrance", "camera_off": "camera(s) turned off",
+                     "camera_on": "camera(s) turned on", "silence": "siren silenced", "notify_test": "test message(s) sent"}
             res["reply"] = "Done: " + ", ".join(f"{k} {words.get(a, a)}" for a, k in n.items()) + "."
         else:
             res["reply"] = "Nothing was changed."
@@ -1514,10 +1809,15 @@ def system_health():
     ok, msg = db.health()
     add("Database", "ok" if ok else "fail", msg)
     ns = notify.status()
+    waiting = {r["channel"]: r["n"] for r in db.q("SELECT channel, COUNT(*) n FROM notifications WHERE status='waiting' GROUP BY channel")}
     for ch, v in ns["channels"].items():
         last = v.get("last") or {}
         if not v["configured"]:
             add(f"Alerts: {ch}", "warn", "NOT CONFIGURED - messages are not sent on this channel")
+        elif waiting.get(ch):
+            add(f"Alerts: {ch}", "warn", f"waiting for internet - {waiting[ch]} message(s) kept, sent when it returns")
+        elif ch == "email" and notify.emails_today() >= int((notify.load_policy().get("email") or {}).get("daily_max", 300)):
+            add(f"Alerts: {ch}", "warn", "daily e-mail limit reached - only fire / smoke e-mails until midnight")
         elif last.get("status") == "failed":
             add(f"Alerts: {ch}", "fail", f"last attempt failed: {last.get('error') or ''}"[:160])
         else:
@@ -1569,6 +1869,12 @@ def entrance_page():
 @app.get("/hardware")
 def hardware_page():
     return FileResponse(os.path.join(ROOT, "dashboard", "hardware.html"))
+
+
+@app.get("/intelligence")
+def intelligence_page():
+    """11 Nov: 'Industrial Safety Intelligence' dashboard - one extra page that only READS the existing APIs."""
+    return FileResponse(os.path.join(ROOT, "dashboard", "intelligence.html"))
 
 
 app.mount("/snapshots", StaticFiles(directory=SNAP_DIR), name="snapshots")

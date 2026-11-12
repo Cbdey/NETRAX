@@ -11,21 +11,31 @@ import tempfile
 import threading
 import time
 
+try:
+    sys.stdout.reconfigure(errors="replace")     # the Windows console cannot print every icon (❌ ✅ ❔)
+except AttributeError:
+    pass
 TMP = tempfile.mkdtemp()
 os.environ.setdefault("SENTINELEYE_MUTE", "1")
 os.environ["SENTINELEYE_DB"] = os.path.join(TMP, "final_test.db")
 os.environ["SENTINELEYE_DATA_DIR"] = TMP
 os.environ["SENTINELEYE_AUTH"] = "0"           # HTTP auth is switched on per test below
+os.environ["SENTINELEYE_POWER_FILE"] = os.path.join(TMP, "camera_power.json")   # never the real on/off file
 os.environ["NETRAX_CHANNELS"] = "telegram,call,sms,email"   # test every channel even if the site disabled some
 os.environ["SENTINELEYE_SECRETS"] = os.path.join(TMP, "no_secrets.yaml")   # never the real keys of this laptop
+os.environ["NETRAX_CALL_PROVIDER"] = "twilio"  # the older acceptance tests use the fake Twilio; CallMeBot / Android: call_tests()
 for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM",
-          "ALERT_PHONE_TO", "SMTP_USER", "SMTP_PASSWORD", "ALERT_EMAIL_TO"):
+          "ALERT_PHONE_TO", "SMTP_USER", "SMTP_PASSWORD", "ALERT_EMAIL_TO", "ALERT_CALL_TO", "ADB_PATH"):
     os.environ.pop(k, None)
 
 import backend.main as m                       # noqa: E402
 from backend import auth, assistant, db, fire_levels, location, notify, perf, timeutil   # noqa: E402
 from edge.engine import InferenceEngine        # noqa: E402
 from edge.entrance import EntranceChecker      # noqa: E402
+
+# the older tests post several independent alerts for W-001 on cam_01; same-person merging (11 Nov) is tested
+# on its own in merge_tests() with the switch on
+m.SETTINGS.setdefault("incidents", {})["merge_same_person"] = False
 
 RESULTS, ok_all = [], True
 
@@ -110,6 +120,8 @@ SMTP_SENT = []
 def fake_email(sec, subject, body, photo=None):
     if not (sec["email"]["username"] and sec["email"]["app_password"] and sec["email"]["to"]):
         return notify.Result("not_configured", error="SMTP not set")
+    if NET.mode.get("email") == "down":            # 12 Nov: Wi-Fi off -> DNS lookup fails
+        return notify.Result("failed", error="network: gaierror: [Errno 11001] getaddrinfo failed", recoverable=True)
     if NET._flaky("email"):
         return notify.Result("failed", error="SMTPServerDisconnected", recoverable=True)
     SMTP_SENT.append((subject, body))
@@ -164,6 +176,13 @@ def ppe_payload(eid, items, sev="High", cam="cam_01", zone="welding_bay", action
             "camera_id": cam, "camera_name": cam, "zone_id": zone, "zone_name": m.ZONES[zone]["name"],
             "track_id": 7, "worker_id": "W-001", "worker_name": "Chinmaya", "confidence": 0.88, "bbox": [10, 10, 200, 600],
             "captured_at": iso, "started_at": iso, "onset_at": iso, "frame_w": 1280, "frame_h": 720}
+
+
+def ppe_payload_w(eid, items, **kw):
+    """Same as ppe_payload for a worker no other test uses (W-090), so the same-person merge test is independent."""
+    p = ppe_payload(eid, items, **kw)
+    p.update(worker_id="W-090", worker_name="Test worker")
+    return p
 
 
 def fire_payload(eid, bbox, growth=1.0, action="open", typ="fire", cam="cam_02", zone="warehouse", t=None):
@@ -243,6 +262,623 @@ def entrance_object_tests():
           len(real) == 1 and real[0]["result"] == "approved" and len(real_still) == 1, f"{len(real)} / {len(real_still)}")
     check("ENT", "a weak 'person' that never moves for 6 s is remembered as background (one decision at most, no repeats)",
           len(weak_still) <= 1, f"{len(weak_still)} decisions in 18 s")
+
+
+def ppe_accuracy_alert_tests():
+    """11 Nov (final round tomorrow): vest seen on the entrance camera rejected as 'not hi-vis', helmet on a close /
+    slim person rejected by size, head above the picture called 'NO HELMET', one person = many entrance popups and
+    several open alerts for the same worker on one camera."""
+    import numpy as _np
+    from fastapi.testclient import TestClient
+    from edge.validate import item_ok
+    from edge.association import evaluate
+    V = m.SETTINGS["validation"]
+    person = [100, 50, 300, 700]
+    vest = {"cls": "vest", "conf": 0.95, "bbox": [110, 200, 290, 450]}
+
+    def frame(bgr):
+        f = _np.full((720, 1280, 3), 60, _np.uint8)
+        f[200:450, 110:290] = bgr
+        return f
+    washed = item_ok(frame((150, 225, 205)), person, vest, V)[0]       # HSV ~ (33, 85, 225): entrance USB vest
+    strong = item_ok(frame((0, 255, 200)), person, vest, V)[0]
+    blue = item_ok(frame((140, 70, 40)), person, vest, V)[0]
+    beige = item_ok(frame((150, 180, 205)), person, vest, V)[0]        # skin / beige shirt (hue ~16)
+    white = item_ok(frame((225, 230, 230)), person, vest, V)[0]
+    check("PPE", "vest: washed-out fluorescent yellow (entrance USB camera) ACCEPTED; blue / beige / white shirt still rejected",
+          washed and strong and not blue and not beige and not white, [washed, strong, blue, beige, white])
+    slim = [100, 50, 200, 700]                                          # slim standing person, helmet 0.75 of the box
+    helmet_ok = item_ok(frame((60, 60, 60)), slim, {"cls": "helmet", "conf": 0.9, "bbox": [112, 30, 187, 120]}, V)[0]
+    shirt_as_helmet = item_ok(frame((60, 60, 60)), person, {"cls": "helmet", "conf": 0.9, "bbox": [120, 200, 280, 380]}, V)[0]
+    check("PPE", "helmet on a slim person (0.75 of the box width) accepted; a shirt-sized box is still not a helmet",
+          helmet_ok and not shirt_as_helmet, [helmet_ok, shirt_as_helmet])
+    p = {"tid": 1, "bbox": [400, 12, 900, 720], "conf": 0.92}           # close-up: box starts 12 px below the top
+    st, _ = evaluate([p], [], {1: ["helmet", "vest"]}, 1280, 720, m.SETTINGS["association"])
+    check("PPE", "head above the picture (person close to the camera) -> helmet 'can't tell', never 'NO HELMET'",
+          st[1]["helmet"][0] == "unverifiable" and st[1]["vest"][0] == "missing", st[1])
+
+    # entrance: the same person under a NEW tracker id -> no second identical popup; a different verdict is announced
+    ec = EntranceChecker("cam_04", "main_entrance", ["helmet", "vest", "boots"], {})
+    miss_vest = {"helmet": ("compliant", .9), "vest": ("missing", .9), "boots": ("compliant", .9)}
+    out, t = [], 1000.0
+    for i in range(12):
+        out += ec.update([{"tid": 1, "bbox": [100, 60, 300, 700], "conf": 0.9}], {1: miss_vest}, 1280, 720, t)
+        t += 0.15
+    t += 1.0                                                            # tracker loses them for a moment -> new id 2
+    for i in range(12):
+        out += ec.update([{"tid": 2, "bbox": [105, 60, 305, 700], "conf": 0.9}], {2: miss_vest}, 1280, 720, t)
+        t += 0.15
+    first = len(out)
+    allok = {k: ("compliant", .9) for k in miss_vest}
+    for i in range(40):                                                 # vest put on -> ONE approval
+        out += ec.update([{"tid": 2, "bbox": [105, 60, 305, 700], "conf": 0.9}], {2: allok}, 1280, 720, t)
+        t += 0.15
+    check("ENT", "same person, new tracker id: no second 'vest missing' popup; putting the vest on -> one APPROVED",
+          first == 1 and [o["result"] for o in out] == ["denied", "approved"], [o["result"] for o in out])
+    ec = EntranceChecker("cam_04", "main_entrance", ["helmet", "vest", "boots"], {})
+    unclear = {"helmet": ("unverifiable", .9), "vest": ("compliant", .9), "boots": ("compliant", .9)}
+    out, t = [], 2000.0
+    for i in range(40):
+        out += ec.update([{"tid": 1, "bbox": [300, 5, 1000, 715], "conf": 0.9}], {1: unclear}, 1280, 720, t)
+        t += 0.15
+    check("ENT", "standing too close (head cut at the top) -> manual 'too close - step back', not 'denied'",
+          out and out[0]["result"] == "manual" and "too close" in (out[0]["reason"] or ""),
+          out and (out[0]["result"], out[0]["reason"]))
+
+    # backend: one active PPE alert per person per camera
+    m.SETTINGS["incidents"]["merge_same_person"] = True
+    try:
+        with TestClient(m.app) as c:
+            now = time.time()
+            c.post("/api/events", json=ppe_payload_w("evt_mg_a", ["helmet"], t=now - 30))
+            c.post("/api/events", json=ppe_payload_w("evt_mg_b", ["helmet"], t=now - 20))        # edge restart / new track
+            c.post("/api/events", json=ppe_payload_w("evt_mg_c", ["helmet", "vest"], t=now - 10))  # more missing
+            a = db.get_event("evt_mg_a")
+            dup = [db.get_event("evt_mg_b"), db.get_event("evt_mg_c")]
+            other = ppe_payload("evt_mg_o", ["helmet"], t=now - 5)
+            other.update(worker_id="W-002", worker_name="SUSHREE")
+            c.post("/api/events", json=other)
+            c.post("/api/events", json=ppe_payload_w("evt_mg_a", ["helmet"], action="resolve", t=now))   # first track gone
+            still = db.get_event("evt_mg_a")["status"]
+            c.post("/api/events", json=ppe_payload_w("evt_mg_b", ["helmet"], action="resolve", t=now))
+            c.post("/api/events", json=ppe_payload_w("evt_mg_c", ["helmet"], action="resolve", t=now))
+            end = db.get_event("evt_mg_a")["status"]
+            # edge restart: the old run's alert is closed when the new edge reports in
+            po = ppe_payload("evt_mg_old", ["gloves"], cam="cam_02", zone="warehouse", t=now - 60)
+            po.update(worker_id="W-093", worker_name="Restart test")      # own worker: zone-wide merge (12 Nov)
+            c.post("/api/events", json=po)
+            db.x("UPDATE events SET updated_at=? WHERE event_id='evt_mg_old'", (now - 60,))
+            c.post("/api/edge/health", json={"at": now, "edge_started": now - 1, "cameras": [{"camera_id": "cam_02"}]})
+            old = db.get_event("evt_mg_old")
+        check("PPE", "same worker, same camera: 3 edge alerts -> ONE alert (items updated to helmet + vest), another worker separate",
+              dup == [None, None] and a["items_missing"] == ["helmet", "vest"] and db.get_event("evt_mg_o") is not None,
+              [a["items_missing"], dup])
+        check("PPE", "merged alert stays open until every merged camera track has ended",
+              still == "open" and end == "resolved", [still, end])
+        check("PPE", "edge restarted -> its old alerts that can no longer be tracked are closed (no orphan 'open' alerts)",
+              old["status"] == "resolved" and old["end_reason"] == "edge_restarted", [old["status"], old["end_reason"]])
+    finally:
+        m.SETTINGS["incidents"]["merge_same_person"] = False
+
+
+def cap_vs_helmet_test():
+    """12 Nov (jury): a normal cap must not pass as a helmet. The main model calls caps 'helmet'; only a helmet the v3
+    model also confirmed (per person, kept 30 s) counts. Far people are not judged this way (rarely confirmed)."""
+    from edge.association import evaluate
+    A = dict(m.SETTINGS["association"], helmet_confirm_wait_s=1.0, helmet_confirm_keep_s=30, helmet_confirm_min=0.3,
+             helmet_confirm_min_height=0.35)
+    near = {"tid": 1, "bbox": [400, 100, 700, 700], "conf": 0.92, "track_conf": 0.92}       # 83 % of a 720 px picture
+    far = {"tid": 2, "bbox": [100, 400, 160, 560], "conf": 0.92, "track_conf": 0.92}        # 22 %
+    cap = {"cls": "helmet", "conf": 0.8, "bbox": [500, 90, 600, 150], "confirm": 0.0}
+    helm = dict(cap, confirm=0.85)
+
+    def st(p, it, mem, t):
+        return evaluate([p], [it], {p["tid"]: ["helmet"]}, 1280, 720, A, helmet_mem=mem, now=t)[0][p["tid"]]["helmet"][0]
+    mem = {}
+    seq_cap = [st(near, cap, mem, t) for t in (0.0, 0.5, 1.2, 2.0)]
+    mem = {}
+    seq_helm = [st(near, helm, mem, 0.0), st(near, cap, mem, 10.0), st(near, cap, mem, 45.0)]   # confirmation kept 30 s
+    far_box = dict(cap, bbox=[115, 395, 145, 415])
+    far_res = st(far, far_box, {}, 5.0)
+    legacy = evaluate([near], [cap], {1: ["helmet"]}, 1280, 720, A)[0][1]["helmet"][0]      # no memory = old behaviour
+    check("PPE", "cap (never confirmed by the 2nd model) -> 'checking' then NO HELMET; real helmet confirmed once stays OK 30 s; "
+                 "far person / no memory = old behaviour",
+          seq_cap == ["unverifiable", "unverifiable", "missing", "missing"] and seq_helm == ["compliant", "compliant", "missing"]
+          and far_res == "compliant" and legacy == "compliant", [seq_cap, seq_helm, far_res, legacy])
+
+
+def eyewear_test():
+    """12 Nov (jury): normal spectacles must not pass as safety goggles. Second-stage check on each goggles box
+    (edge/eyewear.py): goggles -> compliant, unclear -> 'unverifiable' (no alarm), normal glasses + face seen -> NO GOGGLES."""
+    from edge.association import evaluate
+    A = m.SETTINGS["association"]
+    p = {"tid": 1, "bbox": [400, 100, 700, 700], "conf": 0.92, "track_conf": 0.92}
+    face = [{"cls": "face", "conf": 0.8, "bbox": [520, 120, 590, 200]}]
+    g = {"cls": "goggles", "conf": 0.7, "bbox": [525, 140, 585, 160]}
+
+    def st(ew):
+        it = dict(g, eyewear=ew) if ew else dict(g)
+        return evaluate([p], [it], {1: ["goggles"]}, 1280, 720, A, parts=face)[0][1]["goggles"][0]
+    got = [st("goggles"), st("unclear"), st("normal_glasses"), st(None)]
+    check("PPE", "eyewear check: safety goggles OK, unclear -> no alarm, NORMAL GLASSES (face seen) -> NO GOGGLES, "
+                 "no check -> old behaviour", got == ["compliant", "unverifiable", "missing", "compliant"], got)
+    import cv2, glob
+    import numpy as np
+    from edge.validate import item_ok
+    frame = np.zeros((720, 1280, 3), np.uint8)
+    ok = item_ok(frame, p["bbox"], dict(g, eyewear="normal_glasses"), m.SETTINGS["validation"])
+    check("PPE", "a box rejected as normal glasses is labelled so (snapshot / live picture say WHY)",
+          ok == (False, "normal glasses"), ok)
+    # the real model, when its weights and our own frames are on this laptop
+    from edge.eyewear import load, eye_crop
+    mods = m.SETTINGS["models"]
+    sample = sorted(glob.glob(os.path.join(m.ROOT, "datasets", "own", "ppe", "ppe_01_fullkit_day", "images", "*.jpg")))[:6]
+    sun = sorted(glob.glob(os.path.join(m.ROOT, "datasets", "own", "ppe", "ppe_09_all_off_dim", "images", "*.jpg")))
+    e = load(mods, 0) if sample and sun else None
+    if e is None:
+        check("PPE", "eyewear model test skipped (weights or own frames not on this machine)", True, "")
+        return
+    from ultralytics import YOLO
+    aux = YOLO(os.path.join(m.ROOT, mods["ppe_aux"]))
+
+    def boxes(paths):
+        out = []
+        for pth in paths:
+            im = cv2.imread(pth)
+            r = aux.predict(im, imgsz=640, conf=0.45, verbose=False)[0]
+            out += [eye_crop(im, b) for b, k in zip(r.boxes.xyxy.tolist(), r.boxes.cls.tolist()) if aux.names[int(k)] == "goggles"]
+        return out
+    pg = e.probs(boxes(sample))
+    ps = e.probs(boxes(sun))
+    check("PPE", "eyewear model: team's safety goggles -> goggles; sunglasses the detector called 'goggles' -> not goggles",
+          pg and min(pg) >= e.lo and sum(v >= e.hi for v in pg) >= len(pg) - 1 and ps and max(ps) < e.hi,
+          [[round(v, 2) for v in pg], [round(v, 2) for v in ps]])
+
+
+def polish_data_tests():
+    """12 Nov polish (Prompt 5): every PPE alert carries what was worn / not seen / required (icons); old events still
+    open; one identity rule (registered name + ID, 'Unregistered person', UNAUTHORISED) on screen, Telegram, e-mail."""
+    from fastapi.testclient import TestClient
+    from edge.state_machine import PPEStateMachine
+    from backend import db as _db
+    sm = PPEStateMachine(m.SETTINGS["state_machine"])
+    person = {"tid": 5, "bbox": [400, 100, 700, 700], "conf": 0.9}
+    acts = []
+    for k in range(60):                                   # 7.5 s at 8 checks/s: helmet off, vest on, gloves hidden
+        st = {5: {"helmet": ("missing", .9), "vest": ("compliant", .9), "gloves": ("unverifiable", .5)}}
+        acts += sm.update("cam_t", [person], st, {5: "welding_bay"}, lambda z: "high", 1280, 720, now=1000.0 + k / 8)
+    o = [a for a in acts if a["action"] == "open"]
+    check("PPE", "an alert payload carries items_ok / items_uncertain / items_required (icons), decision unchanged",
+          len(o) == 1 and o[0]["items_missing"] == ["helmet"] and o[0]["items_ok"] == ["vest"]
+          and o[0]["items_uncertain"] == ["gloves"] and sorted(o[0]["items_required"]) == ["gloves", "helmet", "vest"],
+          o[:1])
+    _db.x("INSERT OR REPLACE INTO workers (worker_id, name, photos, created_at) VALUES ('W-091', 'Ritika', 0, ?)", (time.time(),))
+    with TestClient(m.app) as c:
+        p = ppe_payload("evt_pol_new", ["helmet"]); p.update(worker_id="W-091", worker_name=None, track_id=91,
+                                                             items_ok=["vest"], items_uncertain=["gloves"], items_required=["helmet", "vest", "gloves"])
+        c.post("/api/events", json=p)
+        q = ppe_payload("evt_pol_old", ["vest"]); q.update(worker_id="V-091", worker_name=None, track_id=92)
+        c.post("/api/events", json=q)
+        new, old = c.get("/api/events/evt_pol_new"), c.get("/api/events/evt_pol_old")
+    n, ol = new.json(), old.json()
+    check("PPE", "backend stores + returns the 3 lists; an event without them still opens (lists = unknown)",
+          new.status_code == 200 and n["items_ok"] == ["vest"] and n["items_uncertain"] == ["gloves"]
+          and n["items_required"] == ["helmet", "vest", "gloves"] and old.status_code == 200 and ol["items_ok"] is None,
+          [n.get("items_ok"), n.get("items_uncertain"), ol.get("items_ok")])
+    check("PPE", "a registered worker ID always comes with the name (filled from the worker list)",
+          n.get("worker_name") == "Ritika", n.get("worker_name"))
+    pol = {"include_worker_names": True}
+    w = [notify.who_text({"type": "ppe_missing", "worker_id": "W-091", "worker_name": "Ritika"}, pol),
+         notify.who_text({"type": "ppe_missing", "worker_id": "V-003"}, pol),
+         notify.who_text({"type": "unauthorized_entry", "worker_id": "W-002", "worker_name": "Sourav"}, pol)]
+    line = notify.ppe_line(n)
+    check("PPE", "messages: same identity rule + PPE line with icons (Helmet ❌ · Vest ✅ · Gloves ❔)",
+          w == ["Ritika · W-091", "Unregistered person", "Sourav · W-002 · UNAUTHORISED"]
+          and line == "Helmet ❌ · Vest ✅ · Gloves ❔", [w, line])
+    # the dashboard helpers themselves (people.js, ppe_icons.js) in a real browser, when Edge is installed
+    import html as _html, subprocess, tempfile as _tf
+    edge = next((p for p in (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                             r"C:\Program Files\Microsoft\Edge\Application\msedge.exe") if os.path.exists(p)), None)
+    if not edge:
+        check("PPE", "personLabel / icon row browser test skipped (Edge not installed)", True, "")
+        return
+    dd = os.path.join(m.ROOT, "dashboard").replace("\\", "/")
+    page = os.path.join(TMP, "ui_test.html")
+    open(page, "w", encoding="utf-8").write(f"""<!doctype html><meta charset="utf-8"><body><pre id="o"></pre>
+<script src="file:///{dd}/ppe_icons.js"></script><script src="file:///{dd}/people.js"></script><script>
+const r = {{reg: personLabel({{type:"ppe_missing", worker_id:"W-004", worker_name:"Ritika"}}),
+  unreg: personLabel({{type:"ppe_missing", worker_id:"V-003", track_id:17}}),
+  unauth: personLabel({{type:"unauthorized_entry", worker_id:"W-002", worker_name:"Sourav"}}),
+  hidden: personLabel({{type:"ppe_missing", worker_id:"W-***"}}),
+  icNew: ppeRowFor({{items_missing:["helmet"], items_ok:["vest"], items_uncertain:["gloves"], items_required:["helmet","vest","gloves"]}}),
+  icOld: ppeRowFor({{items_missing:["helmet","vest"]}})}};
+document.getElementById("o").textContent = JSON.stringify(r);</script>""")
+    try:
+        out = subprocess.run([edge, "--headless=new", "--disable-gpu", "--allow-file-access-from-files", f"--user-data-dir={_tf.mkdtemp()}",
+                              "--dump-dom", "file:///" + page.replace("\\", "/")], capture_output=True, text=True, timeout=60, encoding="utf-8").stdout
+        r = json.loads(_html.unescape(out.split('<pre id="o">')[1].split("</pre>")[0]))
+    except Exception as ex:                                     # noqa: BLE001
+        check("PPE", "personLabel / icon row in the browser", False, repr(ex)[:200])
+        return
+    cnt = lambda h, s: h.count(f"s-{s}")
+    check("PPE", "dashboard identity: 'Ritika · W-004' · 'Unregistered person' (no fake name) · 'Sourav · W-002' + UNAUTHORISED",
+          "Ritika · W-004" in r["reg"] and "UNAUTHORISED" not in r["reg"]
+          and "Unregistered person" in r["unreg"] and "V-003" not in r["unreg"]
+          and "Sourav · W-002" in r["unauth"] and "UNAUTHORISED" in r["unauth"] and "Registered worker" in r["hidden"],
+          {k: _html.unescape(v)[:80] for k, v in r.items() if not k.startswith("ic")})
+    check("PPE", "icon row: new alert = 1 missing, 1 worn, 1 cannot see; old alert (missing list only) still shows its icons",
+          (cnt(r["icNew"], "miss"), cnt(r["icNew"], "ok"), cnt(r["icNew"], "unk")) == (1, 1, 1)
+          and cnt(r["icOld"], "miss") == 2 and "NO HELMET" not in r["icNew"].upper().replace("NO-", ""),
+          [cnt(r["icNew"], s) for s in ("miss", "ok", "unk")])
+
+
+def pm_gps_test():
+    """12 Nov: the team station sends the Sharp dust sensor VOLTAGE -> estimated PM2.5 on the dashboard (never an alarm);
+    GPS from the station is the location of the zone's alerts."""
+    from backend import hardware
+    hub = hardware.Hub(m.hw_api.CFG)
+    base = {"device_id": "esp32-ppe-01", "uptime_s": 300, "temperature_c": 29.0, "humidity_pct": 60.0, "flame_detected": False,
+            "mq2_adc": 900, "mq135_adc": 800, "helmet_fsr_adc": 1500}
+    t = 5000.0
+    for i in range(40):                                   # clean air: sensor sits at 0.62 V
+        hub.ingest("esp32-ppe-01", dict(base, pm_adc=500, pm_sensor_v=0.62), now=t + i)
+    clean = hub.latest["esp32-ppe-01"]["data"]
+    ev = hub.ingest("esp32-ppe-01", dict(base, pm_adc=1900, pm_sensor_v=2.2), now=t + 41)    # very dusty / smoky
+    dusty = hub.latest["esp32-ppe-01"]["data"]
+    check("HW", "Sharp dust sensor voltage -> PM2.5 shown (estimated, self-zeroed), clean air ~0, dust high",
+          clean["pm_estimated"] and clean["pm2_5_ugm3"] == 0 and dusty["pm2_5_ugm3"] >= 300 and dusty["pm_sensor_v"] == 2.2,
+          [clean["pm2_5_ugm3"], dusty["pm2_5_ugm3"], dusty["pm_zero_v"]])
+    check("HW", "an uncalibrated PM estimate NEVER raises a warning or counts as smoke (station stays NORMAL)",
+          ev["level"] == "NORMAL" and not ev["hazards"].get("smoke"), [ev["level"], ev["reasons"]])
+    real = hub.ingest("esp32-ppe-02", dict(base, device_id="esp32-ppe-02", pm2_5_ugm3=200), now=t + 42)
+    check("HW", "a real PM sensor (pm2_5_ugm3 sent) still alarms as before", real["hazards"].get("smoke") is True, real["reasons"])
+
+
+def phone_follow_test():
+    """12 Nov: the phone's address changes when IP Webcam is reopened -> the camera finds it again by itself."""
+    import shutil
+    from edge import phones
+    phones._IN_USE.clear()
+    phones._LAST_SCAN.clear()
+    phones.register("cam_02", "http://10.0.0.99:8080/video")
+    phones.register("cam_03", "http://10.0.0.50:8080/video")
+    new = phones.find_moved("cam_02", "http://10.0.0.99:8080/video", scan=lambda: ["10.0.0.50", "10.0.0.173"])
+    again = phones.find_moved("cam_02", new, scan=lambda: ["10.0.0.7"])          # within rescan_s: no second scan
+    f = os.path.join(TMP, "cams.yaml")
+    shutil.copy(m.path("config", "cameras.yaml") if hasattr(m, "path") else os.path.join("config", "cameras.yaml"), f)
+    phones.save("cam_02", "http://10.0.0.173:8080/video", file=f)
+    txt = open(f, encoding="utf-8").read()
+    check("CAM", "phone camera changed its address -> found on the Wi-Fi (not the other phone's), switched + saved in cameras.yaml",
+          new == "http://10.0.0.173:8080/video" and again is None and "source: http://10.0.0.173:8080/video" in txt
+          and txt.count("10.0.0.173") == 1, [new, again])
+    phones._IN_USE.clear()
+    phones._LAST_SCAN.clear()
+
+
+def camera_power_tests():
+    """11 Nov: camera ON / OFF from the dashboard -> data/camera_power.json -> the edge releases the camera."""
+    from fastapi.testclient import TestClient
+    from backend import auth
+    from edge.power import Power, read_off
+    os.environ["SENTINELEYE_POWER_FILE"] = os.path.join(TMP, "camera_power.json")
+    cam = next(c for c, v in m.CAMERAS.items() if v.get("enabled", True) is not False)
+    clock = [0.0]
+    pw = Power(every_s=0.5, clock=lambda: clock[0])
+    with TestClient(m.app) as c:
+        off = c.post(f"/api/cameras/{cam}/power", json={"on": False}).json()
+        listed = next(x for x in c.get("/api/cameras").json()["cameras"] if x["camera_id"] == cam)
+        clock[0] += 1
+        edge_off = not pw.is_on(cam)
+        on = c.post(f"/api/cameras/{cam}/power", json={"on": True}).json()
+        clock[0] += 1
+        edge_on = pw.is_on(cam)
+        bad = c.post("/api/cameras/nope/power", json={"on": False}).status_code
+        audit = [a["action"] for a in c.get("/api/audit?limit=5").json()]
+    check("CAM", "camera turned OFF on the dashboard: shown OFF with no alarm badge, the edge releases it within 1 s; ON again brings it back",
+          off["power"] == "off" and off["status"] == "OFF" and off["badge"] is None and listed["power"] == "off"
+          and edge_off and on["power"] == "on" and edge_on and cam not in read_off() and bad == 404
+          and "camera_off" in audit and "camera_on" in audit, [off["status"], edge_off, edge_on, audit[:2]])
+    check("CAM", "only a supervisor / admin may switch cameras (viewer refused by the role check)",
+          auth.classify("POST", f"/api/cameras/{cam}/power", "10.0.0.5") == "supervisor")
+    os.environ["SENTINELEYE_POWER_FILE"] = os.path.join(TMP, "camera_power.json")
+
+
+def intelligence_tests():
+    """11 Nov: 'Industrial Safety Intelligence' page = one extra page that only READS the existing APIs."""
+    import re
+    from fastapi.testclient import TestClient
+    from backend import agent
+    src = open(os.path.join(m.ROOT, "dashboard", "intelligence.html"), encoding="utf-8").read()
+    with TestClient(m.app) as c:
+        r = c.get("/intelligence")
+        apis = sorted(set(re.findall(r'"(/api/[a-z_/]+)', src)))
+        ok_apis = {a: c.get(a + ("?days=1" if a.endswith("export") else "")).status_code for a in apis
+                   if not a.endswith("/") and a not in ("/api/reports/custom", "/api/events/", "/api/hw/history/")}
+    check("INT", "safety intelligence page is served, never cached, and has all nine sections",
+          r.status_code == 200 and "no-cache" in r.headers.get("cache-control", "")
+          and all(f'id="s-{x}"' in src for x in ("overview", "sensors", "ai", "workers", "alerts", "predict", "map", "devices", "reports")),
+          r.headers.get("cache-control"))
+    check("INT", "the page uses only existing endpoints (every one answers) and changes data only through the normal alert actions"
+                 " and the camera on/off switch",
+          ok_apis and all(v == 200 for v in ok_apis.values())
+          and set(re.findall(r'method: ?"(\w+)"', src)) == {"POST"} and src.count('method: "POST"') == 2
+          and "/${t.dataset.act}" in src and "/power`" in src, ok_apis)
+    nav = lambda t: (agent.plan(t, "t", "admin", {"zones": m.ZONES, "cameras": m.CAMERAS})["ui"] or [None])[0]
+    check("INT", "Zentrix opens it by name, and the older page commands still go where they did",
+          nav("hey zentrix open the safety intelligence dashboard") == {"op": "navigate", "url": "/intelligence"}
+          and nav("open the factory map") == {"op": "navigate", "url": "/intelligence#map"}
+          and nav("go to hardware page") == {"op": "navigate", "url": "/hardware"}
+          and nav("open the report generator") == {"op": "navigate", "url": "/admin#reports"},
+          [nav("hey zentrix open the safety intelligence dashboard"), nav("open the factory map")])
+
+
+def call_tests():
+    """11 Nov: phone calls ONLY for critical fire / smoke, via CallMeBot (Telegram voice call) or an Android phone on USB.
+    Fake network / fake adb only - nothing is ever really called."""
+    import types
+    pol = notify.load_policy()                                   # the real site policy (config/notify.yaml)
+    now = time.time()
+    fire2 = {"event_id": "evt_call_a", "type": "fire", "severity": "Critical", "fire_level": 2, "status": "open",
+             "zone_id": "warehouse", "zone_name": "Warehouse", "camera_id": "cam_02", "started_at": now}
+    hw = dict(fire2, event_id="hw_call_b", fire_level=None, camera_id=None, verification="hardware_only")
+    ppe = {"event_id": "evt_call_c", "type": "ppe_missing", "severity": "Critical", "status": "open", "items_missing": ["helmet"]}
+    smoke1 = dict(fire2, type="smoke", fire_level=1, severity="High")
+    old_rules = {"telegram", "email"}                        # Telegram + e-mail exactly as before, the call is only ADDED
+    check("CALL", "EVERY fire / smoke rings the supervisor (Level 2 camera fire, Level 1 smoke, station-only fire); never PPE,"
+                  " never a fire still being checked with the station; Telegram + e-mail unchanged",
+          "call" in notify.channels_for(fire2, "new alert", pol) and "call" in notify.channels_for(hw, "new alert", pol)
+          and "call" in notify.channels_for(smoke1, "new alert", pol)
+          and old_rules <= set(notify.channels_for(smoke1, "new alert", pol))
+          and "call" not in notify.channels_for(ppe, "new alert", pol)
+          and "call" not in notify.channels_for(dict(fire2, status="verifying"), "new alert", pol)
+          and "call" not in notify.channels_for(ppe, "ESCALATED (unacknowledged)", pol)
+          and "call" in notify.channels_for(fire2, "ESCALATED (unacknowledged)", pol),
+          [notify.channels_for(smoke1, "new alert", pol), notify.channels_for(ppe, "new alert", pol)])
+    # provider order: Android phone first; when it is not connected the CallMeBot Telegram call takes over
+    order = []
+    old_a, old_c = notify.send_call_android, notify.send_call_callmebot
+    old_env = os.environ.pop("NETRAX_CALL_PROVIDER", None)          # the older tests force Twilio; this one tests the site order
+    try:
+        notify.send_call_android = lambda sec, to, p: (order.append("android"), notify.Result("failed", error="no Android phone connected", recoverable=True))[1]
+        notify.send_call_callmebot = lambda to, txt, p: (order.append("callmebot"), notify.Result("sent", provider_status="CallMeBot call placed"))[1]
+        r = notify.send_call(notify.load_secrets(), "+919800000000", "fire", dict(pol, phone=dict(pol.get("phone") or {}, provider=["android", "callmebot"])))
+    finally:
+        notify.send_call_android, notify.send_call_callmebot = old_a, old_c
+        if old_env:
+            os.environ["NETRAX_CALL_PROVIDER"] = old_env
+    check("CALL", "normal SIM call (Android) is tried first; phone missing -> CallMeBot Telegram call, and the record says why",
+          order == ["android", "callmebot"] and r.status == "sent" and "android: no Android phone" in r.provider_status, r.provider_status)
+    msg = notify.build(hw, "new alert", pol)
+    check("CALL", "the spoken call text fits CallMeBot (<= 256 characters) and says what, where and that it came from the station",
+          len(msg["call"]) <= 250 and "Warehouse" in msg["call"] and "safety station" in msg["call"], msg["call"])
+    # --- CallMeBot answers (fake HTTP)
+    seen = []
+
+    def fake_get(answer):
+        def get(url, params=None, timeout=None, **kw):
+            seen.append((url, dict(params or {})))
+            code, text = answer
+            return types.SimpleNamespace(status_code=code, text=text)
+        return get
+    old = notify.requests
+    try:
+        notify.requests = types.SimpleNamespace(get=fake_get((200, "<html><b>Call queued</b> to @boss</html>")),
+                                                RequestException=old.RequestException, exceptions=_real_requests.exceptions)
+        ok = notify.send_call_callmebot("@boss", "x" * 400, pol)
+        notify.requests.get = fake_get((200, "You need to authorize CallMeBot to contact you"))
+        auth = notify.send_call_callmebot("@boss", "fire", pol)
+        notify.requests.get = fake_get((503, "Service Unavailable"))
+        down = notify.send_call_callmebot("@boss", "fire", pol)
+    finally:
+        notify.requests = old
+    url, p = seen[0]
+    check("CALL", "CallMeBot: accepted -> 'sent' (never claimed 'delivered'); not authorised -> FAILED with the /start hint; "
+                  "server down -> retried",
+          ok.status == "sent" and "Call queued" in ok.provider_status and auth.status == "failed" and "CallMeBot_txtbot" in auth.error
+          and not auth.recoverable and down.status == "failed" and down.recoverable
+          and "callmebot.com/start.php" in url and p["user"] == "@boss" and len(p["text"]) <= 250 and p["rpt"] == 2,
+          [ok.status, auth.error, down.status, p.get("lang")])
+    # --- Android phone on USB (fake adb, fake timer: no real command ever runs)
+    ran, timers = [], []
+
+    def fake_run(cmd, capture_output=True, text=True, timeout=None):
+        ran.append(cmd[1:])
+        out = "device\n" if cmd[1] == "get-state" else "Starting: Intent { act=android.intent.action.CALL }"
+        return types.SimpleNamespace(returncode=0, stdout=out, stderr="")
+    old_sp, old_th = notify.subprocess, notify.threading
+    try:
+        notify.subprocess = types.SimpleNamespace(run=fake_run, TimeoutExpired=old_sp.TimeoutExpired)
+        notify.threading = types.SimpleNamespace(Timer=lambda s, f: types.SimpleNamespace(start=lambda: timers.append(s)))
+        sec = notify.load_secrets(); sec["call"]["adb_path"] = "fake-adb"
+        a = notify.send_call_android(sec, "+919800000000", pol)
+        bad = notify.send_call_android(sec, "@boss", pol)
+    finally:
+        notify.subprocess, notify.threading = old_sp, old_th
+    check("CALL", "Android phone: dials tel:+91... over adb and hangs up after ring_s; a Telegram name is refused for a SIM call",
+          a.status == "sent" and ["shell", "am", "start", "-a", "android.intent.action.CALL", "-d", "tel:+919800000000"] in ran
+          and timers == [int((pol.get("phone") or {}).get("ring_s", 40))] and bad.status == "not_configured", [a.provider_status, ran])
+    # --- one call per fire: a level raise to 2 a moment later does not ring again; Level 3 and an escalation do
+    n = lambda: len(db.q("SELECT id FROM notifications WHERE event_id='evt_call_a' AND channel='call'"))
+    notify.enqueue(dict(fire2), "new alert", channels=["call"]); n1 = n()
+    notify.enqueue(dict(fire2), "LEVEL RAISED to 2 (CRITICAL)", channels=["call"]); n2 = n()
+    notify.enqueue(dict(fire2, fire_level=3), "LEVEL RAISED to 3 (EVACUATE)", channels=["call"]); n3 = n()
+    check("CALL", "one call per fire: a quick level change does not ring again; Level 3 (evacuate) calls again",
+          n1 >= 1 and n2 == n1 and n3 > n2, [n1, n2, n3])
+
+
+def reliable_delivery_tests():
+    """12 Nov (prompt pack step 9): Wi-Fi off -> messages wait (never counted as failed) and arrive once after
+    reconnecting; Telegram = photo + short caption with icons, updates as a reply; low-priority e-mails in a digest;
+    daily e-mail cap; rows left 'sending' by a crash are sent after a restart."""
+    from fastapi.testclient import TestClient
+    set_creds(True)
+    NET.mode["telegram"], NET.mode["email"] = "down", "down"
+    rows = lambda eid: db.q("SELECT channel, status, attempts, error FROM notifications WHERE event_id=? ORDER BY id", (eid,))
+    # earlier tests' messages are > 60 s old (the same-zone flood control would otherwise send Telegram only)
+    db.x("UPDATE notifications SET queued_at = queued_at - 120 WHERE queued_at > ?", (time.time() - 60,))
+    try:
+        with TestClient(m.app) as c:
+            p = ppe_payload("evt_net1", ["helmet"], cam="cam_03", zone="assembly_line"); p.update(worker_id="W-096", worker_name="Net test", items_ok=["vest"],
+                                                             items_uncertain=["gloves"], items_required=["helmet", "vest", "gloves"])
+            c.post("/api/events", json=p)
+            time.sleep(1.5)
+            off = rows("evt_net1")
+            NET.mode["telegram"], NET.mode["email"] = "ok", None          # Wi-Fi back
+            t_end = time.time() + 12
+            while time.time() < t_end and any(r["status"] not in notify.FINAL for r in rows("evt_net1")):
+                time.sleep(0.5)
+            back = rows("evt_net1")
+            cap = notify.build(db.get_event("evt_net1"), "new alert", notify.load_policy())["tg"]
+            n_tg = len([x for x in NET.calls if "api.telegram.org" in x[1]])
+            c.post("/api/events", json=dict(p, action="update", items_missing=["helmet", "vest"]))   # 'more PPE missing'
+            t_end = time.time() + 6
+            while time.time() < t_end and len([x for x in NET.calls if "api.telegram.org" in x[1]]) == n_tg:
+                time.sleep(0.3)
+            reply = [x for x in NET.calls if "api.telegram.org" in x[1]][-1][2] or {}
+    finally:
+        NET.mode["telegram"], NET.mode["email"] = "ok", None
+    check("NOTIFY", "Wi-Fi off: Telegram + e-mail WAIT for the internet (not counted as failed tries)",
+          off and all(r["status"] in ("waiting", "queued", "sending") for r in off) and all(int(r["attempts"] or 0) == 0 for r in off if r["status"] == "waiting")
+          and any(r["status"] == "waiting" for r in off), [(r["channel"], r["status"], r["attempts"]) for r in off])
+    check("NOTIFY", "Wi-Fi back: every message arrives exactly once (no loss, no duplicate)",
+          sorted((r["channel"], r["status"]) for r in back) == [("email", "sent"), ("telegram", "delivered")], [(r["channel"], r["status"]) for r in back])
+    check("NOTIFY", "Telegram caption: person + PPE icons (Helmet ❌ · Vest ✅ · Gloves ❔); an update is a REPLY to the first message",
+          "Net test · W-096" in cap and "Helmet ❌ · Vest ✅ · Gloves ❔" in cap and str(reply.get("reply_to_message_id")) == "42",
+          [cap.splitlines()[:3], reply.get("reply_to_message_id")])
+    # low-priority -> digest; daily cap
+    pol = notify.load_policy()
+    den = {"event_id": "evt_dig1", "type": "entrance_check", "severity": "Low", "status": "open", "zone_id": "main_entrance",
+           "zone_name": "Main entrance", "details": {"result": "denied"}, "started_at": time.time()}
+    db.x("INSERT OR REPLACE INTO events (event_id, type, items_missing, severity, zone_id, zone_name, started_at, status, details) "
+         "VALUES (?,?,?,?,?,?,?,?,?)", ("evt_dig1", "entrance_check", "[]", "Low", "main_entrance", "Main entrance", time.time(), "open",
+                                        json.dumps({"result": "denied"})))
+    notify.enqueue(den, "entrance refused", channels=["email"])
+    d_rows = rows("evt_dig1")
+    did = notify.send_digest(force=True)
+    after = rows("evt_dig1")
+    check("NOTIFY", "low-priority e-mail (entrance refused) -> collected into ONE digest e-mail (every 15 min)",
+          d_rows and d_rows[0]["status"] == "digest" and did and after[0]["status"] == "in_digest", [d_rows, did])
+    old_count = notify.emails_today
+    try:
+        notify.emails_today = lambda: int((pol.get("email") or {}).get("daily_max", 300))
+        q1 = notify.enqueue(dict(db.get_event("evt_net1"), event_id="evt_net1"), "limit test", channels=["email"], kind="limit-ppe")
+        fire = {"event_id": "evt_net_fire", "type": "fire", "severity": "Critical", "fire_level": 2, "status": "open", "zone_id": "warehouse",
+                "zone_name": "Warehouse", "started_at": time.time()}
+        q2 = notify.enqueue(fire, "new alert", channels=["email"])
+    finally:
+        notify.emails_today = old_count
+    check("NOTIFY", "daily e-mail cap reached -> PPE e-mail skipped (reason shown), fire e-mail still sent",
+          q1 and q1[0]["status"] == "skipped" and q2 and q2[0]["status"] == "queued", [q1 and q1[0]["status"], q2 and q2[0]["status"]])
+    # crash: a row left 'sending' is sent after a restart
+    now = time.time()
+    cur = db.x("INSERT INTO notifications (event_id, channel, recipient, message, delivered, at, status, attempts, kind, queued_at) "
+               "VALUES (?,?,?,?,?,?,?,?,?,?)", ("evt_net1", "telegram", "group", "x", 0, now, "sending", 1, "crash test|L0|High", now))
+    n = notify.requeue_unfinished()
+    t_end = time.time() + 6
+    while time.time() < t_end and db.q("SELECT status FROM notifications WHERE id=?", (cur.lastrowid,))[0]["status"] not in notify.FINAL:
+        time.sleep(0.3)
+    st = db.q("SELECT status FROM notifications WHERE id=?", (cur.lastrowid,))[0]["status"]
+    check("NOTIFY", "after a crash / restart, a message left 'sending' is picked up again and delivered",
+          n >= 1 and st == "delivered", [n, st])
+    # 12 Nov step 10: Telegram Acknowledge / Resolve buttons
+    first_tg = [x for x in NET.calls if "api.telegram.org" in x[1] and "sendMessage" in x[1]]
+    kb = [x[2].get("reply_markup") for x in first_tg if isinstance(x[2], dict) and x[2].get("reply_markup")]
+    with TestClient(m.app):
+        wrong = notify.handle_tg_callback({"data": "ack:evt_net1", "message": {"chat": {"id": -999}}, "from": {"username": "x"}})
+        ok = notify.handle_tg_callback({"data": "ack:evt_net1", "message": {"chat": {"id": -100200}}, "from": {"username": "boss"}})
+        again = notify.handle_tg_callback({"data": "ack:evt_net1", "message": {"chat": {"id": -100200}}, "from": {"username": "boss"}})
+    ev = db.get_event("evt_net1")
+    aud = db.q("SELECT user, action FROM audit_log WHERE target='evt_net1' ORDER BY id DESC LIMIT 1")
+    check("NOTIFY", "Telegram: first message has Acknowledge / Resolve buttons; a press from the group acknowledges (audited), "
+                    "another chat is refused, a second press changes nothing",
+          kb and "ack:" in json.dumps(kb[0]) and "resolve:" in json.dumps(kb[0]) and wrong.startswith("Not allowed")
+          and ok.startswith("Acknowledged") and again.startswith("Already") and ev["status"] == "acknowledged"
+          and ev["acked_by"] == "telegram:boss" and aud and aud[0]["user"] == "telegram:boss", [wrong, ok, again, ev["status"], aud])
+    set_creds(False)
+
+
+def fire_call_repeat_tests():
+    """12 Nov (prompt pack step 8): fire call at once, repeated every 60 s until Acknowledge / Resolve, a failed try again
+    after 20 s, every attempt its own row. Simulated clock; nothing is really called."""
+    from fastapi.testclient import TestClient
+    set_creds(False)                                # calls end at once as 'not configured' (no provider is followed)
+    t0 = time.time()
+    with TestClient(m.app) as c:
+        c.post("/api/events", json=fire_payload("evt_frep", [100, 100, 300, 300], t=t0))
+    e = db.get_event("evt_frep")
+    calls = lambda: db.q("SELECT id, status, queued_at, kind FROM notifications WHERE event_id='evt_frep' AND channel='call' ORDER BY id")
+    t_w = time.time()
+    while time.time() - t_w < 5 and any(r["status"] not in notify.FINAL for r in calls()):
+        time.sleep(0.1)
+    first = calls()
+    check("CALL", "fire detected -> the phone call is queued within 5 s (no waiting for a level or an escalation timer)",
+          e["status"] in ("open", "escalated") and first and first[0]["queued_at"] - t0 <= 5.0,
+          [e["status"], [(r["status"], round(r["queued_at"] - t0, 2)) for r in first]])
+    def run(now):                                   # the test runner already has an event loop: own thread
+        th = threading.Thread(target=lambda: asyncio.run(m.fire_call_tick(now)))
+        th.start(); th.join()
+    db.x("UPDATE notifications SET status='sent', queued_at=? WHERE id=?", (t0, first[-1]["id"]))
+    run(t0 + 30); n30 = len(calls())
+    run(t0 + 61); n61 = len(calls())
+    last = calls()[-1]
+    db.x("UPDATE notifications SET status='failed', finished_at=? WHERE id=?", (t0 + 62, last["id"]))
+    run(t0 + 70); n70 = len(calls())
+    run(t0 + 83); n83 = len(calls())
+    check("CALL", "not acknowledged -> called again every 60 s; busy / no answer / failed -> next try after 20 s (own log row)",
+          n30 == len(first) and n61 == len(first) + 1 and n70 == n61 and n83 == n61 + 1
+          and calls()[-1]["kind"].startswith("call #"), [len(first), n30, n61, n70, n83])
+    db.x("UPDATE notifications SET status='sent' WHERE event_id='evt_frep' AND channel='call'")
+    db.x("UPDATE events SET status='acknowledged' WHERE event_id='evt_frep'")
+    run(t0 + 1000); n_ack = len(calls())
+    wanted = notify.Dispatcher._call_still_wanted({"event_id": "evt_frep"}, {"kind": "call #9"})
+    check("CALL", "Acknowledge stops the calls at once (no new call, a call still in the queue is not placed)",
+          n_ack == n83 and wanted is False, [n_ack, wanted])
+    msg = notify.build(e, "new alert", notify.load_policy())["call"]
+    check("CALL", "call text: 'NETRAX fire alarm. Fire detected in <zone> by <camera> at <time>. Open the dashboard and acknowledge.'",
+          msg.startswith("NETRAX fire alarm. Fire detected in Warehouse by camera cam_02 at ") and msg.endswith("Open the dashboard and acknowledge."), msg)
+
+
+def zentrix_more_tests():
+    """11 Nov (user): Zentrix opens every page / section / box and does every manual action - only on command."""
+    from fastapi.testclient import TestClient
+    from backend import agent
+    ctx = {"zones": m.ZONES, "cameras": m.CAMERAS, "live": {"cameras": []}}
+    ui = lambda t, role="admin": agent.plan(t, "t", role, ctx)["ui"]
+    check("ZX", "opens Safety Intelligence sections by name (live sensors, factory map, alerts centre, device health, predictive)",
+          ui("open live sensors") == [{"op": "navigate", "url": "/intelligence#sensors"}]
+          and ui("hey zentrix open the factory map") == [{"op": "navigate", "url": "/intelligence#map"}]
+          and ui("open the alerts centre") == [{"op": "navigate", "url": "/intelligence#alerts"}]
+          and ui("go to device health") == [{"op": "navigate", "url": "/intelligence#devices"}]
+          and ui("show predictive analytics") == [{"op": "navigate", "url": "/intelligence#predict"}]
+          and ui("open worker management") == [{"op": "navigate", "url": "/intelligence#workers"}]
+          and ui("open the report generator") == [{"op": "navigate", "url": "/admin#reports"}],
+          [ui("open live sensors"), ui("open worker management")])
+    p = agent.plan("show acknowledged alerts", "t", "admin", ctx)
+    check("ZX", "control-room boxes + tabs ('show acknowledged fire alerts', 'show ppe history', 'show zones and people'); "
+                "'show ACKNOWLEDGED alerts' only opens the list - it never acknowledges anything",
+          ui("show acknowledged fire alerts") == [{"op": "box", "box": "fire", "tab": "ack"}]
+          and ui("show ppe history") == [{"op": "box", "box": "ppe", "tab": "done"}]
+          and ui("show zones and people") == [{"op": "box", "box": "zone", "tab": None}]
+          and p["execute"] == [] and p["confirm"] is None and len(p["ui"]) == 2, p["ui"])
+    os.environ["SENTINELEYE_POWER_FILE"] = os.path.join(TMP, "zx_power.json")
+    cam = next(c for c, v in m.CAMERAS.items() if v.get("enabled", True) is not False)
+    num = int("".join(ch for ch in cam if ch.isdigit()))
+    with TestClient(m.app) as c:
+        z = lambda t: c.post("/api/zentrix", json={"text": t}).json()
+        a = z(f"turn off camera {num}")
+        before = next(x for x in c.get("/api/cameras").json()["cameras"] if x["camera_id"] == cam)["power"]
+        b = z("confirm")
+        after = next(x for x in c.get("/api/cameras").json()["cameras"] if x["camera_id"] == cam)["power"]
+        on = z(f"switch on camera {num}")
+        back = next(x for x in c.get("/api/cameras").json()["cameras"] if x["camera_id"] == cam)["power"]
+        sil = z("silence the siren")
+        test = z("test the phone call")
+    os.environ["SENTINELEYE_POWER_FILE"] = os.path.join(TMP, "camera_power.json")
+    check("ZX", "camera OFF by command asks first and switches only after 'confirm'; ON runs at once (same path + audit as the button)",
+          a["confirm"] and before == "on" and b["done"] == 1 and after == "off" and on["done"] == 1 and back == "on",
+          [a["reply"][:60], before, after, back])
+    check("ZX", "siren silenced by command; a real test call needs confirmation first",
+          sil["done"] == 1 and "siren" in sil["reply"].lower() and test["confirm"] and test["done"] == 0, [sil["reply"], test["reply"][:60]])
 
 
 def zentrix_tests():
@@ -636,19 +1272,24 @@ async def main():
     ingest_ms = (time.time() - t0) * 1000
     check("13", "internet down: the alert is stored + shown at once (sending never blocks detection)",
           db.get_event("evt_t13")["status"] == "open" and ingest_ms < 500, f"ingest {ingest_ms:.0f} ms")
-    rows = wait_notifs("evt_t13", 1, timeout=40)
+    t_w = time.time()
+    while time.time() - t_w < 15 and not db.q("SELECT id FROM notifications WHERE event_id='evt_t13' AND status='waiting'"):
+        time.sleep(0.2)
+    rows = db.q("SELECT * FROM notifications WHERE event_id='evt_t13'")
     tg = [r for r in rows if r["channel"] == "telegram"]
-    check("13", "Telegram failure retried (bounded) then shown as FAILED with the reason - never 'delivered'",
-          tg and tg[0]["status"] == "failed" and tg[0]["attempts"] == 3 and "network" in (tg[0]["error"] or ""))
+    # 12 Nov (prompt pack step 9): no internet is NOT a failed try - the message waits and is resent when it returns
+    check("13", "internet down: Telegram message kept and WAITING for the internet (reason shown, not a failed try) - never 'delivered'",
+          tg and tg[0]["status"] == "waiting" and int(tg[0]["attempts"] or 0) == 0 and "network" in (tg[0]["error"] or ""),
+          tg and (tg[0]["status"], tg[0]["attempts"], tg[0]["error"]))
     h = m.system_health()
-    check("13", "system health shows the failing channel", any(c["name"] == "Alerts: telegram" and c["state"] == "fail"
-                                                              for c in h["components"]))
+    check("13", "system health shows the channel waiting for the internet",
+          any(c["name"] == "Alerts: telegram" and c["state"] == "warn" and "waiting for internet" in c["message"] for c in h["components"]))
     NET.mode["telegram"] = "ok"
     set_creds(False)
     await m.ingest_event(ppe_payload("evt_t13b", ["vest"], "High", "cam_01", "welding_bay"))
     rows = wait_notifs("evt_t13b", 1)
     check("13", "no credentials -> NOT CONFIGURED (clearly labelled), nothing claimed as sent",
-          rows and all(r["status"] == "not_configured" and not r["delivered"] for r in rows))
+          rows and all(r["status"] == "not_configured" and not r["delivered"] for r in rows), [(r["channel"], r["status"]) for r in rows])
     check("13", "health lists unconfigured channels as warnings", any(c["name"].startswith("Alerts:") and c["state"] == "warn"
                                                                        for c in m.system_health()["components"]))
     set_creds(True)
@@ -923,6 +1564,18 @@ async def main():
           pdf.status_code == 200 and pdf.content[:4] == b"%PDF" and "netrax_report_" in pdf.headers.get("content-disposition", "")
           and csvr.status_code == 200 and csvr.text.startswith("event_id") and bad.status_code == 400)
     zentrix_tests()
+    zentrix_more_tests()
+    intelligence_tests()
+    camera_power_tests()
+    call_tests()
+    fire_call_repeat_tests()
+    reliable_delivery_tests()
+    ppe_accuracy_alert_tests()
+    phone_follow_test()
+    pm_gps_test()
+    cap_vs_helmet_test()
+    eyewear_test()
+    polish_data_tests()
     entrance_object_tests()
     motion_tests()
     usb_order_test()
@@ -974,7 +1627,32 @@ async def main():
           all(abs(got[i]["persons"][0]["mean"] - i * 10) < 1e-6 for i in range(3)) and got[1]["fire"] == []
           and got[0]["fire"] is None and abs(big["persons"][0]["mean"] - 77) < 1e-6 and pe.det.supported == {"helmet", "vest"},
           f"stats {pe.stats()}")
+    # 11 Nov: a timed-out camera must NOT queue more frames (startup pile-up = every camera fell behind / 'cameras closed')
+    from edge.engine_proc import _Req
+    stuck = pe.inflight["cam_slow"] = _Req()          # an answer that has not come back yet (deterministic: no timing)
+    n0, errs = pe.n, 0
+    for _ in range(3):
+        try:
+            pe.infer("cam_slow", _np.full((48, 64, 3), 5, _np.uint8), False, timeout=0.05)
+        except TimeoutError:
+            errs += 1
+    queued = pe.n - n0
+    stuck.done.set()                                   # the late answer arrives -> the camera goes on normally
+    after = pe.infer("cam_slow", _np.full((48, 64, 3), 9, _np.uint8), False)
+    queued += 0 if pe.n - n0 == 1 else 99
+    check("12", "AI process: a camera whose request timed out waits for it - no pile-up of stale frames, next frame correct",
+          queued == 0 and errs == 3 and abs(after["persons"][0]["mean"] - 9) < 1e-6, f"queued {queued}, timeouts {errs}")
     pe.close()
+    from edge import run_edge as _re
+    _env = os.environ.pop("SENTINELEYE_EDGE_MULTI", None)
+    first = _re._single_instance(port=48799)
+    hold, _re._ONE = _re._ONE, None
+    second = _re._single_instance(port=48799)
+    hold.close()
+    if _env is not None:
+        os.environ["SENTINELEYE_EDGE_MULTI"] = _env
+    check("12", "edge: a second copy is refused (two copies took the cameras from each other)", first and not second,
+          f"first {first}, second {second}")
     # ---------------- whole edge pipeline with fake models (worker -> shared engine -> entrance / state machine)
     pipeline_test()
     # ---------------- report

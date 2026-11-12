@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NETRAX — Industrial Safety Intelligence</title>
+<script>
+/* same saved day / night choice as the other NETRAX pages */
+(function(){ var t = new URLSearchParams(location.search).get("theme"); try { t = t || localStorage.getItem("netrax-theme") || localStorage.getItem("netrax-cr-theme"); } catch(e){}
+  document.documentElement.dataset.theme = t === "light" ? "light" : "dark"; })();
+</script>
+<style>
+/* 11 Nov redesign: every section has ONE job, its own colour, and its own bordered containers. No data is shown twice. */
+:root{
+  --bg:#070d1a; --panel:#0e1628; --panel2:#141e34; --line:#1e2a44; --ink:#e8eef8; --ink2:#c3cede; --muted:#8fa0b8; --grid:#1b2740;
+  --ok:#22c55e; --warn:#f59e0b; --serious:#f97316; --crit:#ef4444; --grey:#64748b;
+  --ok-bg:rgba(34,197,94,.13); --warn-bg:rgba(245,158,11,.14); --crit-bg:rgba(239,68,68,.14); --grey-bg:rgba(100,116,139,.16);
+  --shadow:0 1px 0 rgba(255,255,255,.03) inset,0 14px 34px -18px rgba(0,0,0,.75);
+  --display:"Bahnschrift","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  --a:#2dd4bf; --a2:#38bdf8; color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --bg:#eef2f8; --panel:#ffffff; --panel2:#f5f7fb; --line:#e1e7f0; --ink:#0f172a; --ink2:#334155; --muted:#5b6b82; --grid:#e8edf4;
+  --ok:#16a34a; --warn:#b45309; --serious:#c2410c; --crit:#dc2626; --grey:#64748b;
+  --ok-bg:#dcfce7; --warn-bg:#fef3c7; --crit-bg:#fee2e2; --grey-bg:#eef1f5;
+  --shadow:0 1px 2px rgba(15,23,42,.05),0 12px 30px -18px rgba(15,23,42,.25); color-scheme:light;
+}
+/* one colour pair per section */
+.x-overview{--a:#2dd4bf;--a2:#38bdf8}.x-sensors{--a:#22d3ee;--a2:#0ea5e9}.x-ai{--a:#a78bfa;--a2:#6366f1}.x-workers{--a:#f472b6;--a2:#db2777}
+.x-alerts{--a:#fb923c;--a2:#ef4444}.x-predict{--a:#facc15;--a2:#f59e0b}.x-map{--a:#34d399;--a2:#059669}.x-devices{--a:#60a5fa;--a2:#2563eb}.x-reports{--a:#c084fc;--a2:#9333ea}
+.c-fire{--a:#f97316;--a2:#ef4444}.c-ppe{--a:#facc15;--a2:#f97316}.c-acc{--a:#f472b6;--a2:#e11d48}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+  background:radial-gradient(1000px 520px at 10% -10%,rgba(45,212,191,.12),transparent 60%),radial-gradient(900px 520px at 105% 0%,rgba(129,140,248,.15),transparent 60%),
+  radial-gradient(900px 600px at 50% 120%,rgba(244,114,182,.07),transparent 60%),var(--bg);background-attachment:fixed}
+:root[data-theme="light"] body{background:radial-gradient(1000px 520px at 10% -10%,rgba(45,212,191,.14),transparent 60%),radial-gradient(900px 520px at 105% 0%,rgba(129,140,248,.13),transparent 60%),var(--bg);background-attachment:fixed}
+button,select,input{font:inherit;color:inherit}
+a{color:inherit}
+.app{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:100vh}
+.app>div{min-width:0}
+/* sidebar */
+.side{background:color-mix(in srgb,var(--panel) 92%,transparent);border-right:1px solid var(--line);padding:16px 12px;position:sticky;top:0;height:100vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;gap:11px;align-items:center;padding:4px 6px 16px}
+.brand .lg{width:42px;height:42px;border-radius:13px;background:conic-gradient(from 210deg,#2dd4bf,#38bdf8,#818cf8,#f472b6,#2dd4bf);display:grid;place-items:center;font:800 var(--fs-l,19px) var(--display);color:#04121a;box-shadow:0 8px 20px -8px rgba(56,189,248,.8)}
+.brand b{display:block;font:700 var(--fs-m,16px) var(--display);letter-spacing:.08em}
+.brand small{color:var(--muted);font-size:var(--fs-xs,13px);letter-spacing:.16em;text-transform:uppercase}
+#nav{display:flex;flex-direction:column;gap:3px}
+.navb{display:flex;gap:11px;align-items:center;width:100%;text-align:left;border:1px solid transparent;background:transparent;border-radius:13px;padding:7px 9px;cursor:pointer;transition:background .15s}
+.navb .ic{width:34px;height:34px;border-radius:11px;flex:none;display:grid;place-items:center;font-size:var(--fs-m,16px);color:#fff;background:linear-gradient(135deg,var(--a),var(--a2));opacity:.85;box-shadow:0 6px 14px -8px var(--a)}
+.navb b{display:block;font-weight:700;font-size:var(--fs-s,14px)}
+.navb small{display:block;color:var(--muted);font-size:var(--fs-xs,13px)}
+.navb:hover{background:var(--panel2)}
+.navb[aria-current="page"]{background:linear-gradient(90deg,color-mix(in srgb,var(--a) 18%,transparent),transparent);border-color:color-mix(in srgb,var(--a) 40%,transparent)}
+.navb[aria-current="page"] .ic{opacity:1}
+.navb .n{margin-left:auto;min-width:22px;text-align:center;font-size:var(--fs-xs,13px);font-weight:800;border-radius:999px;padding:1px 7px;background:var(--crit);color:#fff;animation:blink 1.6s infinite}
+.navb .n:empty{display:none}
+.side .sp{flex:1}
+.side .foot{font-size:var(--fs-xs,13px);color:var(--muted);padding:10px 8px;border-top:1px dashed var(--line);margin-top:8px}
+/* top bar */
+.top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 22px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--panel) 85%,transparent);backdrop-filter:blur(10px);position:sticky;top:0;z-index:20}
+.top h1{margin:0;font:700 var(--fs-m,16px) var(--display);letter-spacing:.1em;background:linear-gradient(90deg,var(--ink),#7dd3fc);-webkit-background-clip:text;background-clip:text;color:transparent}
+:root[data-theme="light"] .top h1{background:linear-gradient(90deg,#0f172a,#0369a1);-webkit-background-clip:text;background-clip:text}
+.top p{margin:0;color:var(--muted);font-size:var(--fs-s,14px)}
+.nxnav{margin-left:auto;display:inline-flex;gap:2px;padding:3px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);flex-wrap:wrap}
+.nxnav a{font-size:var(--fs-s,14px);font-weight:700;text-decoration:none;border-radius:9px;padding:5px 10px;color:var(--muted)}
+.nxnav a:hover{color:var(--ink)}.nxnav a[aria-current="page"]{background:linear-gradient(135deg,#2dd4bf,#38bdf8);color:#04121a}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;font-size:var(--fs-xs,13px);font-weight:800;letter-spacing:.06em;background:var(--ok-bg);color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 40%,transparent)}
+.pill i{width:8px;height:8px;border-radius:50%;background:currentColor;animation:blink 1.6s infinite}
+.pill.off{background:var(--crit-bg);color:var(--crit);border-color:color-mix(in srgb,var(--crit) 40%,transparent)}
+.tbtn{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:6px 11px;cursor:pointer;font-size:var(--fs-s,14px);font-weight:700}
+@keyframes blink{50%{opacity:.35}}
+main{padding:18px 22px 60px;max-width:1720px}
+section.sec{display:none}
+section.sec.on{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+/* section banner */
+.banner{display:flex;gap:14px;align-items:center;padding:16px 18px;border-radius:20px;margin-bottom:14px;border:1px solid color-mix(in srgb,var(--a) 35%,var(--line));
+  background:linear-gradient(120deg,color-mix(in srgb,var(--a) 20%,transparent),color-mix(in srgb,var(--a2) 8%,transparent) 55%,transparent),var(--panel);box-shadow:var(--shadow);position:relative;overflow:hidden}
+.banner::after{content:"";position:absolute;right:-60px;top:-80px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--a2) 25%,transparent),transparent 70%)}
+.banner .bic{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;font-size:var(--fs-xl,24px);color:#fff;background:linear-gradient(135deg,var(--a),var(--a2));box-shadow:0 10px 24px -10px var(--a);flex:none}
+.banner h2{margin:0;font:700 var(--fs-l,19px) var(--display);letter-spacing:.03em}
+.banner p{margin:2px 0 0;color:var(--ink2);font-size:var(--fs-s,14px);max-width:900px}
+.banner .rt{margin-left:auto;position:relative;z-index:1}
+/* containers */
+.box{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:0 16px 16px;box-shadow:var(--shadow);min-width:0;transition:border-color .25s,box-shadow .25s}
+.box::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;border-radius:18px 18px 0 0;background:linear-gradient(90deg,var(--a),var(--a2))}
+.bh{display:flex;align-items:center;gap:10px;padding:13px 0 11px;margin-bottom:12px;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+.bh .bi{width:34px;height:34px;border-radius:11px;flex:none;display:grid;place-items:center;font-size:var(--fs-m,16px);font-style:normal;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--a) 30%,transparent),color-mix(in srgb,var(--a2) 16%,transparent));border:1px solid color-mix(in srgb,var(--a) 45%,transparent)}
+.bh h3{margin:0;font:700 var(--fs-m,16px) var(--display);letter-spacing:.02em}
+.bh p{margin:1px 0 0;font-size:var(--fs-xs,13px);color:var(--muted)}
+.bh .sp{flex:1}
+.box.hot{border-color:color-mix(in srgb,var(--crit) 55%,var(--line))}
+.box.bump{animation:boxpop .55s cubic-bezier(.2,1.35,.4,1),boxglow 1.2s ease-in-out .15s 2}
+@keyframes boxpop{35%{transform:scale(1.012)}}
+@keyframes boxglow{50%{border-color:var(--a);box-shadow:0 0 0 2px var(--a),0 16px 44px -10px var(--a)}}
+.grid{display:grid;gap:14px;align-items:start}
+.kp{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))}@media (max-width:1100px){.kp{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:560px){.kp{grid-template-columns:1fr}}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}.g12{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}
+.cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+.cardsL{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+.camsL{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+.muted{color:var(--muted)}.small{font-size:var(--fs-s,14px)}.mt{margin-top:14px}
+/* status language: always dot + word, never colour alone */
+.st{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs,13px);font-weight:800;letter-spacing:.05em;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.st.ok{color:var(--ok);background:var(--ok-bg)}.st.warn{color:var(--warn);background:var(--warn-bg)}
+.st.crit{color:var(--crit);background:var(--crit-bg)}.st.off{color:var(--grey);background:var(--grey-bg)}
+/* hero */
+.hero{display:grid;grid-template-columns:auto 1fr auto;gap:20px;align-items:center;border-radius:22px;padding:22px 24px;border:1px solid var(--line);background:var(--panel);box-shadow:var(--shadow);position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:0;background:radial-gradient(600px 220px at 0% 50%,color-mix(in srgb,var(--hc) 22%,transparent),transparent 70%);pointer-events:none}
+.hero>*{position:relative}
+.hero{--hc:var(--grey)}.hero.ok{--hc:var(--ok)}.hero.warn{--hc:var(--warn)}.hero.crit{--hc:var(--crit);border-color:var(--crit)}
+.hero .ring{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;font-size:var(--fs-num,34px);font-weight:800;color:#fff;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--hc) 85%,#fff),var(--hc));box-shadow:0 0 0 8px color-mix(in srgb,var(--hc) 18%,transparent),0 14px 30px -10px var(--hc)}
+.hero.crit .ring{animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 16px color-mix(in srgb,var(--hc) 6%,transparent),0 14px 30px -10px var(--hc)}}
+.hero .lbl{font-size:var(--fs-xs,13px);letter-spacing:.2em;color:var(--muted);font-weight:800}
+.hero .big{font:800 var(--fs-num,34px)/1.05 var(--display);letter-spacing:.04em;color:var(--hc)}
+.hero ul{margin:6px 0 0;padding-left:18px;color:var(--ink2);font-size:var(--fs-s,14px)}
+/* KPI tiles */
+.tile{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px 15px;box-shadow:var(--shadow);
+  transition:transform .15s,border-color .15s;position:relative;overflow:hidden;min-width:0}
+.tile::after{content:"";position:absolute;right:-40px;bottom:-60px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--a) 22%,transparent),transparent 70%)}
+.tile:hover,.tile:focus-visible{transform:translateY(-2px);border-color:var(--a)}
+.tile.static{cursor:default}.tile.static:hover{transform:none;border-color:var(--line)}
+.tile .ti{width:44px;height:44px;border-radius:14px;flex:none;display:grid;place-items:center;font-size:var(--fs-l,19px);color:#fff;background:linear-gradient(135deg,var(--a),var(--a2));box-shadow:0 8px 18px -8px var(--a)}
+.tile>div{min-width:0;flex:1}
+.tile .k{font-size:var(--fs-xs,13px);color:var(--muted);text-transform:uppercase;letter-spacing:.09em;font-weight:800;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.tile .v{font:700 var(--fs-xl,24px)/1.15 var(--display);margin-top:2px;font-variant-numeric:tabular-nums}
+.tile .v small{font:600 var(--fs-s,14px) "Segoe UI",sans-serif;color:var(--muted);margin-left:4px}
+.tile .n{font-size:var(--fs-s,14px);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* charts */
+.ch{position:relative;width:100%}
+.ch svg{display:block;width:100%;height:100%;overflow:visible}
+.ch .ln{fill:none;stroke:var(--a2);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.ch .ar{fill:color-mix(in srgb,var(--a2) 16%,transparent);stroke:none}
+.ch .fc{fill:none;stroke:var(--a2);stroke-width:2;stroke-dasharray:5 5;opacity:.8}
+.ch .gr{stroke:var(--grid);stroke-width:1}
+.ch .thr{stroke:var(--crit);stroke-width:1.3;stroke-dasharray:6 4}
+.ch .base{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 4}
+.ch .hx{stroke:var(--muted);stroke-width:1;display:none}
+.ch .now{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 3}
+.ch .dot{position:absolute;width:10px;height:10px;border-radius:50%;background:var(--a2);border:2px solid var(--panel);transform:translate(-50%,-50%);display:none;pointer-events:none}
+.ch .yl{position:absolute;left:4px;font-size:var(--fs-xs,13px);color:var(--muted);pointer-events:none;background:var(--panel);padding:0 3px;border-radius:3px}
+.ch .tl{position:absolute;right:4px;font-size:var(--fs-xs,13px);color:var(--crit);font-weight:700;transform:translateY(-110%);pointer-events:none}
+.ch .none{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:var(--fs-s,14px);border:1px dashed var(--line);border-radius:10px}
+.xl{display:flex;justify-content:space-between;font-size:var(--fs-xs,13px);color:var(--muted);margin-top:3px}
+#tip{position:fixed;z-index:200;pointer-events:none;display:none;background:var(--ink);color:var(--bg);font-size:var(--fs-s,14px);font-weight:600;padding:4px 9px;border-radius:7px;white-space:nowrap}
+.sens{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px 10px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.sens::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--ok)}
+.sens.warn::before{background:var(--warn)}.sens.crit::before{background:var(--crit)}.sens.off::before{background:var(--grey)}
+.sens.crit{border-color:color-mix(in srgb,var(--crit) 50%,var(--line));background:linear-gradient(180deg,var(--crit-bg),var(--panel) 50%)}
+.sens .k{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:var(--fs-s,14px);color:var(--ink2);font-weight:700}
+.sens .v{font:700 var(--fs-num,34px)/1.2 var(--display);font-variant-numeric:tabular-nums;margin:2px 0}
+.sens .v small{font:600 var(--fs-s,14px) "Segoe UI",sans-serif;color:var(--muted);margin-left:4px}
+.sens .n{font-size:var(--fs-xs,13px);color:var(--muted);min-height:17px;margin-bottom:4px}
+/* bars */
+.bars{display:flex;align-items:flex-end;gap:8px;height:150px;padding-top:16px}
+.bars .b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px;font-size:var(--fs-xs,13px);color:var(--muted);min-width:0}
+.bars .b i{display:block;width:100%;max-width:38px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,var(--a),var(--a2));min-height:3px}
+.bars .b span{font-weight:700;color:var(--ink2)}
+.hb{display:grid;grid-template-columns:minmax(90px,1.1fr) 3fr auto;gap:8px;align-items:center;font-size:var(--fs-s,14px);margin:7px 0}
+.hb i{display:block;height:10px;border-radius:0 5px 5px 0;background:linear-gradient(90deg,var(--a),var(--a2));min-width:3px}
+.hb b{font-variant-numeric:tabular-nums}
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:var(--fs-s,14px)}
+th{text-align:left;font-size:var(--fs-xs,13px);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:800;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:hover{background:color-mix(in srgb,var(--a) 6%,transparent)}
+tr:last-child td{border-bottom:0}
+.scroll{overflow:auto;max-height:560px}
+.meter{display:inline-block;width:90px;height:8px;border-radius:999px;background:var(--panel2);vertical-align:middle;overflow:hidden;margin-right:8px;border:1px solid var(--line)}
+.meter i{display:block;height:100%;border-radius:999px;background:var(--ok)}
+.meter.warn i{background:var(--warn)}.meter.crit i{background:var(--crit)}
+/* cameras */
+.cam{background:var(--panel2);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.cam.crit{border-color:var(--crit);box-shadow:0 0 0 2px var(--crit-bg)}
+.cam .pic{position:relative;background:#040912;aspect-ratio:16/10}
+.cam .pic img{width:100%;height:100%;object-fit:contain;display:block}
+.cam .pic .ov{position:absolute;inset:0;display:grid;place-items:center;color:#9fb0b7;font-size:var(--fs-s,14px);background:#040912;text-align:center;padding:10px}
+.cam .pic .tag{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.65);color:#fff;font:700 var(--fs-xs,13px) var(--display);letter-spacing:.07em;padding:3px 8px;border-radius:6px}
+.cam .pic .tag.live::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff4d4f;margin-right:6px;animation:blink 1.2s infinite}
+.cam .pic .verd{position:absolute;right:8px;top:8px}
+.cam .bd{padding:10px 12px}
+.cam .bd .row{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:var(--fs-s,14px);padding:3px 0}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:var(--fs-xs,13px);font-weight:700;border-radius:8px;padding:2px 8px;border:1px solid var(--line);background:var(--panel)}
+.chip.bad{border-color:var(--crit);color:var(--crit);background:var(--crit-bg)}
+.chip.good{border-color:transparent;color:var(--ok);background:var(--ok-bg)}
+.mix{display:flex;height:16px;border-radius:999px;overflow:hidden;background:var(--panel2);border:1px solid var(--line);gap:2px}
+.mix i{display:block;height:100%}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:var(--fs-s,14px);color:var(--ink2);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}.legend span::before{content:"";width:10px;height:10px;border-radius:3px;background:var(--c)}
+/* alerts */
+.tabs{display:flex;gap:4px;padding:3px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);width:fit-content;max-width:100%;overflow-x:auto}
+.tab{border:0;background:transparent;border-radius:9px;padding:6px 13px;cursor:pointer;font-weight:700;font-size:var(--fs-s,14px);color:var(--muted);white-space:nowrap}
+.tab[aria-selected="true"]{background:linear-gradient(135deg,var(--a),var(--a2));color:#111}
+.alist{display:flex;flex-direction:column;gap:9px;max-height:620px;overflow:auto;padding:2px}
+.al{border:1px solid var(--line);border-left:5px solid var(--grey);border-radius:14px;padding:10px 12px;background:var(--panel2);display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start}
+.al.Critical{border-left-color:var(--crit)}.al.High{border-left-color:var(--serious)}.al.Medium{border-left-color:var(--warn)}
+.al.pop{animation:cardpop .5s cubic-bezier(.2,1.25,.4,1) both,cardglow 1.2s ease-in-out .3s 3}
+@keyframes cardpop{0%{transform:translateY(-10px) scale(.94);opacity:0}60%{transform:scale(1.03);opacity:1}100%{transform:none}}
+@keyframes cardglow{50%{box-shadow:0 0 0 2px var(--a),0 8px 24px -6px var(--a)}}
+.al img{width:76px;height:52px;object-fit:cover;border-radius:9px;background:var(--panel);display:block}
+.al .noimg{width:76px;height:52px;border-radius:9px;background:var(--panel);display:grid;place-items:center;font-size:var(--fs-xl,24px);border:1px solid var(--line)}
+.al b{font:700 var(--fs-s,14px) var(--display)}
+.al .m{font-size:var(--fs-s,14px);color:var(--muted);margin-top:2px}
+.al .a{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel2);border-radius:9px;padding:5px 11px;cursor:pointer;font-weight:700;font-size:var(--fs-s,14px);text-decoration:none;display:inline-block}
+.btn:hover{border-color:var(--a)}
+.btn.pri{background:linear-gradient(135deg,var(--a),var(--a2));border-color:transparent;color:#111}
+.btn.red{border-color:var(--crit);color:var(--crit)}
+.btn:disabled{opacity:.5;cursor:default}
+.sev{font-size:var(--fs-xs,13px);font-weight:800;border-radius:6px;padding:1px 7px;margin-left:6px;background:var(--grey-bg);color:var(--ink2);vertical-align:1px}
+.sev.Critical{background:var(--crit);color:#fff}.sev.High{background:var(--serious);color:#1b0d05}.sev.Medium{background:var(--warn);color:#201500}
+.cnt{font:700 var(--fs-xs,13px) var(--display);letter-spacing:.06em;padding:4px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.cnt.hot{background:var(--crit);color:#fff;border-color:transparent}.cnt.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.empty{color:var(--muted);text-align:center;padding:22px 10px;font-size:var(--fs-s,14px);border:1px dashed var(--line);border-radius:14px}
+.empty b{display:block;font:600 var(--fs-m,16px) var(--display);color:var(--ok);margin-bottom:2px}
+/* attention list */
+.att{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--panel2);margin-bottom:8px}
+.att .d{width:12px;height:12px;border-radius:50%;flex:none}.att .d.crit{background:var(--crit);box-shadow:0 0 12px var(--crit)}.att .d.warn{background:var(--warn)}.att .d.off{background:var(--grey)}
+.att b{font-weight:700}.att .m{font-size:var(--fs-s,14px);color:var(--muted)}.att>div{flex:1;min-width:0}
+/* map */
+.plan{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px;border:2px solid var(--line);border-radius:18px;
+  background:repeating-linear-gradient(0deg,transparent 0 23px,var(--grid) 23px 24px),repeating-linear-gradient(90deg,transparent 0 23px,var(--grid) 23px 24px)}
+.room{position:relative;text-align:left;border:2px solid var(--grey);border-radius:14px;background:var(--panel);padding:13px 15px;min-height:150px;cursor:pointer;transition:transform .15s}
+.room:hover{transform:translateY(-2px)}
+.room[aria-pressed="true"]{outline:3px solid var(--a);outline-offset:3px}
+.room.ok{border-color:var(--ok);background:linear-gradient(160deg,var(--ok-bg),var(--panel) 70%)}
+.room.warn{border-color:var(--warn);background:linear-gradient(160deg,var(--warn-bg),var(--panel) 70%)}
+.room.crit{border-color:var(--crit);background:linear-gradient(160deg,var(--crit-bg),var(--panel) 70%);animation:roomp 1.4s infinite}
+.room.off{border-style:dashed}
+@keyframes roomp{50%{box-shadow:0 0 0 6px var(--crit-bg)}}
+.room h4{margin:0 0 6px;font:700 var(--fs-m,16px) var(--display)}
+.room .ics{display:flex;gap:12px;flex-wrap:wrap;font-size:var(--fs-s,14px);color:var(--ink2);margin-top:10px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:var(--fs-s,14px)}
+.locmap{position:relative;height:340px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--panel2,var(--panel))}
+.locmap iframe{width:100%;height:100%;border:0;display:block}
+.locempty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--muted)}
+.locmap [hidden],.map [hidden]{display:none!important}
+.kv>span{color:var(--muted)}
+.rssi{display:inline-flex;gap:2px;align-items:flex-end;height:14px;vertical-align:-2px;margin-right:6px}
+.rssi i{width:4px;background:var(--line);border-radius:1px}
+.rssi i.on{background:var(--ok)}
+.rssi i:nth-child(1){height:4px}.rssi i:nth-child(2){height:7px}.rssi i:nth-child(3){height:10px}.rssi i:nth-child(4){height:14px}
+.note{border:1px dashed color-mix(in srgb,var(--a) 50%,var(--line));border-radius:12px;padding:9px 12px;font-size:var(--fs-s,14px);color:var(--ink2);background:color-mix(in srgb,var(--a) 7%,transparent)}
+.form{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.form label{display:grid;gap:4px;font-size:var(--fs-xs,13px);color:var(--muted);font-weight:700;letter-spacing:.04em}
+.form select,.form input{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 10px}
+.ring2{--p:0;width:100px;height:100px;border-radius:50%;display:grid;place-items:center;flex:none;background:conic-gradient(var(--c,var(--ok)) calc(var(--p)*1%),var(--panel2) 0)}
+.ring2 div{width:78px;height:78px;border-radius:50%;background:var(--panel);display:grid;place-items:center;font:800 var(--fs-xl,24px) var(--display)}
+.rk{display:flex;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:16px;background:var(--panel2)}
+@media (max-width:1150px){.g3,.g21,.g12{grid-template-columns:1fr}}
+@media (max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .side{position:static;height:auto;flex-direction:row;overflow:auto;padding:8px;border-right:0;border-bottom:1px solid var(--line)}
+  .brand,.side .sp,.side .foot,.navb small{display:none}
+  .side #nav{flex-direction:row;gap:4px}
+  .navb{width:auto;white-space:nowrap}
+  .g2,.plan{grid-template-columns:1fr}
+  .hero{grid-template-columns:1fr}
+  main{padding:14px 16px 60px}
+  table{min-width:520px}.box{overflow-x:auto}
+  .top{padding:10px 16px}.nxnav{margin-left:0}
+  .camsL,.cardsL{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<link rel="stylesheet" href="/static/nx.css?v=12nov1">
+<style>
+/* 12 Nov polish: same header / tabs / panels / colours as every page; sections are tabs at the top */
+.app{display:flex!important;flex-direction:column;gap:var(--sp-4);max-width:1920px;margin:0 auto;padding:var(--sp-3) var(--sp-4) var(--sp-5)}
+.tabrow{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.side{position:static!important;height:auto!important;flex:1;display:block!important;padding:var(--sp-1)!important;border:var(--nx-border)!important;background:var(--panel2)!important;overflow:visible!important}
+#nav{display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:var(--sp-1)}
+.navb .n{margin-left:6px!important}
+.navb{width:auto!important;min-height:40px;padding:0 var(--sp-3)!important;border-radius:9px!important;gap:var(--sp-2)!important;border:0!important}
+.navb .ic{width:auto!important;height:auto!important;background:none!important;box-shadow:none!important;font-size:18px!important;opacity:1!important}
+.navb small{display:none!important}
+.navb b{font:600 var(--fs-m)/1 var(--display)!important}
+.navb[aria-current="page"]{background:var(--info)!important;color:#fff}
+.navb .n{animation:none!important}
+main{padding:0!important}
+#live i{display:inline-block;width:9px;height:9px;border-radius:50%;background:currentColor}
+.x-overview,.x-sensors,.x-ai,.x-workers,.x-alerts,.x-predict,.x-map,.x-devices,.x-reports{--a:var(--info);--a2:var(--info)}
+.bh h3{font:600 var(--fs-l)/1.2 var(--display)!important}
+.banner h2{font:700 var(--fs-xl)/1.2 var(--display)!important}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="nxbar">
+    <a class="logo" href="/" aria-label="NETRAX home">N</a>
+    <div class="brand"><b>NETRAX</b><span>Intelligence</span></div>
+    <span class="clock" id="clock">--:--:--</span>
+    <span class="hgrow"></span>
+    <nav class="nxnav" aria-label="Pages"><a href="/">Control room</a><a href="/entrance">Entrance</a><a href="/admin">Admin</a><a href="/hardware">Hardware</a><a href="/intelligence" aria-current="page">Intelligence</a></nav>
+    <span data-zx-slot></span>
+    <button class="ibtn" id="themeBtn" type="button">☀ / ☾</button>
+  </header>
+  <div class="tabrow"><aside class="side nx-tabs" aria-label="Sections"><div id="nav"></div></aside>
+    <span class="nx-count" id="live"><i></i><span>Connecting</span></span><span class="nx-count" id="foot" hidden></span></div>
+  <div>
+    <main>
+      <section class="sec x-overview" id="s-overview"></section>
+      <section class="sec x-sensors" id="s-sensors"></section>
+      <section class="sec x-ai" id="s-ai"></section>
+      <section class="sec x-workers" id="s-workers"></section>
+      <section class="sec x-alerts" id="s-alerts"></section>
+      <section class="sec x-predict" id="s-predict"></section>
+      <section class="sec x-map" id="s-map"></section>
+      <section class="sec x-devices" id="s-devices"></section>
+      <section class="sec x-reports" id="s-reports"></section>
+    </main>
+  </div>
+</div>
+<div id="tip"></div>
+<script src="/static/ppe_icons.js?v=12nov1"></script>
+<script src="/static/people.js?v=12nov1"></script>
+<script src="/static/video.js?v=12nov1"></script>
+<script src="/static/zentrix.js?v=12nov1"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const tfmt = t => new Date(t * 1000).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
+const dfmt = t => t ? new Date(t * 1000).toLocaleString([], {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}) : "—";
+const ago = t => { if (!t) return "—"; const s = Math.max(0, Date.now() / 1000 - t);
+  return s < 60 ? Math.round(s) + " s ago" : s < 3600 ? Math.round(s / 60) + " min ago" : s < 86400 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " d ago"; };
+const dur = s => s == null ? "—" : s < 60 ? Math.round(s) + " s" : s < 3600 ? Math.round(s / 60) + " min" : (s / 3600).toFixed(1) + " h";
+async function api(p, o){ const r = await fetch(p, o);
+  if (r.status === 401){ location.href = "/login?next=/intelligence"; throw new Error("login"); }
+  if (!r.ok) throw new Error(r.status); return r.json(); }
+const st = (cls, txt) => `<span class="st ${cls}">${esc(txt)}</span>`;
+const ITEM = {helmet:"Helmet", vest:"Safety vest", gloves:"Gloves", goggles:"Goggles", boots:"Safety shoes", mask:"Mask"};
+const iname = i => ITEM[i] || i;
+const zname = id => (ZONES.find(z => z.zone_id === id) || {}).name || id || "";
+/* replace a block only when its content really changed: keeps scroll positions and avoids flicker */
+function setHTML(id, h){ const el = $(id); if (el && el.dataset.h !== h){ el.innerHTML = h; el.dataset.h = h; } }
+function bump(id){ const b = $(id); if (!b) return; b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump"); clearTimeout(b._bt); b._bt = setTimeout(() => b.classList.remove("bump"), 2800); }
+const tipOf = t => String(t ?? "").replace(/<[^>]+>/g, "").replace(/"/g, "&quot;");
+const head = (icon, title, sub, right) => `<div class="bh"><i class="bi" aria-hidden="true">${icon}</i><div><h3>${title}</h3></div>${sub ? `<span class="nx-info" tabindex="0" title="${tipOf(sub)}">i</span>` : ""}<span class="sp"></span>${right || ""}</div>`;
+const banner = (s) => `<div class="banner"><div class="bic" aria-hidden="true">${s[1]}</div><div><h2>${esc(s[2])} <span class="nx-info" tabindex="0" title="${tipOf(s[4])}">i</span></h2></div><div class="rt" id="bn-${s[0]}"></div></div>`;
+
+/* ------------------------------------------------------------------ data (all from existing NETRAX APIs, read-only) */
+let ME = {role:"viewer"}, CAMS = {cameras:[], edge_online:false}, ZONES = [], HW = {devices:[], readers:[], thresholds:{}, present:[]},
+    HIST = {}, EV = new Map(), FRESH = new Map(), WORKERS = [], SCANS = [], HEALTH = null, AN = null, WSOK = false, SEC = "overview",
+    MAPSEL = null, ALTAB = "active", REP = null, LASTMOUSE = null, LOC = null;
+const canAct = () => ME.role === "admin" || ME.role === "supervisor";
+
+/* [id, icon, name, nav subtitle, what this section is for] */
+const SECTIONS = [
+  ["overview", "◉", "Overview", "Overall safety status", "The whole site in one look: overall status, the six key numbers and what needs attention now. Click a number to open its section."],
+  ["sensors", "∿", "Live Sensors", "Real-time readings", "Every sensor of the ESP32 safety station, once a second, with live graphs. Red dashed line = danger limit, dotted line = the sensor's normal level."],
+  ["ai", "◎", "AI Monitoring", "Intelligent detection", "Live camera pictures with the AI result on them, and how the AI is judging people right now."],
+  ["workers", "☻", "Worker Management", "RFID and PPE tracking", "Registered workers, RFID cards, entry and exit, each worker's PPE record and safety score."],
+  ["alerts", "⚠", "Alerts Centre", "Emergency notifications", "Every incident sorted into its own box: fire & smoke, PPE, restricted access. Acknowledge, resolve or mark a false alarm here."],
+  ["predict", "↗", "Predictive Analytics", "Early risk warning", "Early warning before a limit is crossed: trend lines on the live sensors and a risk index per zone."],
+  ["map", "▦", "Factory Map", "Zone-wise safety", "Live state of every zone. Click a zone for its people, alerts and devices."],
+  ["devices", "⚙", "Device Health", "Hardware monitoring", "Condition of the hardware: ESP32 station and its sensors, RFID reader, cameras, the AI computer and alert channels."],
+  ["reports", "▤", "Reports & Analytics", "History and exports", "Daily, weekly and monthly reports from the stored records, 7-day trends, PDF and Excel export."],
+];
+const SECOF = Object.fromEntries(SECTIONS.map(s => [s[0], s]));
+
+/* sensor definitions: key, label, unit, absolute limit key, baseline key + rise key, decimals, minimum y-span */
+const SENSORS = [
+  {k:"temperature_c", label:"Temperature", dev:"DHT22", icon:"🌡", unit:"°C", thr:"temp_critical_c", base:"temp", rise:"temp_rise_c", dp:1, span:4, hz:"heat"},
+  {k:"humidity_pct", label:"Humidity", dev:"DHT22", icon:"💧", unit:"%", dp:0, span:10},
+  {k:"mq2_adc", label:"Smoke / combustible gas", dev:"MQ-2", icon:"💨", unit:"ADC", thr:"mq2_abs", base:"mq2", rise:"mq2_rise", dp:0, span:300, hz:"smoke"},
+  {k:"mq135_adc", label:"Air quality", dev:"MQ-135", icon:"🌫", unit:"ADC", base:"mq135", rise:"mq135_rise", dp:0, span:300},
+  {k:"pm2_5_ugm3", label:"Dust PM2.5", dev:"Sharp GP2Y1010", icon:"⛅", unit:"µg/m³", thr:"pm25_warn", dp:0, span:20, warnOnly:true},
+  {k:"flame_detected", label:"Flame sensor", dev:"IR flame", icon:"🔥", bool:true, hz:"fire"},
+  {k:"vibration_metric", label:"Vibration", dev:"MPU6050", icon:"📳", unit:"g", dp:3, span:0.2},
+  {k:"helmet_fsr_adc", label:"Helmet pressure", dev:"FSR", icon:"⛑", unit:"ADC", thr:"fsr_contact", dp:0, span:400, contact:true},
+];
+
+const evList = () => [...EV.values()].filter(e => e.type !== "entrance_check" && e.type !== "test");
+const isActive = e => (e.status === "open" || e.status === "escalated" || e.status === "verifying") && !e.ended_at;
+const isAck = e => e.status === "acknowledged" && !e.ended_at;
+const active = () => evList().filter(isActive);
+const SEVR = {Critical:0, High:1, Medium:2, Low:3};
+const isFire = e => e.type === "fire" || e.type === "smoke";
+const bySev = (a, b) => (isFire(a) ? -1 : SEVR[a.severity] ?? 4) - (isFire(b) ? -1 : SEVR[b.severity] ?? 4) || (b.updated_at || b.received_at || 0) - (a.updated_at || a.received_at || 0);
+function title(e){
+  if (e.type === "ppe_missing") return "PPE violation";
+  if (e.type === "fire") return "Fire detected" + (e.fire_level ? " · level " + e.fire_level : "");
+  if (e.type === "smoke") return "Smoke detected" + (e.fire_level ? " · level " + e.fire_level : "");
+  if (e.type === "unauthorized_entry") return "Unauthorised entry";
+  return String(e.type || "alert").replace(/_/g, " ");
+}
+const who = e => e.type === "ppe_missing" || e.type === "unauthorized_entry" ? personText(e) : (e.worker_name ? `${e.worker_name} · ${e.worker_id || ""}` : (e.worker_id || ""));
+const stationOf = zid => (HW.devices || []).find(d => d.zone_id === zid);
+const devLevel = d => !d ? null : !d.online ? "OFFLINE" : ((d.eval || {}).level || "NORMAL");
+const camLive = c => c.status === "ONLINE" || c.status === "DEGRADED";
+
+function zoneState(z){
+  const evs = active().filter(e => e.zone_id === z.zone_id), d = stationOf(z.zone_id), lvl = devLevel(d);
+  const cams = CAMS.cameras.filter(c => c.zone_id === z.zone_id), camOn = cams.some(camLive);
+  let s = "ok", why = "No active alert";
+  if (evs.some(e => isFire(e) || e.severity === "Critical") || lvl === "CRITICAL"){ s = "crit"; why = evs.length ? title(evs.sort(bySev)[0]) : ((d.eval.reasons || [])[0] || "station critical"); }
+  else if (evs.length || lvl === "WARNING" || lvl === "FAULT"){ s = "warn"; why = evs.length ? title(evs.sort(bySev)[0]) : lvl === "FAULT" ? "sensor fault" : ((d.eval.reasons || [])[0] || "station warning"); }
+  else if (!camOn && (!d || !d.online)){ s = "off"; why = "No camera or station reporting"; }
+  return {s, why, evs, d, cams, camOn};
+}
+function overall(){
+  const a = active(), devs = HW.devices || [];
+  const fire = a.filter(isFire);
+  const reasons = [];
+  let s = "ok";
+  if (fire.length || a.some(e => e.severity === "Critical") || devs.some(d => devLevel(d) === "CRITICAL")){
+    s = "crit";
+    fire.forEach(e => reasons.push(`${title(e)}${who(e) ? " · " + who(e) : ""} — ${e.zone_name || e.zone_id || ""}`));
+    a.filter(e => e.severity === "Critical" && !fire.includes(e)).forEach(e => reasons.push(`${title(e)}${who(e) ? " · " + who(e) : ""} — ${e.zone_name || ""}`));
+    devs.filter(d => devLevel(d) === "CRITICAL").forEach(d => reasons.push(`${d.name}: ${(d.eval.reasons || []).join(", ")}`));
+  } else if (a.length || devs.some(d => ["WARNING", "FAULT"].includes(devLevel(d)))){
+    s = "warn";
+    a.slice().sort(bySev).slice(0, 3).forEach(e => reasons.push(`${title(e)}${who(e) ? " · " + who(e) : ""} — ${e.zone_name || ""}`));
+    devs.filter(d => ["WARNING", "FAULT"].includes(devLevel(d))).forEach(d => reasons.push(`${d.name}: ${(d.eval.reasons || ["warning"]).join(", ")}`));
+  } else if (!CAMS.edge_online && !devs.some(d => d.online)){
+    s = "off"; reasons.push("The AI cameras and the safety station are not reporting. Nothing is being watched right now.");
+  } else {
+    if (!CAMS.edge_online) reasons.push("AI cameras are not running — only the station sensors are watching.");
+    if (devs.length && !devs.some(d => d.online)) reasons.push("Safety station offline — only the cameras are watching.");
+  }
+  return {s, reasons, fire};
+}
+
+/* ------------------------------------------------------------------ charts (inline SVG, no library, works offline) */
+const CH = {};
+function chart(id, pts, o){
+  o = o || {}; const H = o.h || 110, W = 600;
+  pts = (pts || []).filter(p => p[1] != null);
+  if (pts.length < 2) return `<div class="ch" style="height:${H}px"><div class="none">${esc(o.empty || "Waiting for readings…")}</div></div>`;
+  const fut = o.fut || [], all = pts.concat(fut).map(p => p[1]);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (o.thr != null && (o.showThr || o.thr <= hi * 1.6)) { hi = Math.max(hi, o.thr); lo = Math.min(lo, o.thr); }
+  if (o.base != null) { lo = Math.min(lo, o.base); hi = Math.max(hi, o.base); }
+  const ms = o.span || 1e-6; if (hi - lo < ms){ const m = (hi + lo) / 2; hi = m + ms / 2; lo = m - ms / 2; }
+  const pad = (hi - lo) * 0.08; hi += pad; lo -= pad; if (Math.min(...all) >= 0) lo = Math.max(0, lo);
+  const t0 = pts[0][0], tN = pts[pts.length - 1][0], t1 = fut.length ? fut[fut.length - 1][0] : tN;
+  const X = t => (t - t0) / Math.max(1e-6, t1 - t0) * W, Y = v => H - (v - lo) / (hi - lo) * H;
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
+  const area = `${d}L${X(tN).toFixed(1)},${H}L0,${H}Z`;
+  const fd = fut.length ? `M${X(tN).toFixed(1)},${Y(pts[pts.length - 1][1]).toFixed(1)}` + fut.map(p => `L${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("") : "";
+  const grid = [0.25, 0.5, 0.75].map(f => `<line class="gr" x1="0" x2="${W}" y1="${H * f}" y2="${H * f}" vector-effect="non-scaling-stroke"/>`).join("");
+  const thrIn = o.thr != null && o.thr <= hi && o.thr >= lo;
+  CH[id] = {pts, t0, t1, lo, hi, dp: o.dp || 0, unit: o.unit || "", W, H};
+  const f = v => Number(v).toFixed(o.dp || 0);
+  return `<div class="ch" data-ch="${id}" style="height:${H}px"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(o.label || "trend")}">
+    ${grid}${o.base != null ? `<line class="base" x1="0" x2="${W}" y1="${Y(o.base)}" y2="${Y(o.base)}" vector-effect="non-scaling-stroke"/>` : ""}
+    ${thrIn ? `<line class="thr" x1="0" x2="${W}" y1="${Y(o.thr)}" y2="${Y(o.thr)}" vector-effect="non-scaling-stroke"/>` : ""}
+    ${fut.length ? `<line class="now" x1="${X(tN)}" x2="${X(tN)}" y1="0" y2="${H}" vector-effect="non-scaling-stroke"/>` : ""}
+    <path class="ar" d="${area}"/><path class="ln" d="${d}" vector-effect="non-scaling-stroke"/>
+    ${fd ? `<path class="fc" d="${fd}" vector-effect="non-scaling-stroke"/>` : ""}
+    <line class="hx" y1="0" y2="${H}" vector-effect="non-scaling-stroke"/></svg>
+    ${o.noAxis ? "" : `<span class="yl" style="top:0">${f(hi)}</span><span class="yl" style="bottom:0">${f(lo)}</span>`}
+    ${thrIn ? `<span class="tl" style="top:${Y(o.thr) / H * 100}%">limit ${f(o.thr)}</span>` : ""}<i class="dot"></i></div>`;
+}
+function hover(ev){
+  const tip = $("tip"); const box = ev && ev.target && ev.target.closest ? ev.target.closest(".ch[data-ch]") : null;
+  document.querySelectorAll(".ch .hx, .ch .dot").forEach(n => { if (!box || !box.contains(n)) n.style.display = "none"; });
+  const bar = ev && ev.target && ev.target.closest ? ev.target.closest("[data-tip]") : null;
+  if (bar){ tip.textContent = bar.dataset.tip; tip.style.display = "block"; tip.style.left = Math.min(innerWidth - 180, ev.clientX + 12) + "px"; tip.style.top = (ev.clientY - 32) + "px"; return; }
+  const c = box && CH[box.dataset.ch];
+  if (!c){ tip.style.display = "none"; return; }
+  const r = box.getBoundingClientRect(), tx = c.t0 + (ev.clientX - r.left) / r.width * (c.t1 - c.t0);
+  let best = c.pts[0]; for (const p of c.pts) if (Math.abs(p[0] - tx) < Math.abs(best[0] - tx)) best = p;
+  const x = (best[0] - c.t0) / Math.max(1e-6, c.t1 - c.t0), y = 1 - (best[1] - c.lo) / (c.hi - c.lo);
+  const hx = box.querySelector(".hx"), dot = box.querySelector(".dot");
+  hx.setAttribute("x1", x * c.W); hx.setAttribute("x2", x * c.W); hx.style.display = "block";
+  dot.style.left = x * 100 + "%"; dot.style.top = y * 100 + "%"; dot.style.display = "block";
+  tip.textContent = `${Number(best[1]).toFixed(c.dp)} ${c.unit} · ${tfmt(best[0])}`;
+  tip.style.display = "block"; tip.style.left = Math.min(innerWidth - 180, ev.clientX + 12) + "px"; tip.style.top = (ev.clientY - 32) + "px";
+}
+document.addEventListener("mousemove", ev => { LASTMOUSE = ev; hover(ev); });
+document.addEventListener("mouseleave", () => { LASTMOUSE = null; $("tip").style.display = "none"; });
+const rehover = () => { if (LASTMOUSE){ const el = document.elementFromPoint(LASTMOUSE.clientX, LASTMOUSE.clientY); if (el) hover({target: el, clientX: LASTMOUSE.clientX, clientY: LASTMOUSE.clientY}); } };
+const series = (dev, k, secs) => { const h = HIST[dev] || [], end = h.length ? h[h.length - 1].at : 0;
+  return h.filter(p => !secs || end - p.at <= secs).map(p => [p.at, p[k] == null ? null : (typeof p[k] === "boolean" ? (p[k] ? 1 : 0) : p[k])]); };
+function hbars(obj, max){
+  const rows = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]).slice(0, max || 6), top = Math.max(1, ...rows.map(r => r[1]));
+  return rows.length ? rows.map(([k, v]) => `<div class="hb" data-tip="${esc(iname(k))}: ${v}"><span>${esc(iname(k))}</span><i style="width:${Math.max(2, v / top * 100)}%"></i><b>${v}</b></div>`).join("") : `<div class="empty">No records in this period.</div>`;
+}
+
+/* ------------------------------------------------------------------ sensor judgement + trend forecast */
+function limitOf(c, d){
+  const t = HW.thresholds || {}, b = ((d && d.eval) || {}).baseline || {};
+  const est = c.k === "pm2_5_ugm3" && ((d && d.data) || {}).pm_estimated;          // uncalibrated estimate: no limit
+  const abs = c.thr && !est ? t[c.thr] : null, rise = c.rise && b[c.base] != null && t[c.rise] != null ? b[c.base] + t[c.rise] : null;
+  if (abs != null && rise != null) return Math.min(abs, rise);
+  return abs != null ? abs : rise;
+}
+function sensorState(c, d){
+  if (!d || !d.online) return {cls:"off", txt:"OFFLINE"};
+  const v = (d.data || {})[c.k];
+  if (v == null) return {cls:"off", txt:"NO READING"};
+  if (c.bool) return v ? {cls:"crit", txt:"FLAME"} : {cls:"ok", txt:"NORMAL"};
+  if (c.contact) return v >= (HW.thresholds.fsr_contact || 700) ? {cls:"ok", txt:"HELMET ON"} : {cls:"warn", txt:"NO CONTACT"};
+  if (c.hz && ((d.eval || {}).hazards || {})[c.hz]) return {cls:"crit", txt:"DANGER"};
+  const lim = limitOf(c, d);
+  if (lim != null && v >= lim) return c.warnOnly ? {cls:"warn", txt:"WARNING"} : {cls:"crit", txt:"DANGER"};
+  if (lim != null && v >= lim - (lim - (((d.eval || {}).baseline || {})[c.base] ?? lim * 0.6)) * 0.3) return {cls:"warn", txt:"NEAR LIMIT"};
+  return {cls:"ok", txt:"NORMAL"};
+}
+/* least-squares line through the last `win` seconds; ETA = time until the line reaches the limit */
+function trend(dev, c, d, win){
+  const pts = series(dev, c.k, win || 180).filter(p => p[1] != null);
+  if (pts.length < 20) return null;
+  const n = pts.length, t0 = pts[0][0];
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (const [t, v] of pts){ const x = t - t0; sx += x; sy += v; sxx += x * x; sxy += x * v; }
+  const den = n * sxx - sx * sx; if (!den) return null;
+  const m = (n * sxy - sx * sy) / den, b = (sy - m * sx) / n;
+  let res = 0; for (const [t, v] of pts){ const e = v - (m * (t - t0) + b); res += e * e; }
+  const noise = Math.sqrt(res / n), spanT = pts[n - 1][0] - t0, change = m * spanT;
+  const now = m * spanT + b, lim = limitOf(c, d);
+  const real = Math.abs(change) > Math.max(2 * noise, (c.span || 1) * 0.15);     // a change clearly bigger than the sensor noise
+  let eta = null;
+  if (lim != null && real && m > 0 && now < lim) eta = (lim - now) / m;
+  const fut = []; for (let s = 30; s <= 300; s += 30) fut.push([pts[n - 1][0] + s, now + m * s]);
+  return {perMin: m * 60, real, eta, lim, now, fut, tEnd: pts[n - 1][0], noise};
+}
+function anomaly(dev, k){
+  const v = series(dev, k, 600).map(p => p[1]).filter(x => x != null);
+  if (v.length < 30) return null;
+  const hist = v.slice(0, -5), last = v.slice(-5), mean = hist.reduce((a, b) => a + b, 0) / hist.length;
+  const sd = Math.sqrt(hist.reduce((a, b) => a + (b - mean) * (b - mean), 0) / hist.length) || 1e-6;
+  const cur = last.reduce((a, b) => a + b, 0) / last.length;
+  return {mean, sd, cur, z: (cur - mean) / sd};
+}
+function zoneRisk(z){
+  const zs = zoneState(z), d = zs.d; let sensor = 0, early = 0;
+  if (d && d.online) for (const c of SENSORS){
+    if (c.bool || c.contact) { if (c.bool && (d.data || {})[c.k]) sensor = 100; continue; }
+    const v = (d.data || {})[c.k], lim = limitOf(c, d), b = ((d.eval || {}).baseline || {})[c.base];
+    if (v == null || lim == null) continue;
+    const from = b != null ? b : lim * 0.5;
+    sensor = Math.max(sensor, Math.min(100, Math.max(0, (v - from) / Math.max(1e-6, lim - from) * 100)));
+    const tr = trend(d.device_id, c, d); if (tr && tr.eta != null && tr.eta < 900) early = 15;
+  }
+  const al = Math.max(0, ...zs.evs.map(e => isFire(e) ? 100 : ({Critical:90, High:70, Medium:45, Low:25}[e.severity] || 25)));
+  return {score: Math.round(Math.min(100, Math.max(sensor, al) + early)), sensor: Math.round(sensor), al, early, watched: zs.s !== "off"};
+}
+
+/* ------------------------------------------------------------------ 1 · Overview: status + key numbers + what to do next (details live in the other sections) */
+function rOverview(){
+  const o = overall(), a = active(), devs = HW.devices || [], present = HW.present || [];
+  const camOn = CAMS.cameras.filter(camLive).length, camAll = CAMS.cameras.filter(c => c.status !== "OFF").length;
+  const stOn = devs.filter(d => d.online).length;
+  const comp = AN && AN.compliance_rate != null && CAMS.edge_online ? AN.compliance_rate : null;
+  const aiAb = a.filter(e => e.camera_id);
+  const word = {ok:"SAFE", warn:"WARNING", crit:"CRITICAL", off:"NOT MONITORED"}[o.s], icon = {ok:"✓", warn:"!", crit:"✖", off:"…"}[o.s];
+  const emer = o.fire.length, relay = devs.some(d => d.online && (d.data || {}).relay_on);
+  const T = (sec, icon, k, v, unit, n, badge) => `<button class="tile x-${sec}" data-go="${sec}"><span class="ti" aria-hidden="true">${icon}</span><div><div class="k"><span>${k}</span>${badge}</div><div class="v">${esc(v)}<small>${unit}</small></div><div class="n">${esc(n)}</div></div></button>`;
+  const tiles = [
+    T("workers", "👷", "Workers present", present.length, "", "checked in by RFID card", present.length ? st("ok", "INSIDE") : ""),
+    T("ai", "🦺", "PPE compliance", comp == null ? "—" : comp, comp == null ? "" : "%", comp == null ? "needs the live AI cameras" : "of judged people, right now", comp == null ? st("off", "NO DATA") : st(comp >= 90 ? "ok" : comp >= 70 ? "warn" : "crit", comp >= 90 ? "GOOD" : comp >= 70 ? "LOW" : "POOR")),
+    T("alerts", "⚠", "Active alerts", a.length, "", a.length ? "waiting for a supervisor" : "nothing waiting", a.length ? st(a.some(e => e.severity === "Critical" || isFire(e)) ? "crit" : "warn", "OPEN") : st("ok", "CLEAR")),
+    T("sensors", "📟", "Sensor status", `${stOn}/${devs.length}`, "", "safety stations online", devs.length && stOn === devs.length ? st("ok", "ONLINE") : stOn ? st("warn", "PARTLY") : st("off", "OFFLINE")),
+    T("ai", "◎", "AI detection", !CAMS.edge_online ? "Offline" : aiAb.length ? "Abnormal" : "Normal", "", `${camOn}/${camAll} cameras live`, !CAMS.edge_online ? st("off", "OFFLINE") : aiAb.length ? st("crit", "ABNORMAL") : st("ok", "NORMAL")),
+    T("alerts", "🚨", "Emergency", emer || relay ? "Active" : "Inactive", "", emer ? `${emer} fire / smoke alarm${emer > 1 ? "s" : ""}` : relay ? "station siren relay is on" : "no fire or smoke alarm", emer || relay ? st("crit", "ACTIVE") : st("ok", "INACTIVE")),
+  ];
+  /* what to do next: one line per problem, each opens the section that handles it */
+  const todo = [];
+  const nA = {fire: a.filter(isFire).length, ppe: a.filter(e => e.type === "ppe_missing").length, acc: a.filter(e => e.type === "unauthorized_entry").length};
+  if (nA.fire) todo.push(["crit", `${nA.fire} fire / smoke alarm${nA.fire > 1 ? "s" : ""} active`, "Check the camera and the station, evacuate if needed", "alerts"]);
+  if (nA.acc) todo.push(["crit", `${nA.acc} unauthorised entr${nA.acc > 1 ? "ies" : "y"}`, "A worker is in a restricted zone", "alerts"]);
+  if (nA.ppe) todo.push(["warn", `${nA.ppe} PPE violation${nA.ppe > 1 ? "s" : ""} waiting`, "Acknowledge and make sure the worker puts the kit on", "alerts"]);
+  devs.forEach(d => { const l = devLevel(d);
+    if (l === "CRITICAL" || l === "WARNING") todo.push([l === "CRITICAL" ? "crit" : "warn", `${d.name}: ${l.toLowerCase()} reading`, (d.eval.reasons || []).join(" · "), "sensors"]);
+    else if (l === "OFFLINE") todo.push(["off", `${d.name} is offline`, "Sensor checks are not running in " + zname(d.zone_id), "devices"]); });
+  if (!CAMS.edge_online) todo.push(["off", "AI cameras are not running", "Start the edge (run_all.bat) to watch PPE and fire on camera", "devices"]);
+  devs.filter(d => d.online).forEach(d => SENSORS.filter(c => ["temperature_c", "mq2_adc", "mq135_adc", "pm2_5_ugm3"].includes(c.k)).forEach(c => {
+    const tr = trend(d.device_id, c, d); if (tr && tr.eta != null && tr.eta < 900 && !(tr.lim != null && tr.now >= tr.lim)) todo.push(["warn", `${c.label} heading for its limit`, `about ${dur(tr.eta)} at the current rate`, "predict"]); }));
+  if (!$("ov-hero")){
+    $("s-overview").innerHTML = banner(SECOF.overview) + `<div id="ov-hero"></div><div class="kp mt" id="ov-tiles"></div>
+      <div class="box mt" id="ov-todo">${head("✅", "Needs attention now", "Each line opens the section that handles it")}<div id="ov-todo-l"></div></div>`;
+  }
+  $("ov-hero").outerHTML = `<div class="hero ${o.s}" id="ov-hero"><div class="ring">${icon}</div>
+      <div><div class="lbl">OVERALL SAFETY STATUS</div><div class="big">${word}</div>
+        ${o.reasons.length ? `<ul>${o.reasons.slice(0, 4).map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : `<div class="small muted" style="margin-top:4px">All zones clear. Cameras and sensors are watching.</div>`}</div>
+      <div class="small muted" style="text-align:right">updated<br><b style="color:var(--ink);font:700 var(--fs-l,19px) var(--display)">${tfmt(Date.now() / 1000)}</b></div></div>`;
+  const th = tiles.join(""); if ($("ov-tiles").dataset.h !== th){ $("ov-tiles").innerHTML = th; $("ov-tiles").dataset.h = th; }
+  $("ov-todo-l").innerHTML = todo.length ? todo.slice(0, 8).map(t => `<div class="att"><span class="d ${t[0]}"></span><div><b>${esc(t[1])}</b><div class="m">${esc(t[2])}</div></div>
+      <button class="btn x-${t[3]}" data-go="${t[3]}">Open ${esc(SECOF[t[3]][2])} ›</button></div>`).join("")
+    : `<div class="empty"><b>✓ Nothing needs attention</b>No open alert, no sensor problem, every device is reporting.</div>`;
+}
+
+/* ------------------------------------------------------------------ 2 · Live Sensors */
+function rSensors(){
+  const devs = HW.devices || [];
+  $("s-sensors").innerHTML = banner(SECOF.sensors) + (devs.length ? devs.map(d => {
+      const lvl = devLevel(d), x = d.data || {};
+      const cls = lvl === "CRITICAL" ? "crit" : lvl === "WARNING" || lvl === "FAULT" ? "warn" : lvl === "OFFLINE" ? "off" : "ok";
+      const failed = d.online ? SENSORS.filter(c => x[c.k] == null).map(c => c.dev + " " + c.label.toLowerCase()) : [];
+      return `<div class="box ${cls === "crit" ? "hot" : ""}" style="margin-bottom:14px">${head("📟", `${esc(d.name)} · ${esc(d.device_id)}`, `${esc(zname(d.zone_id) || "no zone")} · ${d.online ? "updated " + d.age_s + " s ago" : d.age_s != null ? "no data for " + dur(d.age_s) : "never connected"}`,
+          `${st(cls, lvl === "FAULT" ? "SENSOR FAULT" : lvl)} <span class="chip ${x.buzzer_on && d.online ? "bad" : ""}">Buzzer ${x.buzzer_on && d.online ? "ON" : "off"}</span><span class="chip ${x.relay_on && d.online ? "bad" : ""}">Siren relay ${x.relay_on && d.online ? "ON" : "off"}</span>
+           <button class="btn" data-csv="${esc(d.device_id)}">⬇ CSV</button>`)}
+        ${d.online && (d.eval.reasons || []).length ? `<div class="small" style="margin-bottom:10px;color:var(--crit)"><b>Abnormal reading:</b> ${esc(d.eval.reasons.join(" · "))}</div>` : ""}
+        ${failed.length ? `<div class="small muted" style="margin-bottom:10px"><b>No reading from:</b> ${esc(failed.join(", "))} (sensor not fitted, not sent by this firmware, or failed)</div>` : ""}
+        ${!d.online ? `<div class="note" style="margin-bottom:10px">Station offline. An offline station is never treated as safe: camera fire alarms in this zone go ahead without the sensor check.</div>` : ""}
+        <div class="cardsL">${SENSORS.map(c => sensorCard(c, d)).join("")}${d.device_id === "esp32-ppe-01" || devs.length === 1 ? gpsCard() : ""}</div></div>`; }).join("")
+    : `<div class="box"><div class="empty" style="margin-top:16px">No safety station is configured (config/hardware.yaml).</div></div>`);
+  rehover();
+}
+/* 12 Nov: station GPS (NEO-6M) - replaces the thermistor (not fitted). /api/location -> sources.hardware */
+function gpsFix(){
+  const h = LOC && LOC.sources && LOC.sources.hardware;
+  if (!h || h.lat == null) return null;
+  const age = Math.max(0, Math.round(Date.now() / 1000 - h.at));
+  return Object.assign({}, h, {age, live: age <= 60});
+}
+const agoS = s => s < 60 ? `${s} s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+const latlon = g => `${Math.abs(g.lat).toFixed(5)}° ${g.lat >= 0 ? "N" : "S"}, ${Math.abs(g.lon).toFixed(5)}° ${g.lon >= 0 ? "E" : "W"}`;
+function gpsCard(){
+  const g = gpsFix(), cls = !g ? "off" : g.live ? "ok" : "warn";
+  return `<div class="sens ${cls}"><div class="k"><span>📍 GPS position <span class="muted" style="font-weight:500">· NEO-6M</span></span>${st(cls, !g ? "NO FIX" : g.live ? "LIVE" : "LAST KNOWN")}</div>
+    <div class="v" style="font-size:var(--fs-l,19px)">${g ? esc(latlon(g)) : "—"}</div>
+    <div class="n">${g ? `${g.accuracy_m != null ? "± " + Math.round(g.accuracy_m) + " m · " : ""}updated ${agoS(g.age)}` : "waiting for a satellite fix (outdoors 1–5 min)"}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${g ? `<button class="btn x-map" data-go="map">Show on the map ›</button>
+      <a class="btn" target="_blank" rel="noopener" href="https://maps.google.com/?q=${g.lat},${g.lon}">Google Maps ↗</a>` : ""}</div></div>`;
+}
+function sensorCard(c, d){
+  const s = sensorState(c, d), x = d.data || {}, v = d.online ? x[c.k] : null, base = ((d.eval || {}).baseline || {})[c.base], lim = limitOf(c, d);
+  const val = v == null ? "—" : c.bool ? (v ? "FLAME" : "No flame") : Number(v).toFixed(c.dp);
+  const note = c.bool ? "digital output, 2 of 3 readings needed to alarm" : c.contact ? `contact at ${HW.thresholds.fsr_contact ?? 700} ADC or more` :
+    c.k === "pm2_5_ugm3" && x.pm_estimated ? `estimated from the Sharp dust sensor (${x.pm_sensor_v != null ? Number(x.pm_sensor_v).toFixed(2) + " V" : "—"}) · not calibrated, shown for information` :
+    [base != null ? `normal ${base}` : "", lim != null ? `limit ${Number(lim).toFixed(c.dp)}` : ""].filter(Boolean).join(" · ") || "shown for information, no limit set";
+  return `<div class="sens ${s.cls}"><div class="k"><span>${c.icon} ${esc(c.label)} <span class="muted" style="font-weight:500">· ${esc(c.dev)}</span></span>${st(s.cls, s.txt)}</div>
+    <div class="v">${esc(val)}${v != null && c.unit ? `<small>${c.unit}</small>` : ""}</div><div class="n">${esc(note)}</div>
+    ${chart(d.device_id + ":" + c.k, series(d.device_id, c.k), {thr: c.bool ? null : lim, base, dp: c.bool ? 0 : c.dp, unit: c.unit || "", span: c.bool ? 1 : c.span, noAxis: !!c.bool, label: c.label + " trend", empty: d.online ? (v == null ? "No reading from this sensor" : "Collecting readings…") : "Station offline"})}
+    <div class="xl"><span>10 min ago</span><span>now</span></div></div>`;
+}
+
+/* ------------------------------------------------------------------ 3 · AI Monitoring: what the cameras see + how the AI judges (alerts are in the Alerts Centre) */
+let CAMSIG = "";
+function rAI(){
+  const cams = CAMS.cameras, mix = (AN && AN.compliance_mix) || {}, live = CAMS.edge_online;
+  if (!$("ai-grid")){
+    $("s-ai").innerHTML = banner(SECOF.ai) + `<div class="grid g12"><div class="box" id="ai-judge">${head("🧠", "How the AI judges people now", "Share of AI decisions on the live cameras")}<div id="ai-judge-b"></div></div>
+      <div class="box">${head("📹", "Camera feeds", "Live picture · AI verdict · required PPE of the zone")}<div class="camsL" id="ai-grid"></div></div></div>`;
+    CAMSIG = "";
+  }
+  const sig = cams.map(c => c.camera_id).join(",");
+  if (sig !== CAMSIG){                                   // build the tiles once: the <img> must stay in the page for smooth video
+    CAMSIG = sig;
+    $("ai-grid").innerHTML = cams.map(c => `<div class="cam" id="cam-${esc(c.camera_id)}"><div class="pic"><img data-live="${esc(c.camera_id)}" alt="Live picture ${esc(c.name)}">
+        <div class="ov"></div><span class="tag"></span><span class="verd"></span></div><div class="bd"></div></div>`).join("") || `<div class="empty">No cameras configured.</div>`;
+  }
+  const comp = AN && AN.compliance_rate, on = cams.filter(camLive), checks = on.reduce((s, c) => s + (+c.fps || 0), 0);
+  const pc = live && comp != null ? comp : null, col = pc == null ? "var(--grey)" : pc >= 90 ? "var(--ok)" : pc >= 70 ? "var(--warn)" : "var(--crit)";
+  $("ai-judge-b").innerHTML = `<div style="display:flex;gap:16px;align-items:center"><div class="ring2" style="--p:${pc || 0};--c:${col}"><div>${pc == null ? "—" : pc + "%"}</div></div>
+      <div><b style="font:700 var(--fs-m,16px) var(--display)">PPE compliance</b><div class="small muted">${pc == null ? "Needs the live AI cameras" : "people wearing every required item, of those the AI could judge"}</div></div></div>
+    <div class="mt"><div class="mix" role="img" aria-label="AI decision mix">${live ? [["compliant", "var(--ok)"], ["missing", "var(--crit)"], ["unverifiable", "var(--grey)"]].map(([k, c]) => mix[k] ? `<i style="width:${mix[k]}%;background:${c}" data-tip="${k}: ${mix[k]} %"></i>` : "").join("") : ""}</div>
+      <div class="legend"><span style="--c:var(--ok)">Compliant ${live && mix.compliant != null ? mix.compliant + " %" : "—"}</span><span style="--c:var(--crit)">Missing ${live && mix.missing != null ? mix.missing + " %" : "—"}</span><span style="--c:var(--grey)">Not verifiable ${live && mix.unverifiable != null ? mix.unverifiable + " %" : "—"}</span></div></div>
+    <div class="kv mt"><span>Cameras live</span><b>${on.length} of ${cams.filter(c => c.status !== "OFF").length}</b><span>AI checks</span><b>${live ? checks.toFixed(1) + " per second (all cameras)" : "AI computer offline"}</b>
+      <span>Detects</span><b>people, helmet, vest, gloves, goggles, mask, shoes, fire, smoke, faces (worker ID)</b></div>
+    <div class="note mt">“Not verifiable” = the body part was hidden. It never raises an alarm — only a clearly missing item does.</div>`;
+  const a = active();
+  for (const c of cams){
+    const el = $("cam-" + c.camera_id); if (!el) continue;
+    const onc = camLive(c), evs = a.filter(e => e.camera_id === c.camera_id);
+    const z = ZONES.find(q => q.zone_id === c.zone_id) || {}, req = z.required_ppe || [];
+    const miss = new Set(evs.filter(e => e.type === "ppe_missing").flatMap(e => e.items_missing || []));
+    const fire = evs.find(isFire), acc = evs.find(e => e.type === "unauthorized_entry");
+    el.classList.toggle("crit", !!evs.length);
+    const ov = el.querySelector(".ov"); ov.style.display = onc ? "none" : "grid";
+    ov.textContent = c.power === "off" ? "⏻ Turned off from the dashboard — no AI checks, no alarms" : c.status === "OFF" ? "Camera switched off (cameras.yaml)" : c.status === "STANDBY" ? "Standby" : `No picture — ${c.detail || "camera offline"}`;
+    const tag = el.querySelector(".tag"); tag.className = "tag" + (onc ? " live" : ""); tag.textContent = `${c.camera_id.replace("_", " ").toUpperCase()} · ${onc ? "LIVE" : c.status}`;
+    el.querySelector(".verd").innerHTML = !onc ? st("off", c.status) : fire ? st("crit", fire.type === "fire" ? "FIRE" : "SMOKE") : acc ? st("crit", "UNAUTHORISED") : miss.size ? st("crit", "PPE VIOLATION") : st("ok", "PPE COMPLIANT");
+    const vf = (window.NetraxVideo && NetraxVideo.fps[c.camera_id]) || 0, age = window.NetraxVideo && NetraxVideo.age[c.camera_id];
+    el.querySelector(".bd").innerHTML = `<div class="row"><b style="font:700 var(--fs-s,14px) var(--display)">${esc(c.name)}</b><span class="small muted">${esc(c.zone_name)} · ${esc(c.risk)} risk${c.role === "entrance" ? " · entrance check" : ""}</span></div>
+      <div class="row"><span class="muted small">Video ${onc ? vf + " pictures/s" + (age != null ? " · " + age + " ms old" : "") : "—"}</span><span class="muted small">AI ${onc && c.fps ? c.fps + " checks/s" : "—"}</span></div>
+      <div class="chips" style="margin-top:6px">${req.map(i => !onc ? `<span class="chip">${iname(i)} —</span>` : miss.has(i) ? `<span class="chip bad">✖ ${iname(i)}</span>` : `<span class="chip good">✓ ${iname(i)}</span>`).join("")}</div>
+      ${evs.length ? `<div class="small" style="margin-top:8px">${evs.slice(0, 3).map(e => `<div>${isFire(e) ? "🔥" : e.type === "unauthorized_entry" ? "⛔" : "🦺"} <b>${esc(who(e) || title(e))}</b> <span class="muted">${ago(e.started_at)}</span>${e.type === "ppe_missing" ? ppeRowFor(e, 22) : ""}</div>`).join("")}
+        <button class="btn x-alerts" data-go="alerts" style="margin-top:6px">Open in Alerts Centre ›</button></div>` : ""}
+      ${canAct() && c.can_power !== false ? `<div style="margin-top:8px"><button class="btn ${c.power === "off" ? "pri" : "red"}" data-power="${esc(c.camera_id)}" data-on="${c.power === "off" ? 1 : 0}">⏻ ${c.power === "off" ? "Turn camera on" : "Turn camera off"}</button></div>` : ""}`;
+  }
+}
+
+/* ------------------------------------------------------------------ 4 · Worker Management */
+function rWorkers(){
+  const now = Date.now() / 1000, masked = ME.role === "viewer", evs = evList().filter(e => (e.started_at || 0) > now - 30 * 86400 && (e.type === "ppe_missing" || e.type === "unauthorized_entry"));
+  const present = new Map((HW.present || []).map(p => [p.worker_id, p]));
+  const PEN = {Critical:20, High:12, Medium:6, Low:3};
+  const rows = WORKERS.map(w => {
+    const mine = evs.filter(e => e.worker_id === w.worker_id), sc = SCANS.filter(s => s.worker_id === w.worker_id);
+    const lastIn = sc.find(s => s.event === "ENTERED"), lastOut = sc.find(s => s.event === "EXITED"), p = present.get(w.worker_id);
+    const cnt = it => mine.filter(e => (e.items_missing || []).includes(it)).length;
+    const now1 = it => mine.some(e => isActive(e) && (e.items_missing || []).includes(it));
+    const score = Math.max(0, 100 - mine.reduce((s, e) => s + (PEN[e.severity] || 3), 0));
+    return {w, mine, lastIn, lastOut, p, score, helmet: [cnt("helmet"), now1("helmet")], vest: [cnt("vest"), now1("vest")], acc: mine.filter(e => e.type === "unauthorized_entry").length};
+  }).sort((a, b) => a.score - b.score);
+  const item = ([n, live]) => live ? st("crit", "MISSING NOW") : n ? st("warn", n + " miss" + (n > 1 ? "es" : "")) : st("ok", "NO MISS");
+  const bad = SCANS.filter(s => s.event === "UNKNOWN_UID" || s.access === "DENIED" || (s.status && s.status !== "OK" && s.status !== "DUPLICATE")).slice(0, 30);
+  const avg = rows.length ? Math.round(rows.reduce((s, r) => s + r.score, 0) / rows.length) : null;
+  const S = (icon, k, v, unit, n) => `<div class="tile static"><span class="ti" aria-hidden="true">${icon}</span><div><div class="k">${k}</div><div class="v">${v}<small>${unit}</small></div><div class="n">${n}</div></div></div>`;
+  setHTML("s-workers", banner(SECOF.workers) + `<div class="cards">
+      ${S("👥", "Registered workers", WORKERS.length, "", `${WORKERS.filter(w => w.badge_uid).length} with an RFID card`)}
+      ${S("🏭", "Inside now", (HW.present || []).length, "", "checked in by RFID")}
+      ${S("🏅", "Average safety score", avg == null ? "—" : avg, "/100", "last 30 days")}
+      ${S("⛔", "Refused / unknown cards", bad.length, "", `in the latest ${SCANS.length} scans`)}</div>
+    ${masked ? `<div class="note mt">Your role (viewer) hides worker names, so per-worker records cannot be matched here. Log in as supervisor or admin.</div>` : ""}
+    <div class="box mt">${head("🪪", "Workers", "RFID card · where they are · PPE record · safety score (worst first)")}<div class="scroll"><table><thead><tr><th>Worker</th><th>RFID card</th><th>Now</th><th>Last entry</th><th>Last exit</th><th>Helmet</th><th>Safety vest</th><th>Restricted entry</th><th>Safety score</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td><b>${esc(r.w.worker_id)}</b> ${esc(r.w.name || "")}</td>
+        <td>${r.w.badge_uid ? st("ok", "LINKED") + ` <span class="small muted">${esc(r.w.badge_uid)}</span>` : st("off", "NO CARD")}</td>
+        <td>${r.p ? st("ok", "INSIDE") + `<div class="small muted">${esc(zname(r.p.zone_id))} since ${tfmt(r.p.since)}</div>` : `<span class="muted">out</span>`}</td>
+        <td class="small">${r.lastIn ? dfmt(r.lastIn.at) : "—"}</td><td class="small">${r.lastOut ? dfmt(r.lastOut.at) : "—"}</td>
+        <td>${item(r.helmet)}</td><td>${item(r.vest)}</td><td>${r.acc ? st("crit", r.acc + " time" + (r.acc > 1 ? "s" : "")) : `<span class="muted">none</span>`}</td>
+        <td><span class="meter ${r.score < 60 ? "crit" : r.score < 85 ? "warn" : ""}"><i style="width:${r.score}%"></i></span><b>${r.score}</b></td></tr>`).join("") || `<tr><td colspan="9"><div class="empty">No workers registered yet. Register them in Admin → Workers.</div></td></tr>`}
+    </tbody></table></div>
+    <div class="note mt"><b>Safety score:</b> 100 minus points for each recorded violation in the last 30 days (Critical 20, High 12, Medium 6, Low 3), never below 0. It counts only alerts the system linked to that worker by face or card.</div></div>
+    <div class="grid g2 mt">
+      <div class="box">${head("🕘", "Attendance log (RFID)", "Every card scan, newest first", `<a class="btn" href="/api/attendance/export?days=30">⬇ Excel CSV</a>`)}<div class="scroll" style="max-height:340px"><table><thead><tr><th>Time</th><th>Worker</th><th>Area</th><th>Event</th></tr></thead><tbody>
+        ${SCANS.filter(s => s.event === "ENTERED" || s.event === "EXITED").slice(0, 60).map(s => `<tr><td class="small">${dfmt(s.at)}</td><td>${esc(s.worker_id || "")} ${esc(s.name || "")}</td><td class="small">${esc(s.zone_name || zname(s.zone_id))}</td>
+          <td>${s.event === "ENTERED" ? st("ok", "ENTERED") : st("off", "EXITED")}</td></tr>`).join("") || `<tr><td colspan="4"><div class="empty">No card scans yet.</div></td></tr>`}
+      </tbody></table></div></div>
+      <div class="box">${head("🚫", "Unauthorised RFID attempts", "Unknown cards and refused entries")}<div class="scroll" style="max-height:340px"><table><thead><tr><th>Time</th><th>Card</th><th>Who</th><th>Result</th></tr></thead><tbody>
+        ${bad.map(s => `<tr><td class="small">${dfmt(s.at)}</td><td class="small">${esc(s.uid || "")}</td><td>${esc(s.name || "unknown card")}</td><td>${st("crit", s.access === "DENIED" ? "NOT AUTHORISED" : String(s.event || s.status).replace(/_/g, " "))}</td></tr>`).join("") || `<tr><td colspan="4"><div class="empty"><b>✓ None</b>No refused or unknown cards.</div></td></tr>`}
+      </tbody></table></div></div>
+    </div>`);
+}
+
+/* ------------------------------------------------------------------ 5 · Alerts Centre: three boxes, a new alert pops inside its own box */
+const ALBOX = [
+  ["fire", "c-fire", "🔥", "Fire & smoke", "Camera + station cross-check · level 1–3", isFire, "<b>✓ No fire or smoke</b>Cameras and the station are watching."],
+  ["ppe", "c-ppe", "🦺", "PPE violations", "One alert per violation · per worker", e => !isFire(e) && e.type !== "unauthorized_entry", "<b>✓ No PPE violation</b>Everyone wears the required PPE."],
+  ["acc", "c-acc", "⛔", "Restricted access", "Workers inside a zone they are not allowed in", e => e.type === "unauthorized_entry", "<b>✓ No unauthorised entry</b>Restricted zones are clear."],
+];
+const KEYED = new Map();
+function alertHtml(e){
+  const act = isActive(e), ackd = isAck(e);
+  const icon = e.type === "fire" ? "🔥" : e.type === "smoke" ? "💨" : e.type === "unauthorized_entry" ? "⛔" : "🦺";
+  const state = act ? st(e.status === "verifying" ? "warn" : "crit", e.status === "verifying" ? "VERIFYING" : e.status === "escalated" ? "ESCALATED" : "ACTIVE") : ackd ? st("warn", "ACKNOWLEDGED") :
+    e.status === "dismissed" ? st("off", "FALSE ALARM") : e.status === "suppressed" ? st("off", "NOT CONFIRMED") : st("ok", "RESOLVED");
+  const src = e.camera_id ? (e.camera_name || e.camera_id) : "safety station";
+  return `${e.snapshot ? `<img src="${esc(e.snapshot)}" alt="" loading="lazy">` : `<div class="noimg">${icon}</div>`}
+    <div><b>${esc(who(e) || title(e))}</b>${e.type === "ppe_missing" ? ppeRowFor(e, 28) : ""}<span class="sev ${esc(e.severity || "")}">${esc(e.severity || "")}</span><div style="margin-top:3px">${state}</div>
+      <div class="m">${esc(e.zone_name || e.zone_id || "")} · ${esc(src)}</div>
+      <div class="m">${dfmt(e.started_at)} · <span data-ago="${e.started_at}">${ago(e.started_at)}</span>${e.acked_by ? " · ack by " + esc(e.acked_by) : ""}</div></div>
+    <div class="a">${canAct() && (act || ackd) ? `${act ? `<button class="btn pri" data-act="ack" data-id="${esc(e.event_id)}">Acknowledge</button>` : ""}<button class="btn" data-act="resolve" data-id="${esc(e.event_id)}">Resolve</button>${e.type !== "fire" ? `<button class="btn red" data-act="dismiss" data-id="${esc(e.event_id)}">False alarm</button>` : ""}` : ""}
+      <a class="btn" href="/#event=${encodeURIComponent(e.event_id)}">Details ›</a></div>`;
+}
+function keyedList(boxId, listId, items, emptyHtml){
+  const el = $(listId); let m = KEYED.get(listId); const first = !m; if (!m){ m = new Map(); KEYED.set(listId, m); }
+  const keep = new Set(); let prev = null, added = false;
+  el.querySelectorAll(":scope > .empty").forEach(n => n.remove());
+  for (const e of items){
+    const id = e.event_id; keep.add(id);
+    const h = alertHtml(e).replace(/<span data-ago[^<]*<\/span>/, ""), cls = "al " + (e.severity || "");
+    let r = m.get(id);
+    if (!r){ r = {node: document.createElement("div"), sig: null}; m.set(id, r);
+      if (!first && FRESH.has(id) && Date.now() - FRESH.get(id) < 15000){ r.pop = true; added = true; setTimeout(() => { r.pop = false; r.node.classList.remove("pop"); }, 4500); } }
+    if (r.sig !== h){ r.node.className = cls + (r.pop ? " pop" : ""); r.node.innerHTML = alertHtml(e); r.sig = h; }
+    const want = prev ? prev.nextSibling : el.firstChild; if (want !== r.node) el.insertBefore(r.node, want); prev = r.node;
+  }
+  for (const [id, r] of m) if (!keep.has(id)){ r.node.remove(); m.delete(id); }
+  el.querySelectorAll("[data-ago]").forEach(x => { x.textContent = ago(+x.dataset.ago); });
+  if (!items.length && !el.querySelector(".empty")) el.insertAdjacentHTML("beforeend", `<div class="empty">${emptyHtml}</div>`);
+  if (added) bump(boxId);
+}
+function rAlerts(){
+  const all = evList();
+  const pick = {active: isActive, ack: isAck, done: e => !isActive(e) && !isAck(e)}[ALTAB];
+  if (!$("al-fire")){
+    $("s-alerts").innerHTML = banner(SECOF.alerts) + `<div class="tabs" role="tablist" id="al-tabs"></div>
+      <div class="grid g3 mt">${ALBOX.map(b => `<div class="box ${b[1]}" id="al-${b[0]}">${head(b[2], b[3], b[4], `<span class="cnt" id="al-${b[0]}-n"></span>`)}<div class="alist" id="al-${b[0]}-l"></div></div>`).join("")}</div>
+      ${canAct() ? "" : `<p class="small muted mt">View only</p>`}`;
+  }
+  const nAll = {active: all.filter(isActive).length, ack: all.filter(isAck).length};
+  const th = [["active", `Active (${nAll.active})`], ["ack", `Acknowledged (${nAll.ack})`], ["done", "Resolved / closed"]].map(t => `<button class="tab" role="tab" aria-selected="${ALTAB === t[0]}" data-tab="${t[0]}">${t[1]}</button>`).join("");
+  if ($("al-tabs").innerHTML !== th) $("al-tabs").innerHTML = th;
+  for (const b of ALBOX){
+    const mine = all.filter(b[5]), list = mine.filter(pick).sort(ALTAB === "done" ? (x, y) => (y.started_at || 0) - (x.started_at || 0) : bySev).slice(0, 60);
+    const nAct = mine.filter(isActive).length, n = $(`al-${b[0]}-n`);
+    n.textContent = nAct ? `${nAct} ACTIVE` : "CLEAR"; n.className = "cnt " + (nAct ? "hot" : "ok");
+    $(`al-${b[0]}`).classList.toggle("hot", nAct > 0);
+    keyedList(`al-${b[0]}`, `al-${b[0]}-l`, list, ALTAB === "active" ? b[6] : "Nothing here.");
+  }
+}
+
+/* ------------------------------------------------------------------ 6 · Predictive Analytics */
+function rPredict(){
+  const devs = HW.devices || [];
+  let html = banner(SECOF.predict) + `<div class="note">What this is, honestly: trend forecasting (a straight line through the last 3 minutes of each sensor, projected 5 minutes ahead) and a statistical vibration check. It is <b>not</b> a trained machine-learning model — that needs weeks of recorded sensor history from the real site first.</div>
+    <div class="box mt">${head("🎯", "Zone risk index (0–100)", "Higher of: how close the worst sensor is to its limit, and the most serious active alert · +15 if a sensor will reach its limit within 15 min")}
+      <div class="cards">${ZONES.map(z => { const r = zoneRisk(z); const col = r.score >= 70 ? "var(--crit)" : r.score >= 40 ? "var(--warn)" : "var(--ok)";
+      return `<div class="rk"><div class="ring2" style="--p:${r.watched ? r.score : 0};--c:${col}"><div>${r.watched ? r.score : "—"}</div></div>
+        <div><b style="font:700 var(--fs-m,16px) var(--display)">${esc(z.name)}</b><div class="small muted">${r.watched ? `sensors ${r.sensor} · alerts ${r.al}${r.early ? " · rising trend +15" : ""}` : "not watched (devices offline)"}</div></div></div>`; }).join("")}</div></div>`;
+  for (const d of devs){
+    const warn = [], cards = [];
+    for (const c of SENSORS.filter(c => ["temperature_c", "mq2_adc", "mq135_adc", "pm2_5_ugm3"].includes(c.k))){
+      const tr = d.online ? trend(d.device_id, c, d) : null, base = ((d.eval || {}).baseline || {})[c.base], lim = limitOf(c, d);
+      const dir = !tr ? "" : !tr.real ? "steady" : tr.perMin > 0 ? "rising" : "falling";
+      const over = tr && lim != null && tr.now >= lim;
+      if (tr && !over && tr.eta != null && tr.eta < 900) warn.push(`${c.label} is rising ${Math.abs(tr.perMin).toFixed(c.dp || 1)} ${c.unit}/min — at this rate it reaches the limit (${Number(tr.lim).toFixed(c.dp)}) in about ${dur(tr.eta)}.`);
+      const s = !tr ? {cls:"off", txt: d.online ? "COLLECTING" : "OFFLINE"} : over ? {cls:"crit", txt:"OVER LIMIT"} : tr.eta != null && tr.eta < 300 ? {cls:"crit", txt:"EARLY WARNING"} : tr.eta != null && tr.eta < 900 ? {cls:"warn", txt:"WATCH"} : {cls:"ok", txt:"STABLE"};
+      cards.push(`<div class="sens ${s.cls}"><div class="k"><span>${c.icon} ${esc(c.label)} forecast</span>${st(s.cls, s.txt)}</div>
+        <div class="v">${tr ? (tr.perMin >= 0 ? "+" : "") + tr.perMin.toFixed(c.k === "temperature_c" ? 2 : 1) : "—"}<small>${c.unit} per minute · ${dir || "no data"}</small></div>
+        <div class="n">${tr ? (over ? `already above the limit (${Number(lim).toFixed(c.dp)}) — see Alerts Centre` : tr.eta != null ? `reaches the limit in about ${dur(tr.eta)} if this continues` : lim != null ? `not heading for the limit (${Number(lim).toFixed(c.dp)})` : "no limit set for this sensor") : d.online ? "needs about 20 readings" : "station offline"}</div>
+        ${chart("p:" + d.device_id + ":" + c.k, series(d.device_id, c.k, 300), {thr: lim, showThr: tr && tr.eta != null && tr.eta < 900, base, dp: c.dp, unit: c.unit, span: c.span, h: 130, fut: tr ? tr.fut : [], label: c.label + " forecast", empty: d.online ? "Collecting readings…" : "Station offline"})}
+        <div class="xl"><span>5 min ago</span><span>now</span><span>+5 min (projected)</span></div></div>`);
+    }
+    const an = d.online ? anomaly(d.device_id, "vibration_metric") : null;
+    const lvl = devLevel(d);
+    html += `<div class="box mt">${head("📈", `${esc(d.name)} — ${esc(zname(d.zone_id))}`, "Forecast of each gas / heat / dust sensor", lvl === "CRITICAL" ? st("crit", "ALREADY CRITICAL") : warn.length ? st("warn", "EARLY WARNING") : d.online ? st("ok", "NO DEVELOPING RISK") : st("off", "OFFLINE"))}
+      ${warn.map(w => `<div class="att"><span class="d warn"></span><div><b>⚠ ${esc(w)}</b></div></div>`).join("") || `<div class="small muted" style="margin-bottom:10px">${lvl === "CRITICAL" ? "A limit is already crossed: " + esc((d.eval.reasons || []).join(" · ")) : d.online ? "No sensor is heading for its limit." : "No forecast while the station is offline."}</div>`}
+      <div class="cardsL">${cards.join("")}
+        <div class="sens ${an && Math.abs(an.z) > 3 ? "warn" : !an ? "off" : "ok"}"><div class="k"><span>📳 Abnormal vibration · MPU6050</span>${!an ? st("off", d.online ? "NO READING" : "OFFLINE") : Math.abs(an.z) > 3 ? st("warn", "ABNORMAL") : st("ok", "NORMAL")}</div>
+          <div class="v">${an ? an.cur.toFixed(3) : "—"}<small>g · usual ${an ? an.mean.toFixed(3) : "—"}</small></div>
+          <div class="n">${an ? `${Math.abs(an.z).toFixed(1)} standard deviations from the last 10 minutes (abnormal above 3)` : "this station does not send a vibration value"}</div>
+          ${chart("p:" + d.device_id + ":vib", series(d.device_id, "vibration_metric", 600), {dp: 3, unit: "g", span: 0.05, h: 130, label: "vibration", empty: d.online ? "No vibration reading from this station" : "Station offline"})}
+          <div class="xl"><span>10 min ago</span><span>now</span></div></div></div></div>`;
+  }
+  if (!devs.length) html += `<div class="box mt"><div class="empty" style="margin-top:16px">No safety station configured.</div></div>`;
+  $("s-predict").innerHTML = html; rehover();
+}
+
+/* ------------------------------------------------------------------ 7 · Factory Map */
+/* 12 Nov: live location box. Built ONCE (the section re-renders every second; rebuilding would reload the map). */
+let LOCMAP = null;
+function mapShell(){
+  if ($("map-main")) return;
+  $("s-map").innerHTML = `<div id="map-main"></div>
+    <div class="box mt" id="map-loc">${head("📍", "Live location", "Safety station GPS (NEO-6M) · map © OpenStreetMap contributors", `<span id="loc-st"></span>`)}
+      <div class="grid g21"><div class="locmap"><iframe id="loc-frame" title="Live location of the safety station" referrerpolicy="no-referrer" hidden></iframe>
+        <div class="locempty" id="loc-empty">Waiting for the station's GPS fix.<br><span class="small">Outdoors / near a window the first fix takes 1–5 minutes.</span></div></div>
+        <div><div class="kv" id="loc-kv"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px" id="loc-links"></div>
+          <div class="note mt">The map picture needs internet (OpenStreetMap); the coordinates work without it. Every alert in this zone stores this position.</div></div></div></div>`;
+  LOCMAP = null;
+}
+function renderLoc(){
+  const g = gpsFix(), fr = $("loc-frame"); if (!fr) return;
+  $("loc-st").innerHTML = !g ? st("off", "NO FIX") : g.live ? st("ok", "LIVE") : st("warn", "LAST KNOWN · " + agoS(g.age).toUpperCase());
+  if (!g){ fr.hidden = true; $("loc-empty").hidden = false; setHTML("loc-kv", `<span>Status</span><b>No GPS position received yet</b><span>Site</span><b>${esc((LOC && LOC.site) || "—")}</b>`); setHTML("loc-links", ""); return; }
+  if (!LOCMAP || Math.abs(LOCMAP[0] - g.lat) > 0.0001 || Math.abs(LOCMAP[1] - g.lon) > 0.0001){      // moved > ~10 m
+    const d = 0.0035;
+    fr.src = `https://www.openstreetmap.org/export/embed.html?bbox=${g.lon - d},${g.lat - d},${g.lon + d},${g.lat + d}&layer=mapnik&marker=${g.lat},${g.lon}`;
+    LOCMAP = [g.lat, g.lon];
+  }
+  fr.hidden = false; $("loc-empty").hidden = true;
+  const dv = (HW.devices || []).find(x => x.device_id === "esp32-ppe-01") || (HW.devices || [])[0];
+  setHTML("loc-kv", `<span>Position</span><b>${esc(latlon(g))}</b><span>Accuracy</span><b>${g.accuracy_m != null ? "± " + Math.round(g.accuracy_m) + " m (estimate)" : "—"}</b>
+    <span>Updated</span><b>${tfmt(g.at)} · ${agoS(g.age)}</b><span>Station</span><b>${dv ? esc(dv.name) + " · " + esc(zname(dv.zone_id) || "no zone") : "—"}</b>
+    <span>Site</span><b>${esc((LOC && LOC.site) || "—")}</b>`);
+  setHTML("loc-links", `<a class="btn" target="_blank" rel="noopener" href="https://maps.google.com/?q=${g.lat},${g.lon}">Open in Google Maps ↗</a>
+    <a class="btn" target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat=${g.lat}&mlon=${g.lon}#map=18/${g.lat}/${g.lon}">OpenStreetMap ↗</a>`);
+}
+function rMap(){
+  if (!MAPSEL && ZONES.length) MAPSEL = ZONES[0].zone_id;
+  const z = ZONES.find(q => q.zone_id === MAPSEL), zs = z && zoneState(z), r = z && zoneRisk(z);
+  const W = {ok:"NORMAL", warn:"WARNING", crit:"CRITICAL", off:"DEVICE OFFLINE"};
+  const byType = zs ? [["🔥 fire / smoke", zs.evs.filter(isFire).length], ["🦺 PPE", zs.evs.filter(e => e.type === "ppe_missing").length], ["⛔ access", zs.evs.filter(e => e.type === "unauthorized_entry").length]].filter(x => x[1]) : [];
+  mapShell(); renderLoc();
+  setHTML("map-main", banner(SECOF.map) + `<div class="grid g21"><div class="box">${head("🏭", "Site plan", "Schematic of the configured zones — not a scale drawing")}<div class="plan">${ZONES.map(q => { const s = zoneState(q);
+        return `<button type="button" class="room ${s.s}" data-zone="${esc(q.zone_id)}" aria-pressed="${q.zone_id === MAPSEL}"><h4>${esc(q.name)}</h4>${st(s.s, W[s.s])}
+          <div class="small" style="margin-top:6px;color:var(--ink2)">${esc(s.why)}</div>
+          <div class="ics"><span>👷 ${(q.inside || []).length} inside</span><span>⚠ ${s.evs.length} alert${s.evs.length === 1 ? "" : "s"}</span><span>📷 ${s.cams.length ? (s.camOn ? "camera live" : "camera off") : "no camera"}</span><span>📟 ${s.d ? (s.d.online ? "station online" : "station offline") : "no station"}</span></div></button>`; }).join("")}</div>
+      <div class="legend"><span style="--c:var(--ok)">Normal</span><span style="--c:var(--warn)">Warning</span><span style="--c:var(--crit)">Critical</span><span style="--c:var(--grey)">Device offline</span></div></div>
+    <div class="box ${zs && zs.s === "crit" ? "hot" : ""}">${!z ? `<div class="empty" style="margin-top:16px">No zones.</div>` : head("📍", esc(z.name), `${esc(z.risk)} risk zone`, st(zs.s, W[zs.s])) + `
+      <div class="kv"><span>Risk index</span><b>${r.watched ? r.score + " / 100" : "not watched"}</b>
+        <span>Required PPE</span><div class="chips">${(z.required_ppe || []).map(i => `<span class="chip">${iname(i)}</span>`).join("")}</div>
+        <span>Access</span><b>${z.allowed ? "🔒 Only " + esc(z.allowed.join(", ")) : "Open to all workers"}</b>
+        <span>Camera</span><b>${zs.cams.map(c => `${esc(c.camera_id)} ${camLive(c) ? "live" : c.status.toLowerCase()}`).join(", ") || "none"}</b>
+        <span>Station</span><b>${zs.d ? `${esc(zs.d.name)} · ${devLevel(zs.d).toLowerCase()}` : "none"}</b></div>
+      <h4 style="margin:14px 0 6px;font:700 var(--fs-s,14px) var(--display)">👷 Workers inside (${(z.inside || []).length})</h4>${(z.inside || []).map(p => `<div class="small">${esc(p.worker_id || "")} ${esc(p.name || "")} · since ${tfmt(p.since)} ${p.allowed === false ? st("crit", "NOT AUTHORISED") : ""}</div>`).join("") || `<div class="small muted">Nobody checked in.</div>`}
+      <h4 style="margin:14px 0 6px;font:700 var(--fs-s,14px) var(--display)">⚠ Active alerts (${zs.evs.length})</h4>${byType.length ? `<div class="chips">${byType.map(x => `<span class="chip bad">${x[0]}: ${x[1]}</span>`).join("")}</div>` : `<div class="small muted">None.</div>`}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">${zs.evs.length ? `<button class="btn x-alerts" data-go="alerts">Open Alerts Centre ›</button>` : ""}${zs.d ? `<button class="btn x-sensors" data-go="sensors">Open Live Sensors ›</button>` : ""}</div>`}</div></div>`);
+}
+
+/* ------------------------------------------------------------------ 8 · Device Health */
+function rDevices(){
+  const devs = HW.devices || [], readers = HW.readers || [], comps = ((HEALTH && HEALTH.components) || []).filter(c => !/^Camera |^Safety station /.test(c.name));
+  const bars = r => { const n = r == null ? 0 : r >= -55 ? 4 : r >= -67 ? 3 : r >= -78 ? 2 : 1; return `<span class="rssi">${[1, 2, 3, 4].map(i => `<i class="${i <= n ? "on" : ""}"></i>`).join("")}</span>`; };
+  const cs = s => s === "ok" ? st("ok", "OK") : s === "warn" ? st("warn", "WARNING") : s === "off" ? st("off", "OFF") : st("crit", "FAILED");
+  const worst = comps.some(c => c.state === "fail") ? "fail" : comps.some(c => c.state === "warn") ? "warn" : "ok";
+  $("s-devices").innerHTML = banner(SECOF.devices) + `<div class="grid g3">${devs.map(d => { const x = d.data || {}; return `<div class="box ${d.online ? "" : "hot"}">${head("📟", "ESP32 · " + esc(d.name), esc(d.device_id), d.online ? st("ok", "CONNECTED") : st("crit", "DISCONNECTED"))}
+        <div class="kv"><span>Last data</span><b>${d.age_s == null ? "never" : d.online ? d.age_s + " s ago" : dur(d.age_s) + " ago"}</b>
+          <span>Wi-Fi signal</span><b>${d.online && x.rssi != null ? bars(x.rssi) + x.rssi + " dBm · " + (x.rssi >= -67 ? "good" : x.rssi >= -78 ? "fair" : "weak") : "—"}</b>
+          <span>Running for</span><b>${d.online && x.uptime_s != null ? dur(x.uptime_s) : "—"}</b><span>Firmware</span><b>${esc(d.online && x.fw || "—")}</b>
+          <span>Battery</span><b class="muted">not measured — USB / mains powered</b></div>
+        <table class="mt"><tbody>${SENSORS.map(c => { const v = (d.data || {})[c.k]; return `<tr><td>${c.icon} ${esc(c.dev)}</td><td class="small muted">${esc(c.label)}</td><td style="text-align:right">${!d.online ? st("off", "OFFLINE") : v == null ? st("warn", "NO READING") : st("ok", "ONLINE")}</td></tr>`; }).join("")}
+          ${d.device_id === "esp32-ppe-01" || devs.length === 1 ? (() => { const g = gpsFix(); return `<tr><td>📍 NEO-6M</td><td class="small muted">GPS position</td><td style="text-align:right">${!g ? st("warn", "NO FIX") : g.live ? st("ok", "FIX · LIVE") : st("warn", "LAST FIX " + agoS(g.age).toUpperCase())}</td></tr>`; })() : ""}</tbody></table></div>`; }).join("")}
+      <div class="box">${head("🪪", "RFID readers", "“Operational” = a scan or start-up within the last 10 minutes")}${readers.map(r => `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)"><div><b>${esc(r.device_id)}</b><div class="small muted">${esc(r.zone_name || "")} · last contact ${r.last_seen ? ago(r.last_seen) : "never"}${r.ip ? " · " + esc(r.ip) : ""}</div></div>${r.online ? st("ok", "OPERATIONAL") : st("off", "NO RECENT CONTACT")}</div>`).join("") || `<div class="empty">No reader configured.</div>`}</div>
+      <div class="box">${head("📹", "Cameras", "Connection of each camera")}${CAMS.cameras.map(c => `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)"><div><b>${esc(c.camera_id)} · ${esc(c.name)}</b><div class="small muted">${esc(c.detail || "")}</div></div>${st(c.status === "ONLINE" ? "ok" : c.status === "DEGRADED" ? "warn" : c.status === "OFFLINE" ? "crit" : "off", c.status === "ONLINE" ? "CONNECTED" : c.status)}</div>`).join("")}</div></div>
+    <div class="box mt">${head("🖥", "AI computer, database & alert channels", "Everything else the system needs", HEALTH ? cs(worst) : "")}<table><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>
+      ${comps.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${cs(c.state)}</td><td class="small">${esc(c.message || "")}</td></tr>`).join("") || `<tr><td colspan="3"><div class="empty">Waiting for the health report…</div></td></tr>`}</tbody></table></div>`;
+}
+
+/* ------------------------------------------------------------------ 9 · Reports & Analytics */
+const PRESETS = {today: "Today", yesterday: "Yesterday", week: "Last 7 days", month: "Last 30 days"};
+function range(p){
+  const now = new Date(), d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000, n = now.getTime() / 1000;
+  return p === "yesterday" ? [d0 - 86400, d0] : p === "week" ? [n - 7 * 86400, n] : p === "month" ? [n - 30 * 86400, n] : [d0, n];
+}
+function repUrl(fmt){
+  const [s, e] = range($("rPeriod").value), q = new URLSearchParams({start: s, end: e, format: fmt, title: "NETRAX " + PRESETS[$("rPeriod").value] + " safety report"});
+  for (const [k, id] of [["type", "rType"], ["zone", "rZone"], ["worker", "rWorker"]]) if ($(id).value) q.set(k, $(id).value);
+  return "/api/reports/custom?" + q;
+}
+function rReports(){
+  if ($("rPeriod")) { rTrends(); return; }                 // keep the form (and what the user picked) in place
+  $("s-reports").innerHTML = banner(SECOF.reports) + `<div class="box">${head("🧾", "Report generator", "Pick a period and filters · preview · download")}<div class="form">
+      <label>Period<select id="rPeriod">${Object.entries(PRESETS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+      <label>Report type<select id="rType"><option value="">All incidents</option><option value="ppe_missing">PPE compliance</option><option value="fire,smoke">Emergency: fire and smoke</option><option value="unauthorized_entry">Unauthorised entry</option><option value="entrance_check">Entrance checks</option></select></label>
+      <label>Zone<select id="rZone"><option value="">All zones</option>${ZONES.map(z => `<option value="${esc(z.zone_id)}">${esc(z.name)}</option>`).join("")}</select></label>
+      <label>Worker<select id="rWorker"><option value="">All workers</option>${WORKERS.map(w => `<option value="${esc(w.worker_id)}">${esc(w.worker_id)} ${esc(w.name || "")}</option>`).join("")}</select></label>
+      <button class="btn pri" id="rGo">Show report</button><a class="btn" id="rPdf">⬇ PDF</a><a class="btn" id="rCsv">⬇ Excel (CSV)</a></div>
+      <div id="rOut" class="mt"></div></div>
+    <div class="grid g3 mt"><div class="box">${head("📊", "Violations, last 7 days", "PPE, access and fire / smoke records per day")}<div id="tr-week"></div></div>
+      <div class="box">${head("🦺", "PPE most often missed", "Last 7 days")}<div id="tr-items"></div></div>
+      <div class="box">${head("🏭", "Where violations happen", "Last 7 days")}<div id="tr-zones"></div></div></div>
+    <div class="grid g2 mt"><div class="box">${head("🎯", "AI detection accuracy", "Measured on test pictures, not on today's live video (docs/model_card.md)")}<table><thead><tr><th>Model</th><th>Detects</th><th>Measured</th></tr></thead><tbody>
+        <tr><td>ppe_v2</td><td class="small">helmet, mask</td><td>mAP50 0.872 (validation)</td></tr>
+        <tr><td>ppe_v3B</td><td class="small">vest, gloves, goggles, hands, feet</td><td>mAP50 0.959 (own hard test)</td></tr>
+        <tr><td>fire_smoke_v2B</td><td class="small">fire, smoke</td><td>mAP50 0.870 (own hard test)</td></tr></tbody></table></div>
+      <div class="box">${head("📦", "Other exports", "Raw data for Excel")}<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="/api/attendance/export?days=30">⬇ RFID attendance, 30 days</a>
+        ${(HW.devices || []).map(d => `<button class="btn" data-csv="${esc(d.device_id)}">⬇ Sensor readings ${esc(d.device_id)}, last 10 min</button>`).join("")}
+        <a class="btn" href="/admin#reports">Custom dates → Admin report generator ›</a></div></div></div>`;
+  const sync = () => { $("rPdf").href = repUrl("pdf"); $("rCsv").href = repUrl("csv"); };
+  ["rPeriod", "rType", "rZone", "rWorker"].forEach(id => $(id).addEventListener("change", () => { sync(); loadRep(); }));
+  $("rGo").onclick = loadRep; sync(); loadRep(); rTrends();
+}
+function rTrends(){
+  const week = (AN && AN.violations_7d) || [], wmax = Math.max(1, ...week.map(d => d.count));
+  const h1 = `<div class="bars">${week.map(d => `<div class="b" data-tip="${esc(d.date)}: ${d.count} record${d.count === 1 ? "" : "s"}"><span>${d.count || ""}</span><i style="height:${d.count / wmax * 100}%"></i>${esc(d.label)}</div>`).join("") || `<div class="empty">No data.</div>`}</div>
+    <div class="small muted mt">${week.reduce((s, d) => s + d.count, 0)} records in the last 7 days.</div>${AN && (AN.insights || []).length ? `<div class="note mt">${AN.insights.map(esc).join("<br>")}</div>` : ""}`;
+  const set = (id, h) => { const el = $(id); if (el && el.dataset.h !== h){ el.innerHTML = h; el.dataset.h = h; } };
+  set("tr-week", h1);
+  set("tr-items", hbars(Object.fromEntries(Object.entries((AN && AN.by_item) || {}).filter(([k]) => ITEM[k]))));
+  set("tr-zones", hbars(AN && AN.by_zone));
+}
+async function loadRep(){ $("rOut").innerHTML = `<div class="empty">Loading…</div>`;
+  try { REP = await api(repUrl("json")); } catch (e) { REP = {error: String(e.message || e)}; } rRepOut(); }
+function rRepOut(){
+  const o = $("rOut"); if (!o || !REP) return;
+  if (REP.error){ o.innerHTML = `<div class="empty">Could not load the report (${esc(REP.error)}).</div>`; return; }
+  const s = REP.summary || {}, rows = REP.rows || [];
+  o.innerHTML = `<div class="note"><b>${esc(REP.period || "")}</b><br>${(s.lines || []).map(esc).join("<br>")}</div>
+    <div class="scroll mt" style="max-height:380px"><table><thead><tr><th>Time</th><th>Incident</th><th>Severity</th><th>Zone</th><th>Worker</th><th>Status</th></tr></thead><tbody>
+      ${rows.map(e => `<tr><td class="small">${dfmt(e.started_at)}</td><td>${esc(title(e))}</td><td><span class="sev ${esc(e.severity || "")}" style="margin:0">${esc(e.severity || "")}</span></td><td class="small">${esc(e.zone_name || "")}</td><td class="small">${esc(who(e))}</td><td class="small">${esc(e.status || "")}</td></tr>`).join("") || `<tr><td colspan="6"><div class="empty">No records in this period.</div></td></tr>`}</tbody></table></div>
+    <div class="small muted mt">${rows.length} record${rows.length === 1 ? "" : "s"}${rows.length >= 200 ? " (newest 200 shown)" : ""}.</div>`;
+}
+
+/* ------------------------------------------------------------------ plumbing */
+const RENDER = {overview: rOverview, sensors: rSensors, ai: rAI, workers: rWorkers, alerts: rAlerts, predict: rPredict, map: rMap, devices: rDevices, reports: rReports};
+let DOWN = false, NAVH = "";
+document.addEventListener("mousedown", () => { DOWN = true; }, true);
+document.addEventListener("mouseup", () => { setTimeout(() => { DOWN = false; }, 80); }, true);
+function render(){ if (DOWN) return; try { RENDER[SEC](); const b = $("bn-" + SEC); if (b) b.innerHTML = `<span class="pill${WSOK ? "" : " off"}"><i></i><span>${WSOK ? "LIVE" : "RECONNECTING"}</span></span>`; } catch (e) { console.error(e); } nav(); }
+function nav(){
+  const n = active().length;
+  const nh = SECTIONS.map(s => `<button class="navb x-${s[0]}" data-sec="${s[0]}" ${s[0] === SEC ? 'aria-current="page"' : ""}><span class="ic">${s[1]}</span><span><b>${s[2]}</b><small>${s[3]}</small></span>${s[0] === "alerts" ? `<span class="n">${n || ""}</span>` : ""}</button>`).join("");
+  if (nh !== NAVH){ NAVH = nh; $("nav").innerHTML = nh; }
+  const o = overall();
+  $("live").className = "nx-count " + (WSOK ? "ok" : "crit"); $("live").querySelector("span").textContent = WSOK ? "Live" : "Reconnecting";
+  $("foot").textContent = `👤 ${ME.user || "—"} · ${ME.role}`; $("foot").hidden = false;
+  document.title = (o.s === "crit" ? "🔴 " : o.s === "warn" ? "🟠 " : "") + "NETRAX — Safety Intelligence";
+}
+function go(sec){
+  if (!RENDER[sec]) sec = "overview";
+  SEC = sec; document.querySelectorAll("main > section").forEach(s => s.classList.toggle("on", s.id === "s-" + sec));
+  if (location.hash.slice(1) !== sec) history.replaceState(null, "", "#" + sec);
+  render(); window.scrollTo(0, 0);
+}
+function csv(dev){
+  const h = HIST[dev] || []; if (!h.length){ alert("No readings yet for " + dev); return; }
+  const keys = SENSORS.map(c => c.k), lines = [["time"].concat(keys).join(",")].concat(h.map(p => [new Date(p.at * 1000).toISOString()].concat(keys.map(k => p[k] == null ? "" : p[k])).join(",")));
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], {type: "text/csv"}));
+  a.download = `netrax_sensors_${dev}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("[data-sec],[data-go],[data-zone],[data-tab],[data-act],[data-csv],[data-power]"); if (!t) return;
+  if (t.dataset.power){
+    const on = t.dataset.on === "1", c = CAMS.cameras.find(x => x.camera_id === t.dataset.power) || {name: t.dataset.power};
+    if (!on && !confirm(`Turn OFF ${c.name} (${t.dataset.power})?\n\nNo picture, no PPE / fire detection and no alarms from this camera until you turn it on again.`)) return;
+    t.disabled = true;
+    try { await api(`/api/cameras/${encodeURIComponent(t.dataset.power)}/power`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on})}); await run("cams"); }
+    catch (e) { alert("Camera not switched: " + (e.message || e)); }
+    DOWN = false; render(); return;
+  }
+  if (t.dataset.sec) go(t.dataset.sec);
+  else if (t.dataset.go) go(t.dataset.go);
+  else if (t.dataset.zone){ MAPSEL = t.dataset.zone; go("map"); }
+  else if (t.dataset.tab){ ALTAB = t.dataset.tab; KEYED.forEach((m, id) => { m.forEach(r => r.node.remove()); }); KEYED.clear(); DOWN = false; render(); }
+  else if (t.dataset.csv) csv(t.dataset.csv);
+  else if (t.dataset.act){
+    const what = {ack: "acknowledge", resolve: "resolve", dismiss: "mark as a false alarm"}[t.dataset.act];
+    if (t.dataset.act !== "ack" && !confirm(`Do you want to ${what} this alert?`)) return;
+    t.disabled = true;
+    try { const e = await api(`/api/events/${encodeURIComponent(t.dataset.id)}/${t.dataset.act}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({note: "from Safety Intelligence dashboard"})});
+      if (e && e.event_id) EV.set(e.event_id, e); else await loadEvents(); }
+    catch (e) { alert("Could not " + what + ": " + (e.message || e)); }
+    DOWN = false; render();
+  }
+});
+document.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target.dataset && ev.target.dataset.go) go(ev.target.dataset.go); });
+window.addEventListener("hashchange", () => go(location.hash.slice(1)));
+
+function setTheme(t){ document.documentElement.dataset.theme = t; try { localStorage.setItem("netrax-theme", t); localStorage.setItem("netrax-cr-theme", t); } catch (e) {}
+  $("themeBtn").textContent = "☀ / ☾"; }
+$("themeBtn").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+setTheme(document.documentElement.dataset.theme);
+
+function pushHist(){
+  for (const d of HW.devices || []){
+    if (!d.online || !d.data) continue;
+    const h = HIST[d.device_id] || (HIST[d.device_id] = []), at = (HW.server_time || Date.now() / 1000) - (d.age_s || 0);
+    if (h.length && at - h[h.length - 1].at < 0.5) continue;
+    h.push(Object.assign({}, d.data, {at}));
+    while (h.length && at - h[0].at > 600) h.shift();
+  }
+}
+const loadEvents = async () => { (await api("/api/events?limit=500")).forEach(e => EV.set(e.event_id, e)); };
+const jobs = {
+  hw: async () => { const first = !HW.server_time; HW = await api("/api/hw/state"); SCANS = HW.scans || SCANS;
+    if (first) for (const d of HW.devices || []) HIST[d.device_id] = await api(`/api/hw/history/${encodeURIComponent(d.device_id)}?seconds=600`).catch(() => []); pushHist(); },
+  cams: async () => { CAMS = await api("/api/cameras"); },
+  zones: async () => { ZONES = await api("/api/zones"); },
+  an: async () => { AN = await api("/api/analytics/summary"); },
+  health: async () => { HEALTH = await api("/api/health"); },
+  workers: async () => { WORKERS = await api("/api/workers"); },
+  scans: async () => { SCANS = await api("/api/attendance?limit=300"); },
+  events: loadEvents,
+  loc: async () => { LOC = await api("/api/location"); },          // 12 Nov: station GPS (NEO-6M)
+};
+const run = k => jobs[k]().catch(() => {});
+function connect(){
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
+  ws.onopen = () => { WSOK = true; nav(); };
+  ws.onmessage = m => { let msg; try { msg = JSON.parse(m.data); } catch (e) { return; } const {kind, data} = msg;
+    if (kind === "hardware"){ HW = Object.assign(HW, data); pushHist(); }
+    else if (kind === "event" && data && data.event_id){ const old = EV.get(data.event_id);
+      if (isActive(data) && (!old || !isActive(old) || (old.items_missing || []).join() !== (data.items_missing || []).join() || (old.fire_level || 0) < (data.fire_level || 0))) FRESH.set(data.event_id, Date.now());
+      EV.set(data.event_id, data); run("zones").then(render); render(); }
+    else if (kind === "attendance"){ Promise.all([run("scans"), run("hw"), run("zones")]).then(render); }
+    else if (kind === "health"){ HEALTH = data; }
+    else if (kind === "cameras"){ CAMS = data; }
+    else if (kind === "workers"){ run("workers"); }
+    else if (kind === "location"){ LOC = data; } };
+  ws.onclose = ev => { WSOK = false; nav(); if (ev.code !== 4401) setTimeout(connect, 2000); };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+  setInterval(() => { if (ws.readyState === 1) ws.send("ping"); }, 20000);
+}
+(async function start(){
+  try { ME = await api("/api/me"); } catch (e) { return; }
+  $("clock").textContent = "starting…";
+  await Promise.all(Object.keys(jobs).map(run));
+  go(location.hash.slice(1) || "overview");
+  connect();
+  if (window.NetraxZentrix) NetraxZentrix.init({handlers: {theme: op => setTheme(op.mode), event: op => { ALTAB = "active"; go("alerts"); }}});
+  setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-IN", {timeZone: "Asia/Kolkata", hour12: false});
+    if (SEC !== "reports" || $("rPeriod")) render(); }, 1000);
+  setInterval(() => { if (!WSOK) run("hw"); run("cams"); }, 2500);
+  setInterval(() => { run("zones"); run("loc"); if (!WSOK) run("events"); }, 5000);
+  setInterval(() => { run("an"); run("health"); run("scans"); }, 15000);
+  setInterval(() => { run("workers"); run("events"); }, 60000);
+})();
+</script>
+</body>
+</html>

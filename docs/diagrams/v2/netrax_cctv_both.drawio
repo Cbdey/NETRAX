@@ -1,0 +1,252 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="netrax_cctv_deployment_flowchart" name="How to connect an existing CCTV camera">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1360" pageHeight="1500" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="NETRAX · How to connect an existing CCTV camera" parent="1" vertex="1" style="text;html=1;fontSize=22;fontStyle=1;fontColor=#24452C;align=left;verticalAlign=middle;">
+          <mxGeometry x="30" y="12" width="1300" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="s0" value="START · jury / site gives a CCTV camera" style="rounded=1;arcSize=50;fontStyle=1;whiteSpace=wrap;html=1;fillColor=#33691E;strokeColor=#33691E;fontColor=#FFFFFF;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="420" y="65" width="280" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="d0" value="What kind of&lt;br&gt;CCTV camera?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="430" y="135" width="260" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="an" value="&lt;b&gt;Analog camera&lt;/b&gt;&lt;br&gt;(coaxial cable to a DVR)" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="155" width="230" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="an2" value="&lt;b&gt;Use the DVR instead&lt;/b&gt;&lt;br&gt;DVR IP + camera channel no." style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="270" width="230" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="s1" value="&lt;b&gt;1 · Join the same network&lt;/b&gt;&lt;br&gt;laptop on the CCTV LAN (cable best)" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="390" y="270" width="340" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="s2" value="&lt;b&gt;2 · Ask the site admin for&lt;/b&gt;&lt;br&gt;IP address · channel · view-only user" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="390" y="365" width="340" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" value="&lt;b&gt;3 · Build the RTSP address&lt;/b&gt;&lt;br&gt;rtsp://user:pass@IP:554/…&lt;br&gt;use the SUB-stream (≈ 640–720p)" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="390" y="460" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="s4" value="&lt;b&gt;4 · Test it in VLC&lt;/b&gt;&lt;br&gt;Media → Open Network Stream" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="390" y="570" width="340" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d1" value="Video shows&lt;br&gt;in VLC?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="430" y="655" width="260" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="fx" value="&lt;b&gt;Fix and try again&lt;/b&gt;&lt;br&gt;• ping the IP · same subnet?&lt;br&gt;• port 554 open? RTSP enabled in camera?&lt;br&gt;• user / password · channel number&lt;br&gt;• brand path (ONVIF Device Manager)" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="880" y="640" width="400" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="s5" value="&lt;b&gt;5 · Add to config/cameras.yaml&lt;/b&gt;&lt;br&gt;id · name · source: rtsp://…&lt;br&gt;default_zone · role (entrance / monitor)" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="390" y="795" width="340" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="s6" value="&lt;b&gt;6 · Restart the NETRAX edge&lt;/b&gt;&lt;br&gt;close window → run_all.bat" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="390" y="905" width="340" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d2" value="Tile shows&lt;br&gt;LIVE on dashboard?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="430" y="990" width="260" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="fx2" value="&lt;b&gt;Check the edge window&lt;/b&gt;&lt;br&gt;• status line: OFFLINE / fps&lt;br&gt;• stream breaks → cable, or RTSP over TCP&lt;br&gt;• too slow → sub-stream, fewer cameras" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="880" y="975" width="400" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="s7" value="&lt;b&gt;7 · AI runs on the CCTV picture&lt;/b&gt;&lt;br&gt;PPE · fire / smoke · entrance check" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="390" y="1130" width="340" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="s8" value="&lt;b&gt;8 · Alerts on dashboard + phone&lt;/b&gt;&lt;br&gt;CCTV keeps recording as before" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="390" y="1225" width="340" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="end" value="DONE · camera deployed" style="rounded=1;arcSize=50;fontStyle=1;whiteSpace=wrap;html=1;fillColor=#33691E;strokeColor=#33691E;fontColor=#FFFFFF;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="420" y="1320" width="280" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="nt" value="Brand examples:  Hikvision  rtsp://user:pass@IP:554/Streaming/Channels/102   (channel 1, sub-stream)   ·   CP Plus / Dahua  rtsp://user:pass@IP:554/cam/realmonitor?channel=1&amp;amp;subtype=1" style="rounded=0;dashed=1;fontSize=11;align=left;spacingLeft=8;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B0B0B0;fontColor=#56616E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1395" width="1240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="s0" target="d0" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe1" value="IP camera / NVR" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="d0" target="s1" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe2" value="analog" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="d0" target="an" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="an" target="an2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="an2" target="s1" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="s1" target="s2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="s2" target="s3" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="s3" target="s4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="s4" target="d1" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe9" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="d1" target="s5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe10" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="d1" target="fx" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe11" value="retry" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="fx" target="s3" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1080" y="502" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NETe12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="s5" target="s6" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="s6" target="d2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe14" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="d2" target="s7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe15" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="d2" target="fx2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe16" value="retry" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="fx2" target="s6" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1080" y="935" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NETe17" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="s7" target="s8" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe18" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="s8" target="end" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="netrax_cctv_connection_diagram" name="CCTV connection (what plugs into what)">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="640" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="NETRAX · CCTV connection (what plugs into what)" parent="1" vertex="1" style="text;html=1;fontSize=22;fontStyle=1;fontColor=#24452C;align=left;verticalAlign=middle;">
+          <mxGeometry x="30" y="12" width="1440" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="b1" value="① EXISTING CCTV (unchanged)" style="rounded=1;arcSize=2;verticalAlign=top;align=left;spacingLeft=12;spacingTop=4;fontStyle=1;fontSize=15;whiteSpace=wrap;html=1;fillColor=#F7F9F5;strokeColor=#9AAE8C;fontColor=#33691E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="65" width="430" height="470" as="geometry" />
+        </mxCell>
+        <mxCell id="b2" value="② SITE NETWORK" style="rounded=1;arcSize=2;verticalAlign=top;align=left;spacingLeft=12;spacingTop=4;fontStyle=1;fontSize=15;whiteSpace=wrap;html=1;fillColor=#F7F9F5;strokeColor=#9AAE8C;fontColor=#33691E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="490" y="65" width="330" height="470" as="geometry" />
+        </mxCell>
+        <mxCell id="b3" value="③ NETRAX" style="rounded=1;arcSize=2;verticalAlign=top;align=left;spacingLeft=12;spacingTop=4;fontStyle=1;fontSize=15;whiteSpace=wrap;html=1;fillColor=#F7F9F5;strokeColor=#9AAE8C;fontColor=#33691E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="850" y="65" width="620" height="470" as="geometry" />
+        </mxCell>
+        <mxCell id="ip" value="&lt;b&gt;IP CCTV camera&lt;/b&gt;&lt;br&gt;entrance / zone" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="55" y="110" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ip2" value="&lt;b&gt;IP CCTV camera&lt;/b&gt;&lt;br&gt;another zone" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="55" y="200" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ana" value="&lt;b&gt;Analog camera&lt;/b&gt;&lt;br&gt;coaxial cable" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="55" y="330" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="nvr" value="&lt;b&gt;NVR&lt;/b&gt;&lt;br&gt;records IP cameras" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="280" y="150" width="160" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="dvr" value="&lt;b&gt;DVR&lt;/b&gt;&lt;br&gt;records analog cameras" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="280" y="325" width="160" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mon" value="&lt;b&gt;Guard monitor&lt;/b&gt;&lt;br&gt;as before" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="280" y="440" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="sw" value="&lt;b&gt;LAN switch / router&lt;/b&gt;&lt;br&gt;same network as the laptop&lt;br&gt;RTSP on port 554" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="535" y="235" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="lap" value="&lt;b&gt;NETRAX edge laptop&lt;/b&gt;&lt;br&gt;reads the RTSP sub-stream&lt;br&gt;AI: PPE · fire · entrance&lt;br&gt;config/cameras.yaml&lt;br&gt;source: rtsp://…" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="880" y="200" width="270" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="dash" value="&lt;b&gt;Control-room dashboard&lt;/b&gt;&lt;br&gt;live tile + alerts" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="1190" y="110" width="250" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ph" value="&lt;b&gt;Supervisor's phone&lt;/b&gt;&lt;br&gt;Telegram · e-mail · call" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="1190" y="245" width="250" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="spk" value="&lt;b&gt;Speaker / station alarm&lt;/b&gt;&lt;br&gt;voice · siren · LEDs" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="1190" y="380" width="250" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="leg" value="NETRAX is only one more VIEWER of the stream: recording, NVR / DVR settings and the guard monitor stay unchanged. Use a view-only CCTV user; the password stays in the local config file." style="text;fontSize=11;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#FFFFFF;fontColor=#56616E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="555" width="1440" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" parent="1" source="ip" target="nvr" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="267" y="145" />
+              <mxPoint x="267" y="174" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NETe1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" parent="1" source="ip2" target="nvr" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="267" y="235" />
+              <mxPoint x="267" y="206" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NETe2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ana" target="dvr" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="267" y="365" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NETe3" value="LAN" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" parent="1" source="nvr" target="sw" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="487" y="190" />
+              <mxPoint x="487" y="262" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NETe4" value="LAN" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" parent="1" source="dvr" target="sw" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="487" y="365" />
+              <mxPoint x="487" y="298" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NETe5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="dvr" target="mon" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe6" value="RTSP stream" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="sw" target="lap" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.15;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="lap" target="dash" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1170" y="224" />
+              <mxPoint x="1170" y="145" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="NETe8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="lap" target="ph" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="lap" target="spk" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1170" y="336" />
+              <mxPoint x="1170" y="415" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

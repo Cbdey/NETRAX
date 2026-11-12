@@ -4,35 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NETRAX ROI calculator</title>
+<script>try { var t = new URLSearchParams(location.search).get("theme") || localStorage.getItem("netrax-cr-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
-:root{--bg:#eef1f5;--card:#fff;--navy:#15213a;--ink:#1d2939;--muted:#667085;--line:#e3e7ee;--green:#2e7d5b;--red:#c0392b;--amber:#c98a1b}
+:root{--card:var(--panel);--navy:var(--panel2);--green:var(--ok);--red:var(--crit);--amber:var(--warn)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,Arial,sans-serif}
 .wrap{max-width:1100px;margin:0 auto;padding:18px 16px 30px}
 header{background:var(--navy);color:#fff;border-radius:10px;padding:14px 20px;display:flex;align-items:center;gap:12px}
-header h1{margin:0;font-size:18px;font-weight:600}header a{margin-left:auto;color:#9ce0c1;font-size:13px}
+header h1{margin:0;font-size:var(--fs-l,19px);font-weight:600}header a{margin-left:auto;color:#9ce0c1;font-size:var(--fs-s,14px)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
 .panel{background:var(--card);border-radius:10px;padding:16px}
-h2{font-size:14px;margin:0 0 10px}
-label{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
-label small{display:block;color:var(--muted);font-size:11px}
+h2{font-size:var(--fs-s,14px);margin:0 0 10px}
+label{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:var(--fs-s,14px)}
+label small{display:block;color:var(--muted);font-size:var(--fs-xs,13px)}
 input{width:120px;font:inherit;border:1px solid var(--line);border-radius:6px;padding:4px 6px;text-align:right}
-.big{font-size:26px;font-weight:600}
+.big{font-size:var(--fs-xl,24px);font-weight:600}
 .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)}
 .cases{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
 .case{border:1px solid var(--line);border-radius:8px;padding:10px;text-align:center}
-.case b{display:block;font-size:20px}
-.note{color:var(--muted);font-size:12px;margin-top:10px}
-.tag{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:#fdf3e1;color:var(--amber)}
+.case b{display:block;font-size:var(--fs-l,19px)}
+.note{color:var(--muted);font-size:var(--fs-s,14px);margin-top:10px}
+.tag{font-size:var(--fs-xs,13px);font-weight:600;padding:1px 7px;border-radius:999px;background:#fdf3e1;color:var(--amber)}
 .m{background:#e5f3ec;color:var(--green)}
 @media (max-width:800px){.grid{grid-template-columns:1fr}.cases{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/static/theme.css?v=5nov2">
-<script src="/static/theme.js?v=5nov2"></script>
+<link rel="stylesheet" href="/static/nx.css?v=12nov1">
+<style>body{background:var(--bg);color:var(--ink)}.wrap{max-width:1400px!important;display:flex;flex-direction:column;gap:var(--sp-4)}.grid{margin-top:0!important}.panel{background:var(--panel)!important;border:1px solid var(--line);border-radius:var(--rad)!important;padding:var(--sp-4)!important;box-shadow:var(--lift)}h2{font:600 var(--fs-l)/1.2 var(--display)!important}input{background:var(--panel2);color:var(--ink);min-height:32px}.tag{background:var(--warn-bg)!important}.m{background:var(--ok-bg)!important}</style>
 </head>
 <body>
 <div class="wrap">
-  <header><h1>NETRAX: cost, bandwidth &amp; payback</h1><a href="/">← Dashboard</a></header>
+  <header class="nxbar"><a class="logo" href="/" aria-label="NETRAX home">N</a><div class="brand"><b>NETRAX</b><span>Cost &amp; payback</span></div><span class="hgrow"></span><nav class="nxnav" aria-label="Pages"><a href="/">Control room</a><a href="/entrance">Entrance</a><a href="/admin">Admin</a><a href="/hardware">Hardware</a><a href="/intelligence">Intelligence</a></nav><button class="ibtn" id="themeBtn" onclick="var r=document.documentElement;r.dataset.theme=r.dataset.theme==='light'?'dark':'light';try{localStorage.setItem('netrax-cr-theme',r.dataset.theme)}catch(e){}">☀ / ☾</button></header>
   <div class="grid">
     <div class="panel"><h2>Inputs <span class="tag">assumptions: change them</span></h2>
       <label>Cameras<input id="cams" type="number" value="16" min="1"></label>

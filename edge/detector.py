@@ -65,6 +65,11 @@ class Detector:
         if sc and os.path.exists(path(sc)) and self.has_parts:
             self.shoe = YOLO(path(sc))
             print(f"[detector] safety-shoe classifier {sc}: {list(self.shoe.names.values())}")
+        # 12 Nov: safety goggles vs normal glasses (second stage on each goggles box, edge/eyewear.py)
+        self.eyewear = None
+        if self.aux is not None and "goggles" in self.aux_items:
+            from .eyewear import load as _load_eyewear
+            self.eyewear = _load_eyewear(m, self.device)
         self.supported.discard("boots")                  # public 'boots' class misses real shoes
         if self.shoe is not None:
             self.supported.add("boots")
@@ -99,6 +104,8 @@ class Detector:
         for m in (self.ppe, self.fire, self.person, self.aux):
             if m is not None:
                 m.predict(blank, imgsz=self.imgsz, device=self.device, verbose=False)
+        if self.eyewear is not None:
+            self.eyewear.warmup()
 
     @staticmethod
     def _pick(p, fallback):
@@ -132,14 +139,18 @@ class Detector:
         dets = self._run(self.ppe, frame, self.min_ppe if self.person else
                          min(self.ppe_conf.values()))
         if self.aux is not None:
+            ax = self._run(self.aux, frame, self.min_ppe)
             dets = [d for d in dets if d["cls"] not in self.aux_items]
-            dets += [d for d in self._run(self.aux, frame, self.min_ppe) if d["cls"] in self.aux_items]
+            dets += [d for d in ax if d["cls"] in self.aux_items]
+            dets = self._confirm_helmets(dets, ax)
         kept = [d for d in dets if d["cls"] != "person"
                 and d["conf"] >= self.ppe_conf.get(d["cls"], self.default_conf)]
         self.last_parts = [d for d in kept if d["cls"] in BODY_PARTS]
         items = [d for d in kept if d["cls"] not in BODY_PARTS and d["cls"] != "boots"]
         if self.shoe is not None:
             items += self.classify_shoes(frame, [d for d in self.last_parts if d["cls"] == "foot"])
+        if self.eyewear is not None:
+            self.eyewear.check([(frame, [d for d in items if d["cls"] == "goggles"])])
         if self.person is not None and self.pose:
             persons = self._run_pose(frame, self.ppe_conf["person"])
         elif self.person is not None:
@@ -200,6 +211,24 @@ class Detector:
             out.append(dets)
         return out
 
+    def _confirm_helmets(self, dets, aux_dets, add_conf=0.5):
+        """12 Nov (jury: "a normal cap must not pass as a helmet"). Measured on our cap / helmet footage: the main model
+        called caps 'helmet' at up to 0.8, the v3 model NEVER did (0 of 35 cap boxes) and confirmed real helmets in 67 %
+        of frames. Each main-model helmet gets 'confirm' = the best overlapping v3 helmet confidence (0 = not seen);
+        association.evaluate keeps a per-person memory of it. A helmet only the v3 model saw (>= add_conf) is added."""
+        from .geometry import iou
+        ah = [d for d in aux_dets if d["cls"] == "helmet"]
+        out = []
+        for d in dets:
+            if d["cls"] == "helmet":
+                d = dict(d, confirm=max([a["conf"] for a in ah if iou(a["bbox"], d["bbox"]) > 0.3] or [0.0]))
+            out.append(d)
+        mains = [d for d in out if d["cls"] == "helmet"]
+        for a in ah:
+            if a["conf"] >= add_conf and not any(iou(a["bbox"], d["bbox"]) > 0.3 for d in mains):
+                out.append(dict(a, confirm=a["conf"], src="v3"))
+        return out
+
     def detect_batch(self, frames, fire_flags):
         """frames: list of BGR images (one per camera); fire_flags: run the fire model on that frame?
         Returns one dict per frame: persons, items, parts, fire (None when not run), timings_ms."""
@@ -238,6 +267,8 @@ class Detector:
             if self.aux is not None:
                 dets = [d for d in dets if d["cls"] not in self.aux_items] + \
                        [d for d in aux[i] if d["cls"] in self.aux_items]
+            if self.aux is not None:
+                dets = self._confirm_helmets(dets, aux[i])
             kept = [d for d in dets if d["cls"] != "person"
                     and d["conf"] >= self.ppe_conf.get(d["cls"], self.default_conf)]
             parts = [d for d in kept if d["cls"] in BODY_PARTS]
@@ -248,8 +279,11 @@ class Detector:
                 p["cls"] = "person"
             out.append({"persons": persons[i], "items": items, "parts": parts, "fire": fire[i]})
         t4 = _t.perf_counter()
+        if self.eyewear is not None:           # all goggles boxes of the batch in one CLIP call
+            self.eyewear.check([(frames[i], [d for d in out[i]["items"] if d["cls"] == "goggles"]) for i in range(n)])
+        t5 = _t.perf_counter()
         tm = {"person_ms": (t1 - t0) * 1000, "ppe_ms": (t2 - t1) * 1000, "fire_ms": (t3 - t2) * 1000,
-              "shoe_ms": (t4 - t3) * 1000, "total_ms": (t4 - t0) * 1000, "batch": n}
+              "shoe_ms": (t4 - t3) * 1000, "eyewear_ms": (t5 - t4) * 1000, "total_ms": (t5 - t0) * 1000, "batch": n}
         for o in out:
             o["timings"] = tm
         return out

@@ -39,7 +39,7 @@ class _Item:
 class _Worker:
     __slots__ = ("tid", "last_seen", "bbox", "conf", "zone", "event_id", "open_items",
                  "opened_at", "severity", "seen_tick", "onset", "worker_id", "worker_name",
-                 "first_seen", "change_since", "looked", "id_pending", "reopen_of")
+                 "first_seen", "change_since", "looked", "id_pending", "reopen_of", "req")
 
     def __init__(self, tid):
         self.tid = tid
@@ -60,6 +60,7 @@ class _Worker:
         self.looked = False         # first decision for this person made
         self.id_pending = False     # face seen, name not decided yet
         self.reopen_of = None       # supervisor resolved this person's alert while still in view
+        self.req = ()               # 12 Nov: items required in this person's zone (for the alert icons)
 
 
 class PPEStateMachine:
@@ -184,6 +185,7 @@ class PPEStateMachine:
     def _decide(self, cam, w, wkey, req, rcfg, risk_of, now, actions):
         """One decision per look: compare the confirmed-missing items with what was announced and,
         when they differ for settle_s (or a new person's first_look_s is over), send ONE action."""
+        w.req = tuple(sorted(req))
         confirmed = set()
         for i in set(req) | w.open_items:
             st = self.items.get((cam, w.tid, i))
@@ -245,11 +247,16 @@ class PPEStateMachine:
         fresh look (first_look_s): still missing PPE -> a NEW alert (alarm + messages), not silence."""
         now = time.time() if now is None else now
         ids, n = set(event_ids), 0
-        for w in self.workers.values():
+        for (cam, tid), w in self.workers.items():
             if w.event_id and w.event_id in ids:
                 w.reopen_of, w.event_id, w.open_items = w.event_id, None, set()
                 w.severity, w.onset, w.opened_at = None, None, None
                 w.looked, w.change_since, w.first_seen = False, None, now
+                # 12 Nov: a TRULY fresh look - forget this person's frame history too. With the old 'missing' frames
+                # kept, a worker who had just put the PPE on got a new alarm when the first look was shorter than
+                # the 2 s it took those frames to clear (found when first_look_s was shortened).
+                for k in [k for k in self.items if k[0] == cam and k[1] == tid]:
+                    del self.items[k]
                 n += 1
         return n
 
@@ -343,13 +350,27 @@ class PPEStateMachine:
             del self.cooldowns[k]
         return out
 
-    @staticmethod
-    def _action(kind, cam, w, now, reason=None, type_="ppe_missing"):
+    def _item_view(self, cam, w):
+        """12 Nov (display only, the decision is unchanged): required items split into seen worn / cannot see,
+        from the same per-item frame history the decision uses. Worn = judged at least twice, at most one of
+        the last 5 judgements missing, not alerted. Everything else that is not missing = cannot see."""
+        ok, unk = [], []
+        for i in w.req:
+            if i in w.open_items:
+                continue
+            st = self.items.get((cam, w.tid, i))
+            h = list(st.hist)[-5:] if st is not None else []
+            (ok if len(h) >= 2 and sum(h) <= 1 and st.state != "ALERTED" else unk).append(i)
+        return ok, unk
+
+    def _action(self, kind, cam, w, now, reason=None, type_="ppe_missing"):
+        ok, unk = self._item_view(cam, w)
         return {
             "action": kind,
             "event_id": w.event_id or f"info_{cam}_{w.tid}_{int(now * 1000)}",
             "type": type_,
             "items_missing": sorted(w.open_items),
+            "items_ok": ok, "items_uncertain": unk, "items_required": list(w.req),   # 12 Nov: icons on every alert
             "severity": w.severity,
             "camera_id": cam,
             "zone_id": w.zone,

@@ -21,6 +21,7 @@ from .clips import ClipRecorder
 from .outbox import Outbox
 from .publisher import Publisher
 from .share import ShareGroups
+from .power import Power
 from .stream import StreamReader
 from .worker import CameraWorker
 
@@ -40,7 +41,35 @@ def _lat(w):
             "dropped_stale": w.dropped_stale}
 
 
+_ONE = None
+
+
+def _single_instance(port=48765):
+    """11 Nov: a second edge (run_all.bat started twice) fought the first one for the USB cameras - both lost their
+    picture ('cameras closed'). Hold a local port while running; a second copy says so and stops.
+    SENTINELEYE_EDGE_MULTI=1 allows several (load tests with their own camera files)."""
+    global _ONE
+    if os.environ.get("SENTINELEYE_EDGE_MULTI") == "1":
+        return True
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if os.name == "nt":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        s.bind(("127.0.0.1", port))
+        s.listen(1)
+    except OSError:
+        s.close()
+        return False
+    _ONE = s
+    return True
+
+
 def main():
+    if not _single_instance():
+        print("[edge] NETRAX edge is ALREADY RUNNING (another window). Close that one first - two copies take the "
+              "cameras from each other.", flush=True)
+        return
     cv2.setNumThreads(4)
     try:
         import torch
@@ -86,9 +115,12 @@ def main():
     share = ShareGroups(cameras, settings.get("processing", {}).get("share_failover_s", 15))
     for g, members in share.groups.items():
         print(f"[edge] camera pair '{g}': {' / '.join(members)} - one at a time, now {share.active[g]}")
+    power = Power()                       # 11 Nov: camera on / off from the dashboard (data/camera_power.json)
+    for c in sorted(power.off & set(cameras)):
+        print(f"[edge] {c} '{cameras[c].get('name')}' is switched OFF from the dashboard - turn it on there")
     for cam_id, cam in cameras.items():
         r = StreamReader(cam_id, cam["source"], fps, cam.get("rotate", 0), cam.get("capture"))
-        r.allowed = (lambda c=cam_id: share.allowed(c))
+        r.allowed = (lambda c=cam_id: power.is_on(c) and share.allowed(c))
         r.start()
         wkr = CameraWorker(cam_id, cam, zones, settings, r, outbox, publisher, identity, engine=engine,
                            clips=clips)
@@ -130,12 +162,14 @@ def main():
                     "zone_name": zones[cam["default_zone"]]["name"],
                     "risk": zones[cam["default_zone"]]["risk"],
                     "status": r.health(pf),
-                    "detail": share.standby_detail(cam_id) if r.health(pf) == "STANDBY" else r.detail,
+                    "detail": ("switched off from the dashboard" if not power.is_on(cam_id) else share.standby_detail(cam_id))
+                              if r.health(pf) == "STANDBY" else r.detail,
                     "share": cam.get("share"),
                     "fps": round(pf, 1),
                     "source_fps": round(r.fps, 1),
                     "last_frame_at": r.frame_ts or None,
                     "badge": wkr.tile_badge,
+                    "people": wkr.people if wkr.people and time.time() - wkr.people["at"] < 5 else None,
                     "infer_ms": round(sum(wkr.infer_ms) / len(wkr.infer_ms), 1) if wkr.infer_ms else None,
                     "decisions": dict(wkr.decisions),
                     "target_fps": wkr.fps_target,
@@ -146,6 +180,7 @@ def main():
                 })
             online = publisher.health({
                 "at": time.time(),
+                "edge_started": t_start,          # 11 Nov: backend closes PPE alerts of an earlier edge run
                 "device": str(next(iter(workers.values())).detector.device) if workers else "cpu",
                 "runtime": ("TensorRT" if getattr(next(iter(workers.values())).detector, "runtime", "") == "tensorrt"
                             else "PyTorch (ultralytics)") + (" + shared batched engine" if engine else "") if workers else "-",

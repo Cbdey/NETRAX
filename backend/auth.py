@@ -186,6 +186,8 @@ def classify(method, path, ip):
     if method in ("POST", "DELETE", "PUT", "PATCH"):
         if path.startswith(VIEWER_POST_OK):
             return "viewer"
+        if path.startswith("/api/cameras/") and path.endswith("/power") and path.count("/") == 4:
+            return "supervisor"                              # 11 Nov: camera on / off from the dashboard
         if path.startswith(ADMIN_PREFIX):
             return "admin"
         return "supervisor"

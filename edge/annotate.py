@@ -80,6 +80,10 @@ def draw(frame, persons, statuses, items, fire_boxes, zone_polys, rejected=(), p
         _label(img, f"{cls} {conf:.2f} {status}", x1, y2 + 18, color)
     for cls, bbox, why in rejected:
         x1, y1, x2, y2 = map(int, bbox)
+        if why == "normal glasses":       # 12 Nov eyewear check: say plainly WHY goggles are missing
+            cv2.rectangle(img, (x1, y1), (x2, y2), RED, 2)
+            _label(img, "NORMAL GLASSES - not safety goggles", x1, y2 + 18, RED)
+            continue
         cv2.rectangle(img, (x1, y1), (x2, y2), GREY, 1)
         _label(img, f"{cls}? rejected: {why}", x1, y2 + 18, GREY)
     return img

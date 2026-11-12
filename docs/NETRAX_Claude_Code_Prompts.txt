@@ -1,0 +1,182 @@
+NETRAX - Claude Code prompts (paste one at a time, in order)
+
+
+===== PROMPT 0 - Read, back up, screenshot (no changes) (15 min) =====
+You are working on NETRAX (folder: sentineleye), our edge-AI PPE / fire / smoke safety system for the BPUT Hackathon final.
+First read CLAUDE.md, then dashboard/ (index, entrance, hardware, intelligence, admin, roi, login + nx.css, theme.css, alerts.js, zentrix.js, video.js), backend/main.py, backend/notify.py, backend/actuators.py, config/notify.yaml.
+
+Over the next prompts we will (1) clean and polish ALL dashboard pages in one common style, (2) show PPE violations as ICONS with the worker ID + name, (3) send exactly ONE alert per violation, (4) fix the laptop voice alarm text, (5) make fire / smoke calls immediate and repeating until acknowledged, (6) make Telegram and e-mail reliable, (7) let the supervisor guide every alert from the control room.
+
+Rules for the whole job (repeat them to yourself before every change):
+- Before changing any file, copy it to _to_delete/before_polish_12nov/<same path>.
+- Do NOT touch models/, weights, training code, edge/engine_proc.py detection logic or thresholds. No retraining.
+- Never commit or print config/secrets.local.yaml, config/users.local.yaml, firmware/*/secrets.h or data/.
+- Keep EVERY existing feature, button, API route and WebSocket working. We remove clutter, not functions.
+- Only measured numbers may appear on screen. Do not invent data.
+- After each step run: python -m edge.selftest  (all checks must still pass) and open the changed page in the browser.
+
+Now do only this:
+1. Make the backup folder.
+2. Start the system (run_all.bat or the usual way) and take a full-page screenshot of every dashboard page at 1920x1080 and 1366x768 into _to_delete/before_polish_12nov/shots/ (Playwright is fine).
+3. Write me a short list per page: panels it has, small texts / hints / helper sentences it shows, fonts below 14 px, and places where violations are written as text ("NO HELMET", "Missing PPE: ...").
+Do not change any code in this prompt.
+
+
+===== PROMPT 1 - Common design system + icon + person helpers (40 min) =====
+Step 1 - one common design system for all pages. Edit dashboard/nx.css (and theme.css only if needed); keep Day / Night themes.
+
+1. Type scale as CSS variables, used everywhere instead of fixed px:
+   --fs-xs 13px (only time stamps), --fs-s 14px, --fs-m 16px (body, default), --fs-l 19px (panel titles), --fs-xl 24px, --fs-num 34px (big numbers).
+   Nothing on any page may be smaller than 13px. Today there are ~167 font-size rules at 10-13px; replace them with the variables.
+2. Spacing scale: --sp-1 4px, --sp-2 8px, --sp-3 12px, --sp-4 16px, --sp-5 24px. Panels: padding var(--sp-4), gap between panels var(--sp-4), radius 12px, one border style, one shadow.
+3. One panel component used by every page: .nx-panel > .nx-panel-head (icon + title + optional count chip + optional 1-2 action buttons on the right) > .nx-panel-body. No subtitle line under titles.
+4. Status colours only from variables: --ok (green) compliant / normal, --crit (red) violation / fire, --warn (amber) unauthorised / warning, --unk (grey) cannot see / offline. Green and red are never used for decoration.
+5. Grid helpers: .nx-grid-2 / -3 / -4 that fall back to 1 column under 1100px. Panels in the same row get the same height (align-items: stretch), long lists scroll inside the panel body (max-height) instead of stretching the page.
+6. Buttons: one size (.btn 36px high, 14px text), .btn-primary, .btn-ok, .btn-danger, .btn-ghost.
+7. Make a new file dashboard/ppe_icons.js with ppeIcon(item, state, size) -> inline SVG string.
+   items: helmet, vest, gloves, goggles, mask, boots.  states: "ok" = item drawn in green; "miss" = item in dark grey inside a red prohibition circle with a red diagonal bar; "unk" = item in grey with a small "?" badge.
+   Simple flat original shapes (no copied artwork). Also export ppeRow(items_required, items_ok, items_missing, items_uncertain, size) that returns the icons in a fixed order with a tiny label under each and a title tooltip ("Helmet: missing").
+8. Make dashboard/people.js with personLabel(e):
+   registered worker -> "Name · W-004";  unregistered -> "Unregistered person" (+ " #17" track id small);  unauthorised_entry -> "Name · W-002" plus an amber UNAUTHORISED badge.
+   Hidden names (W-***) keep the existing privacy behaviour.
+Include the two new scripts in every page that shows alerts. Do not restyle individual pages yet; show me one test page (dashboard/_style_test.html, delete it at the end) with all components, all icons in all 3 states, in Day and Night.
+
+
+===== PROMPT 2 - Control room clean-up (50 min) =====
+Step 2 - clean the Control room (dashboard/index.html) using only the new components.
+
+Keep all its features: live camera tiles, entrance alerts, zones & people, safety station, system health, fire & smoke, PPE & access, incident details, mute, voice, Zentrix button, theme switch.
+Make it calm and readable from 2 m:
+1. Top bar: logo, site name, clock, 4 KPI tiles only (Workers in view · Compliant · Open PPE violations · Fire / smoke status). Big number + one word label. Remove other chips from the top bar (move them into System health).
+2. Layout, categorised: left 2/3 = Live cameras (grid of tiles, camera name + LIVE / OFFLINE dot + fps small in corner). Right 1/3 = "Alerts" panel (one list, newest first, fire always on top, then PPE, then access).
+   Below: one row with 3 equal panels: Zones & people · Safety station · System health.
+   Fire & smoke panel only becomes big when there is a fire; otherwise it is one green line "Fire / smoke: clear".
+3. Remove helper sentences, explanations, hints, "how it works" texts, long sub-titles, repeated labels, debug numbers. If something must stay for the jury, move it into a small (i) tooltip.
+4. Alert cards = the icon card: personLabel(e), camera · zone · time, ppeRow(...) icons, and only two buttons (Acknowledge, Resolve). Details (snapshot, confidence, event id, notification log) open in the existing detail drawer, not on the card.
+   No text like "NO HELMET" / "Missing PPE:" / "Required PPE missing" anywhere on the card.
+5. When an alert's missing items change, update the icons on the same card (keep the existing "fresh" highlight), do not add a second card.
+Show me screenshots at 1920 and 1366, Day and Night, and the list of everything you removed or moved.
+
+
+===== PROMPT 3 - Entrance + Hardware pages (40 min) =====
+Step 3 - same clean style for Entrance (entrance.html) and Hardware (hardware.html).
+
+Entrance: keep camera, entrance alerts, required PPE, devices, inside-the-site list, entrance log.
+- Result block = big PERMITTED (green) / NOT PERMITTED (red) + personLabel + ppeRow icons of the checked items (use items_ok / items_missing / items_uncertain that entrance_checks already stores). No sentences.
+- "How verification works" panel: remove from the page, keep as an (i) tooltip on the panel title.
+- Required PPE panel: icons only (green = required here), one row per zone.
+- Entrance log: table with time · person · result icon · items icons; 14px text.
+Hardware: keep live sensors, fire & smoke cross-check, in the area now, PPE contact sensors, live location, RFID attendance.
+- Sensor tiles all the same size: icon, name, big value + unit, status dot (green / amber / red). No paragraphs under them.
+- Group into 3 categories with headers: Environment (temperature, humidity, gas, dust, flame) · Safety (fire cross-check, PPE contact, tilt / fall) · People & location (RFID, in the area, GPS).
+Same component, spacing and font rules as the control room. Screenshots again.
+
+
+===== PROMPT 4 - Intelligence, Admin (tabs), ROI, Login (50 min) =====
+Step 4 - Intelligence (intelligence.html), Admin (admin.html), ROI (roi.html) and Login (login.html).
+
+Admin today has ~30 panels on one long page. Keep every one of them, but categorise into tabs at the top (one page, tab bar, remember the last tab in localStorage with try/catch):
+  Overview (violations last 7 days, most missed PPE, by zone, zone x hour, live activity, shift summary, compliance mix)
+  Incidents & reports (search history, generate a report, summary / by zone / camera / worker, records)
+  Workers (register a worker, registered workers)
+  Alerts & delivery (send a test message, delivery log)
+  Site setup (cameras, zones / required PPE / access, speaker & siren, safety station)
+  System (dashboard users, audit log, components, measured latency, live end-to-end run)
+Charts: same colours as status variables; text in charts >= 13px; most-missed-PPE chart uses the ppe icons as row labels.
+Intelligence: same tab idea for its sections; remove explanatory sentences; same tile sizes.
+ROI and Login: apply the new panel, buttons and fonts only.
+Make all pages share one header / navigation bar (same height, same order of links, active page highlighted).
+Screenshots of every tab.
+
+
+===== PROMPT 5 - Icons + correct person in every alert (data) (35 min) =====
+Step 5 - icons + correct person in EVERY alert (data side).
+
+1. Today a ppe_missing event only carries items_missing. In edge/state_machine.py (where the event payload is built - do not change how the decision is made) also send items_ok, items_uncertain and items_required from the per-item states the tracker already has.
+2. backend/db.py: add the columns items_ok, items_uncertain, items_required to events the safe way (ALTER TABLE if missing, like the notifications table). backend/main.py stores and returns them; old events without them must still display (treat as unknown).
+3. Use ppeRow everywhere a PPE alert is shown: control room, alerts.js pop-ups on all pages, incident drawer, admin incident search, entrance log.
+4. Video overlay (edge/annotate.py _item_column): keep it as it is (text) unless I ask; it is the AI view.
+5. Identity rules, the same on screen, Telegram, e-mail and voice:
+   registered worker  -> name + worker ID + icons
+   unregistered       -> "Unregistered person" + icons (no fake name)
+   unauthorised entry -> name + worker ID + "UNAUTHORISED" (amber) + zone
+   Check worker_name is filled from the workers table whenever worker_id is set; fix the places where an alert shows an ID without the name.
+Add selftest checks for: payload has the 3 new fields; old event without them renders; personLabel for the 3 cases.
+
+
+===== PROMPT 6 - One alert per violation (40 min) =====
+Step 6 - exactly ONE alert per violation.
+
+Measured on our database: 967 ppe_missing events but only 333 different (person/track + camera + missing items) combinations, so a violation produced ~3 alerts, 3 Telegram messages and 3 e-mails. This also used up the Gmail daily limit.
+Find why (track id changes when a person is lost for a moment, the same worker seen by 2 cameras, a resolved event re-opening, cooldown only per zone+type) and fix it with an "open violation" rule:
+- Key = worker_id if known, else the person track, + violation type (ppe_missing / unauthorized_entry) + zone.
+- While a violation with that key is open or acknowledged, a new detection UPDATES it (missing items, last_seen, snapshot) instead of creating a new event. Added items keep the existing "Also missing" update (one message, not a new alert).
+- A new alert for the same key only after the supervisor resolved it AND the person is seen violating again after a grace time (config: notify.yaml -> one_alert: {regrace_s: 120}).
+- Fire / smoke are not merged with PPE and never delayed.
+- Notifications: one row per event per channel (already), plus the update message is sent only on Telegram.
+Show me before/after counts using the replay or a live 2-minute test with one person removing the helmet, walking out of view and back.
+
+
+===== PROMPT 7 - Laptop voice alarm with names (20 min) =====
+Step 7 - laptop voice alarm (backend/main.py ppe_text / access_text / ok_text, backend/actuators.py Speaker).
+
+The voice must say ALL violations of the person with the correct name, once per alert, in a fixed clear sentence:
+- registered:   "Attention Ritika, worker W 0 0 4. Helmet and gloves missing. Please wear them now."
+- unregistered: "Attention, unregistered person in the Welding bay. Helmet missing. Please wear it now. Report to the supervisor."
+- unauthorised: "Attention Sourav, worker W 0 0 2. You are not authorised in the Control room. Please leave now."
+- fire:         unchanged siren + fire message, always first.
+Rules: speak only when the alert is new or an item was added (then: "Ritika, gloves also missing."), never repeat the same sentence again for the same open violation unless the reminder timer in config says so; never speak a name we do not know; items in the same order as the icons; use item_names from config.
+The dashboard voice (zentrix.js speechSynthesis) must not speak the same alert at the same time as the laptop speaker: keep only one of them for alerts (the laptop SAPI speaker), the dashboard voice stays for the Zentrix assistant.
+Add selftest checks for the 3 sentences.
+
+
+===== PROMPT 8 - Immediate, repeating fire call (30 min) =====
+Step 8 - fire / smoke phone call: IMMEDIATE and REPEATED until someone acts.
+
+Today: config/notify.yaml phone.recall_after_s = 120 and backend/notify.py makes one call per fire and calls again only for Level 3 or an escalation. Our delivery log shows 15 failed calls, Twilio "busy" and "no-answer" and network errors - those were not retried quickly.
+Change to:
+1. The FIRST fire or smoke detection (any level, camera or safety station) queues the call at once - no waiting for level 2 or for the escalation timer. Telegram goes out at the same moment.
+2. Repeat the call every phone.repeat_every_s (default 60 s) while the event is open or escalated. Stop immediately when a supervisor presses Acknowledge or Resolve on the dashboard (or the event is closed). Max phone.max_calls (default 10) per event.
+3. busy / no-answer / failed / network error -> next try after 20 s, not 60 s.
+4. Every call attempt is a row in notifications (attempt number, provider status) so the Delivery log shows it.
+5. Call text: "NETRAX fire alarm. Fire detected in <zone> by <camera / station> at <time>. Open the dashboard and acknowledge." read twice.
+6. PPE / access alerts still never call (only_fire_smoke stays true).
+Test with a test fire event: the call starts within 5 s, repeats, stops within one cycle after Acknowledge. Show the log.
+
+
+===== PROMPT 9 - Reliable Telegram and e-mail (45 min) =====
+Step 9 - Telegram and e-mail must not fail.
+
+Measured from our notifications table:
+- e-mail: 913 sent, 203 failed -> 124 x Gmail "550 5.4.5 Daily user sending limit exceeded", 75 x "getaddrinfo failed" (no internet), 4 x SMTP timeout.
+- Telegram: 1768 delivered, 128 failed -> 115 x network ConnectionError, 10 x ReadTimeout.
+- some rows stuck in "queued" / "sending".
+Fix:
+1. Fewer e-mails: thanks to Step 6 there is one alert per violation. E-mail only for: fire / smoke, Critical / High PPE, unauthorised entry, escalations. Everything else goes in one e-mail digest every 15 min (config). Add a daily e-mail counter with a safe limit (config email.daily_max, default 300) and when it is reached send only fire mails and tell the dashboard.
+2. Offline-safe: if there is no internet (DNS / connection error), do NOT count it as a failed attempt: keep the message in the outbox and retry with backoff (5 s, 15 s, 30 s, then every 60 s) for up to 2 hours; send in order when the internet returns. Messages older than that are marked "expired" with the reason.
+3. On start-up, rows left in "queued" / "sending" from a crash are picked up again (not forgotten).
+4. Telegram: send the snapshot photo + short caption with the person and missing items as text emoji lines (Helmet ❌, Vest ✅, Goggles ❔), one message per alert; updates as a reply to that first message.
+5. SMTP: reuse one connection, 20 s timeout, retry once on SMTPServerDisconnected.
+6. Delivery log on the Admin page shows per channel: sent / waiting for internet / failed (reason in plain words).
+Tests: unplug Wi-Fi for 2 minutes during a test alert -> messages arrive after reconnecting, none lost, none duplicated.
+
+
+===== PROMPT 10 - Supervisor-guided control room (30 min) =====
+Step 10 - the control room is guided by the supervisor.
+
+- Every alert stays on the control room until a supervisor acknowledges and then resolves it (viewer role can only look; buttons hidden for viewers, API still checks the role).
+- Acknowledge = "I have seen it" -> stops the repeating call and the escalation timer, card turns from red-blinking to red-steady, shows "Ack by <user> <time>".
+- Resolve = "fixed" -> optional one-tap reason (PPE worn now / false alarm / worker left / fire out), card leaves the list, goes to history.
+- Not acknowledged in escalation time (config) -> escalation exactly as today.
+- Acknowledge and resolve also possible from the Telegram message: inline buttons "Acknowledge" / "Resolve" (Telegram callback with the event id; check the chat id). Only if this is less than 30 min; otherwise skip and tell me.
+- Every action is written to the audit log (already exists) and shown in the incident drawer.
+
+
+===== PROMPT 11 - Final polish, test, commit (30 min) =====
+Step 11 - final polish and test.
+
+1. Go through every page and tab at 1920x1080, 1366x768 and a phone width (390 px), Day and Night. Fix: overlapping text, cut-off numbers, panels of different heights in one row, scroll bars inside small boxes, any font < 13 px, any leftover sentence or "NO <ITEM>" text.
+2. Run python -m edge.selftest (all pass) and a 5-minute live run with 3 cameras: helmet off -> one red icon card + one Telegram + one voice sentence with the name; helmet on -> resolve; test fire -> immediate repeated call, stops on acknowledge.
+3. Delete dashboard/_style_test.html. Make sure nothing in _to_delete/ is needed by the app.
+4. Give me a before/after screenshot pair for every page into docs/polish_12nov/, and a short change list (file -> what changed). Update CLAUDE.md with the new design rules and the new config keys.
+5. Commit locally with a clear message (never push secrets / data/). Do not push.

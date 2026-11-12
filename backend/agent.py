@@ -34,7 +34,8 @@ alert alerts alarm alarms incident incidents violation violations recent latest 
 enlarge camera cameras focus fullscreen minimise maximise control panel admin hardware entrance dashboard
 report reports generate download workers system health acceptance overview channels zones users audit
 refuse allow approve reject accept welding warehouse assembly helmet gloves goggles everything recommendations
-apply confirm cancel mute unmute today yesterday please""".split()
+apply confirm cancel mute unmute today yesterday please sensors monitoring management centre center predictive
+analytics attendance device devices intelligence station siren buzzer hooter switch disable enable history""".split()
 
 STATUS_OF = {"ack": "acknowledged", "resolve": "resolved", "dismiss": "dismissed", "escalate": "escalated"}
 APPLIES = {"ack": ("open", "escalated", "verifying"), "escalate": ("open", "acknowledged"),
@@ -47,6 +48,8 @@ ITEM = {"helmet": "helmet", "vest": "safety vest", "gloves": "gloves", "boots": 
         "mask": "mask"}
 
 PAGES = [  # (regex, url, spoken name)
+    (r"\b(safety )?intelligence\b|\bintelligent dashboard\b|\bfactory map\b|\bpredictive( analytics)?\b", "/intelligence",
+     "the safety intelligence dashboard"),
     (r"\bcontrol\s*(room|panel|pannel|center|centre)\b|\bmain (dashboard|screen|page)\b|\bhome( page)?\b", "/",
      "the control room"),
     (r"\badmin\b|\badministration\b", "/admin", "the admin panel"),
@@ -66,6 +69,30 @@ SECTIONS = [  # admin sections (admin.html hash routes)
     (r"\boverview\b", "overview", "the admin overview"),
 ]
 NAV_VERB = r"\b(open|go( back)? to|goto|take me to|navigate( to)?|switch to|bring up|launch|move to|visit|jump to|load)\b"
+# 11 Nov: Safety Intelligence sections (/intelligence#<id>) and control-room boxes (user: "Zentrix should open every panel,
+# sub-panel and section and do everything we do by hand - only on command")
+INTEL = [
+    (r"\blive sensors?\b|\bsensor (readings?|graphs?|section|page)\b", "sensors", "live sensors"),
+    (r"\bai monitoring\b|\bai (detection|section|page)\b|\bintelligent detection\b", "ai", "AI monitoring"),
+    (r"\bworkers? management\b|\brfid tracking\b|\bsafety scores?\b|\battendance\b", "workers", "worker management"),
+    (r"\balerts? (centre|center)\b", "alerts", "the alerts centre"),
+    (r"\bpredict\w*\b|\bforecasts?\b|\brisk index\b|\bearly warnings?\b", "predict", "predictive analytics"),
+    (r"\bfactory map\b|\bsite (map|plan)\b|\bzone map\b|\bmap\b", "map", "the factory map"),
+    (r"\bdevice health\b|\bhardware (health|monitoring)\b", "devices", "device health"),
+    (r"\breports? and analytics\b|\banalytics\b|\btrends\b", "reports", "reports and analytics"),
+    (r"\boverview\b", "overview", "the intelligence overview"),
+]
+BOXES = [
+    (r"\bfire( and smoke)?( alerts?| box| section| panel| container)\b|\bsmoke alerts?\b", "fire", "the fire and smoke box"),
+    (r"\bppe( and access)?( alerts?| box| section| panel| container| violations?)\b|\baccess alerts?\b", "ppe",
+     "the PPE and access box"),
+    (r"\bentrance (alerts?|box|section|container)\b|\bgate alerts?\b", "gate", "the entrance alerts box"),
+    (r"\bzones? and people\b|\bwho is inside\b|\bpeople inside\b", "zone", "zones and people"),
+    (r"\bsafety station (box|section|container|readings|status)\b|\bstation (readings|status)\b", "st", "the safety station box"),
+    (r"\bsystem health (box|section|container)\b", "hl", "the system health box"),
+]
+SHOW = r"^(please )?(show( me)?|open|display|view|go to|goto|switch to|bring up|take me to|list|see)\b"
+TAB_NAME = {"ack": "acknowledged", "done": "history", "active": "active"}
 
 
 def strip_wake(text):
@@ -87,7 +114,7 @@ def normalise(text, keep=()):
                 w = m[0]
         out.append(w)
     t = " " + " ".join(out) + " "
-    t = re.sub(r"\backnowledgement\b|\backnowled\w*\b|\backnow\w*\b|\back\b", "acknowledge", t)
+    t = re.sub(r"\backnowledgement\b|\backnowled(?!ged\b)\w*\b|\backnow(?!ledged\b)\w*\b|\back\b", "acknowledge", t)
     t = re.sub(r"\banaly[sz]\w*\b", "analyse", t)
     t = re.sub(r"\bpannel\b", "panel", t)
     nums = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
@@ -104,7 +131,7 @@ def _action_of(seg):
     if re.search(r"\bresolve\w*\b|\bclose\b|\bclose (it|them|all)\b|\bmark (it |them |all )?(as )?(fixed|done|solved|resolved)\b"
                  r"|\bclear (the |all )?(alert|alarm|incident)", seg):
         return "resolve"
-    if re.search(r"\backnowledge\w*\b|\baccept (the |all |this |these )?(alert|alarm|incident|violation)", seg):
+    if re.search(r"\backnowledge(?!d\b)\w*\b|\baccept (the |all |this |these )?(alert|alarm|incident|violation)", seg):
         return "ack"
     return None
 
@@ -112,7 +139,7 @@ def _action_of(seg):
 def _actions_all(seg):
     """every action verb in the segment, e.g. 'acknowledge or mark resolve' -> ['ack', 'resolve']"""
     found = []
-    for a, rx in (("ack", r"\backnowledge\w*\b"), ("resolve", r"\bresolve\w*\b|\bmark (it |them |all )?(as )?(fixed|done|solved)\b"),
+    for a, rx in (("ack", r"\backnowledge(?!d\b)\w*\b"), ("resolve", r"\bresolve\w*\b|\bmark (it |them |all )?(as )?(fixed|done|solved)\b"),
                   ("dismiss", r"\bfalse alarm\b|\bdismiss\w*\b"), ("escalate", r"\bescalat\w*\b")):
         if re.search(rx, seg):
             found.append(a)
@@ -284,10 +311,13 @@ def _title(e, mask=False):
 
 
 # ---------------------------------------------------------------- planning
-HELP = ("I can: analyse and verify alerts; acknowledge, resolve, escalate or mark them as false alarms; allow or refuse "
-        "the person at the entrance; open the control room, admin, hardware or entrance pages and admin sections; "
-        "enlarge a camera or go back to all cameras; generate reports; mute the alert sound; and answer questions "
-        "about past events. I act only when you tell me to.")
+HELP = ("I can: analyse and verify alerts; acknowledge, resolve, escalate or mark them as false alarms (reject); allow or "
+        "refuse the person at the entrance; open every page - control room, admin and its sections, hardware, entrance, "
+        "safety intelligence and its sections (live sensors, AI monitoring, worker management, alerts centre, predictive "
+        "analytics, factory map, device health, reports and analytics); show a control-room box and its tab (e.g. 'show "
+        "acknowledged fire alerts', 'show zones and people'); enlarge a camera, focus view, full screen, all cameras; turn a "
+        "camera on or off; silence the siren; generate and download reports; send a test call or message (admin); mute the "
+        "alert sound; change the theme; and answer questions about past events. I act only when you tell me to.")
 
 
 def plan(text, user="?", role="viewer", ctx=None, pending=None):
@@ -328,6 +358,53 @@ def plan(text, user="?", role="viewer", ctx=None, pending=None):
     confirm_exec, confirm_lines = [], []
     for seg in _split(t):
         intent = None
+        # ---- 11 Nov: show a control-room box / tab ("show acknowledged fire alerts", "show zones and people")
+        bx = _box(seg)
+        if bx:
+            out["ui"] += bx[0]
+            say.append(bx[1])
+            out["intents"].append("box")
+            continue
+        # ---- 11 Nov: site siren
+        if re.search(r"\b(siren|hooter|buzzer)\b|\balarm\b(?!s| sound)", seg) and \
+                re.search(r"\b(silence|silent|stop|off|quiet|mute|shut)\b", seg):
+            out["intents"].append("siren")
+            if not can_act:
+                say.append(f"Your role ({role}) cannot silence the siren.")
+            else:
+                out["execute"].append({"kind": "silence"})
+                say.append("Silencing the site siren. The alert itself stays active until it is resolved.")
+            continue
+        # ---- 11 Nov: camera on / off
+        pw = _power(seg, ctx)
+        if pw:
+            out["intents"].append("camera_power")
+            on, cams = pw
+            names = ", ".join(f"{(ctx.get('cameras') or {}).get(c, {}).get('name') or c} ({c})" for c in cams)
+            if not can_act:
+                say.append(f"Your role ({role}) cannot switch cameras.")
+            elif not cams:
+                say.append("Which camera? Say for example 'turn off camera 2' or 'turn on the warehouse camera'.")
+            elif on:
+                out["execute"] += [{"kind": "camera_power", "camera_id": c, "on": True} for c in cams]
+                say.append(f"Turning on {names}. The picture returns in a few seconds.")
+            else:
+                confirm_exec += [{"kind": "camera_power", "camera_id": c, "on": False} for c in cams]
+                confirm_lines.append(f"Turn OFF {names} - no picture, no PPE / fire detection and no alarms from "
+                                     f"{'it' if len(cams) == 1 else 'them'} until turned on again")
+            continue
+        # ---- 11 Nov: test call / message (admin; sends real messages -> confirm)
+        if re.search(r"\btest\b", seg) and re.search(r"\b(call|phone|telegram|e-?mail|mail|channels?|notifications?|messages?)\b", seg):
+            out["intents"].append("notify_test")
+            ch = [c for c, rx in (("call", r"\b(call|phone)\b"), ("telegram", r"\btelegram\b"), ("email", r"\be-?mail|mail\b"))
+                  if re.search(rx, seg)] or ["telegram", "email", "call"]
+            if role != "admin":
+                say.append("Only an admin can send test messages.")
+            else:
+                confirm_exec.append({"kind": "notify_test", "channels": ch})
+                confirm_lines.append("Send a REAL test " + ", ".join({"call": "phone call", "telegram": "Telegram message",
+                                                                       "email": "e-mail"}[c] for c in ch))
+            continue
         # ---- entrance manual decision
         dec = _entrance_decision(seg)
         act = _action_of(seg)
@@ -550,6 +627,13 @@ def plan(text, user="?", role="viewer", ctx=None, pending=None):
 def _nav(seg):
     has_verb = re.search(NAV_VERB, seg) or re.search(r"\b(show|display)\b.*\b(page|panel|dashboard|screen|section|tab)\b", seg)
     short = any(re.fullmatch(rf"(the )?({rx})( page| panel| dashboard| screen)?", seg) for rx, _, _ in PAGES)
+    intel = re.search(r"\bintelligence\b", seg)
+    for rx, sec, name in INTEL:                       # Safety Intelligence sections
+        if sec == "overview" and not intel:
+            continue
+        if re.search(rx, seg) and (has_verb or intel or re.search(r"\b(show|display|see)\b", seg)
+                                   or re.fullmatch(rf"(the )?({rx})( page| panel| section| tab)?", seg)):
+            return {"op": "navigate", "url": f"/intelligence#{sec}"}, name + " (Safety Intelligence)"
     for rx, sec, name in SECTIONS:
         if re.search(rx, seg) and (has_verb or re.search(r"\b(page|section|tab)\b", seg)) and \
                 not re.search(r"\b(control|hardware|entrance)\b", seg):
@@ -600,3 +684,56 @@ def _camera_op(seg, ctx):
     if c.get("role") == "entrance":
         return {"op": "navigate", "url": "/entrance"}, "The entrance camera is on the entrance dashboard - opening it."
     return {"op": "focus", "cam": target}, f"Enlarged {c.get('name') or target} ({target})."
+
+
+def _box(seg):
+    """'show acknowledged fire alerts' -> control-room box + tab. Only with a show / open verb at the start, so
+    'acknowledge the fire alert' (an ACTION) never lands here."""
+    if not re.search(SHOW, seg):
+        return None
+    tab = "ack" if re.search(r"\backnowledged\b", seg) else "done" if re.search(r"\b(history|resolved|closed|old|past)\b", seg) \
+        else "active" if re.search(r"\b(active|open|new|current)\b(?! the)", seg) else None
+    hits = [(k, n) for rx, k, n in BOXES if re.search(rx, seg)]
+    if not hits and tab and re.search(r"\b(fire|smoke)\b", seg):
+        hits = [("fire", "the fire and smoke box")]
+    if not hits and tab and re.search(r"\b(ppe|helmet|vest|access)\b", seg):
+        hits = [("ppe", "the PPE and access box")]
+    if not hits and tab and re.search(r"\b(alerts?|alarms?|incidents?)\b", seg) and \
+            not re.search(r"\b(page|panel|dashboard|admin|intelligence|centre|center|entrance)\b", seg):
+        hits = [("fire", "the fire and smoke box"), ("ppe", "the PPE and access box")]
+    if not hits:
+        return None
+    ops = [{"op": "box", "box": k, "tab": tab if k in ("fire", "ppe") else None} for k, _ in hits]
+    return ops, ("Showing " + " and ".join(n for _, n in hits) + (f" - {TAB_NAME[tab]} list" if tab else "")
+                 + " in the control room.")
+
+
+def _cam_target(seg, ctx):
+    cams = ctx.get("cameras") or {}
+    zones = ctx.get("zones") or {}
+    for cid in cams:
+        num = int(re.sub(r"\D", "", cid) or 0)
+        if cid in seg or re.search(rf"\b(cam|camera)\s*(no\.?|number)?\s*0?{num}\b", seg):
+            return cid
+    for cid, c in cams.items():
+        z = zones.get(c.get("default_zone")) or {}
+        words = {w for w in re.split(r"\W+", ((z.get("name") or "") + " " + (c.get("name") or "")).lower()) if len(w) >= 4}
+        words |= set((c.get("default_zone") or "").split("_")) - {"main", "line", "bay", "zone"}
+        if any(re.search(rf"\b{re.escape(w)}\b", seg) for w in words if len(w) >= 4):
+            return cid
+    return None
+
+
+def _power(seg, ctx):
+    """'turn off camera 2' / 'switch on the warehouse camera' / 'turn off all cameras' -> (on, [camera ids])."""
+    if not re.search(r"\b(cam|camera|cameras|cctv|feed)\b|\bcam_?\d", seg):
+        return None
+    off = re.search(r"\b(turn|switch|power|shut)\b.*\b(off|down)\b|\b(disable|deactivate)\b|\boff\s*$", seg)
+    on = re.search(r"\b(turn|switch|power)\b.*\bon\b|\b(enable|activate)\b|\bon\s*$", seg)
+    if not (off or on):
+        return None
+    cams = {c: v for c, v in (ctx.get("cameras") or {}).items() if v.get("enabled", True) is not False}
+    if re.search(r"\b(all|every|each)\b.*\bcameras?\b", seg):
+        return (not off), list(cams)
+    t = _cam_target(seg, ctx)
+    return (not off), ([t] if t in cams else [])

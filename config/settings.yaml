@@ -10,6 +10,15 @@ models:
   aux_items: [gloves, goggles, hand, face, head, foot, vest]
   shoe_cls: models/shoe_cls.pt   # safety shoe vs normal footwear (tools/shoes.py); 'boots' are judged only when it exists
   shoe_min_prob: 0.6
+  # 12 Nov safety goggles vs normal glasses (edge/eyewear.py, tools/eyewear.py): CLIP ViT-B-32 + own head on the eye crop.
+  # p >= hi goggles | lo..hi unclear (goggles 'unverifiable') | < lo normal glasses (goggles 'missing' if the face is seen).
+  # eyewear_head: '' = check off (old behaviour: every v3 'goggles' box counts).
+  eyewear_head: models/eyewear_head.npz
+  eyewear_clip: models/clip_vit_b32_laion2b.safetensors   # 605 MB, git-ignored (python -m tools.eyewear fetch)
+  eyewear_arch: ViT-B-32
+  eyewear_lo: 0.2
+  eyewear_hi: 0.5
+  eyewear_max_crops: 6
   person: pose          # pose = YOLOv8n-pose: persons + 17 body keypoints (item -> right worker, hidden part -> can't tell)
                         # coco = plain YOLOv8n person detector (fallback); ppe = PPE model's person class
   # PPE items the active model judges reliably. Required items NOT in this list are skipped (never
@@ -49,7 +58,9 @@ thresholds:
   fire_conf: {Fire: 0.45, Smoke: 0.35}   # lower: matches / thin agarbatti smoke score low; fire_verify filters the rest
 
 validation:               # stops shirts counting as vests and caps as helmets
-  vest_hivis_min: 0.25   # share of high-visibility pixels a vest box must contain (0 disables)
+  vest_hivis_min: 0.20   # share of high-visibility pixels a vest box must contain (0 disables). 11 Nov: was 0.25
+  vest_pale_s_min: 50    # 11 Nov: washed-out fluorescent yellow / lime also counts (entrance USB camera, own data:
+  vest_pale_v_min: 130   #   real vests accepted 25 % -> 98 %); see edge/validate.hivis_share
 
 association:
   min_person_height_px: 80        # smaller people -> 'unverifiable'
@@ -58,6 +69,13 @@ association:
   feet_margin_frac: 0.03          # box bottom within 3% of the frame edge -> feet not visible
   full_body_min_aspect: 1.5       # boots judged only if box height >= 1.5 x width (whole body)
   occlusion_overlap: 0.35         # region hidden by a person in front -> 'unverifiable'
+  # 12 Nov CAP vs HELMET (jury): a helmet counts only if the v3 model also confirmed it on this person (it never calls a
+  # cap a helmet; the main model did, up to 0.8). Own data: cap scene 23/32 frames missed -> 0/32; all helmet false alarms 23 -> 19.
+  helmet_confirm: true
+  helmet_confirm_min: 0.30        # v3 helmet confidence that counts as a confirmation
+  helmet_confirm_keep_s: 30       # one confirmation is trusted this long for the same person
+  helmet_confirm_wait_s: 1.0      # a new person: 'checking' this long before an unconfirmed helmet-like object = cap
+  helmet_confirm_min_height: 0.35 # only for people >= 35 % of the picture height (far helmets are rarely confirmed)
 
 state_machine:                    # plan section 7.2
   # time-to-alert ~= confirm_n / target_fps + grace_s  (was 10/10 + 3.0 = ~4 s, now ~2.2 s)
@@ -80,11 +98,13 @@ state_machine:                    # plan section 7.2
   announce_compliant: true   # "PPE complete" once, only when every required item was SEEN worn
   ok_repeat_s: 600           # ... at most once per person per 10 minutes
   by_risk:              # zone-wise priority: high-risk zones decide first (12 Oct)
+    # 12 Nov (jury: 'delay'): live new-person alarms took 4-6 s (first look 2.0 s + name wait + evidence wait + 6-frame
+    # confirm). first_look_s high 2.0 -> 1.2, medium 2.5 -> 1.6, low 3.0 -> 2.0 (the 6-of-10 confirm itself needs ~1.2 s).
     # 29 Oct: PPE taken off is caught faster - 6 of the last 10 frames (a majority, so one missed frame never
     # alarms) + short grace + short settle: high ~1.4 s, medium ~1.9 s after the item comes off.
-    high:   {confirm_n: 6, grace_s: 0.4, first_look_s: 2.0, settle_s: 0.4}
-    medium: {confirm_n: 6, grace_s: 0.7, first_look_s: 2.5, settle_s: 0.6}
-    low:    {confirm_n: 7, grace_s: 1.0, first_look_s: 3.0, settle_s: 0.8}
+    high:   {confirm_n: 6, grace_s: 0.4, first_look_s: 1.6, settle_s: 0.4}
+    medium: {confirm_n: 6, grace_s: 0.7, first_look_s: 2.0, settle_s: 0.6}
+    low:    {confirm_n: 7, grace_s: 1.0, first_look_s: 2.5, settle_s: 0.8}
   location_grid: 4
 
 fire:                             # plan section 7.4
@@ -201,3 +221,4 @@ auth:                             # dashboard login (backend/auth.py). Users: co
 
 incidents:                        # final-round section 2: dashboard-wide violation state
   emergency_severities: [Critical, High]   # an ACTIVE, UNACKNOWLEDGED PPE / access alert of this severity -> red screen
+  merge_same_person: true         # 11 Nov: ONE active PPE alert per person per camera (edge restarts / tracker splits merge into it)

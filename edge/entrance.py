@@ -43,10 +43,21 @@ class EntranceChecker:
         self.static_s = float(c.get("static_object_s", 6.0))
         self.static_move = float(c.get("static_move_frac", 0.02))
         self.strong_conf = float(c.get("strong_person_conf", 0.8))
+        # 11 Nov: one announcement per person and verdict (see update) + 'too close' guidance
+        self.same_gap_s = float(c.get("same_person_gap_s", 3.0))
+        self.same_person_s = float(c.get("same_person_quiet_s", 30.0))
+        self.close_frac = float(c.get("too_close_top_frac", 0.025))
+        self.prev = None                                 # last finished session: said / bbox / last_seen
+        self.said_by = {}                                # worker_id -> (said, time)
         self.background = []                             # [bbox, until]: still objects that looked like a person
         self.still = {}                                  # tid -> [first_bbox, since, faced]
         self.s = None                                    # current session
         self.last_result = None
+
+    def _remember(self, s):
+        self.prev = {"said": s.get("said"), "bbox": list(s["bbox"]), "last_seen": s["last_seen"]}
+        if s.get("worker_id") and s.get("said"):
+            self.said_by[s["worker_id"]] = (s["said"], s["last_seen"])
 
     def _real_body(self, p):
         """True for a real person: confident box AND (when the pose model gives keypoints) enough body points,
@@ -100,22 +111,36 @@ class EntranceChecker:
         s = self.s
         if subj is None:
             if s and now - s["last_seen"] >= self.leave_s:
+                self._remember(s)
                 self.s = None                             # person walked through / away: next person
             elif s and not s.get("decided") and crowd_or_far and now - s["start"] >= self.max_look_s:
                 out.append(self._decide(now, forced="person too far from the camera - step closer"))
             return out
         if s is None or (s["tid"] != subj["tid"] and now - s["last_seen"] > 0.5):
+            if s is not None:
+                self._remember(s)
             s = self.s = {"tid": subj["tid"], "start": now, "last_seen": now, "frames": 0, "votes": {},
                           "decided": None, "decided_at": None, "bbox": subj["bbox"], "conf": [], "crowd": 0,
                           "worker_id": None, "worker_name": None, "id": "ent_" + uuid.uuid4().hex[:10],
-                          "shown": None, "said": None}
+                          "shown": None, "said": None, "close": 0}
+            # 11 Nov (live: 12 decisions in 2 min for 2-3 people): the tracker gave the same person a new ID, or they
+            # stepped out of view for a moment -> a new session that had forgotten what was already announced.
+            # Same place within 3 s = the same person: keep what was said (an identical verdict is not repeated).
+            p = self.prev
+            if p and p["said"] and now - p["last_seen"] <= self.same_gap_s and iou(p["bbox"], subj["bbox"]) >= 0.3:
+                s["said"] = p["said"]
         s["last_seen"], s["bbox"] = now, subj["bbox"]
         s["frames"] += 1
         s["conf"].append(subj.get("conf", 0.0))
         if crowd_or_far:
             s["crowd"] += 1
+        if subj["bbox"][1] <= self.close_frac * h:
+            s["close"] += 1                              # head at the top edge: too close to the camera
         if subj.get("identity") == "worker" and subj.get("worker_id"):
             s["worker_id"], s["worker_name"] = subj["worker_id"], subj.get("worker_name")
+            said = self.said_by.get(s["worker_id"])
+            if said and not s["said"] and now - said[1] <= self.same_person_s:
+                s["said"] = said[0]                      # same registered worker came back within 30 s
         st = statuses.get(subj["tid"], {})
         for item in self.required:
             status = (st.get(item) or ("unverifiable", 0.0))[0]
@@ -171,10 +196,14 @@ class EntranceChecker:
                    "crowded": False}
         reason = forced
         if res["result"] == "manual" and not reason:
+            too_close = s.get("close", 0) > s["frames"] / 2
             reason = ("two or more people in front of the camera - one at a time" if res["crowded"] else
+                      "too close to the camera - step back so head to feet are visible" if too_close else
                       "could not see clearly: " + ", ".join(res["unclear"]))
         s["decided"], s["decided_at"] = res["result"], now
         s["shown"], s["said"] = res["result"], (res["result"], tuple(sorted(res["missing"])))
+        if s.get("worker_id"):
+            self.said_by[s["worker_id"]] = (s["said"], now)
         self.last_result = res["result"]
         conf = sum(s["conf"]) / len(s["conf"]) if s["conf"] else 0.0
         gate = "open_requested" if (res["result"] == "approved" and self.controller) else "closed"

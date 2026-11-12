@@ -33,6 +33,12 @@ class StreamReader(threading.Thread):
         self.cam_id = cam_id
         self.rotate = self.ROTATE.get(int(rotate or 0))    # phone held upright -> picture sideways
         self.source = source
+        # 12 Nov: phone (IP Webcam) whose address changes -> follow it (edge/phones.py)
+        self.follow_phone = isinstance(source, str) and source.startswith("http") and ":8080" in source
+        self.unreach = 0
+        if self.follow_phone:
+            from . import phones
+            phones.register(cam_id, source)
         self.target_fps = target_fps
         self.lock = threading.Lock()
         self.frame, self.frame_ts, self.frame_no = None, 0.0, 0
@@ -92,7 +98,7 @@ class StreamReader(threading.Thread):
         return cap
 
     def run(self):
-        backoff = 1.0
+        backoff, open_fails = 1.0, 0
         while self.running:
             if not self.allowed():
                 self.standby = True
@@ -103,12 +109,21 @@ class StreamReader(threading.Thread):
                 self.detail = "switching to this camera..."
             self.standby = False
             cap = self._open()
+            if cap is None and self.follow_phone and self.detail.startswith("not reachable"):
+                self.unreach += 1
+                if self.unreach >= 2 and self._follow_phone():
+                    backoff, open_fails, self.unreach = 1.0, 0, 0
+                    continue
             if cap is None:
+                open_fails += 1
                 time.sleep(backoff)
                 local = isinstance(self.source, int) or (isinstance(self.source, str) and self.source.isdigit())
-                backoff = min(backoff * 2, 30.0 if local else 10.0)
+                # 11 Nov: a USB camera reopened after a black picture often fails the first 1-2 tries ("can't be used to
+                # capture by index") - the doubling wait then reached 30 s and the tile stayed dead for ~1 min.
+                # Retry every <= 3 s for the first 10 tries, only then slow down (a camera that is really unplugged).
+                backoff = min(backoff * 2, 3.0 if open_fails < 10 else (30.0 if local else 10.0))
                 continue
-            backoff = 1.0
+            backoff, open_fails, self.unreach = 1.0, 0, 0
             self.detail = "ok"
             period = 0.0
             if self.is_file:
@@ -166,6 +181,24 @@ class StreamReader(threading.Thread):
                 if period:
                     time.sleep(max(0.0, period - (time.time() - t0)))
             cap.release()
+            if self.running and not self.is_file:
+                time.sleep(1.0)                        # let the camera driver let go before opening it again
+
+    def _follow_phone(self):
+        """The phone stopped answering at its address: look for it on the Wi-Fi and switch (saved in cameras.yaml)."""
+        from . import phones
+        self.detail = "phone not answering - searching the Wi-Fi for it..."
+        new = phones.find_moved(self.cam_id, self.source)
+        if not new:
+            self.detail = f"not reachable: {phones.host_of(self.source)} - open IP Webcam + 'Start server' (same Wi-Fi)"
+            return False
+        print(f"[{self.cam_id}] phone moved: {self.source} -> {new} (saved in cameras.yaml)", flush=True)
+        self.source = new
+        try:
+            phones.save(self.cam_id, new)
+        except OSError as e:
+            print(f"[{self.cam_id}] could not save the new address: {e}", flush=True)
+        return True
 
     def latest(self):
         with self.lock:

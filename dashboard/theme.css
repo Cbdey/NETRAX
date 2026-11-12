@@ -63,12 +63,12 @@ code{background:var(--grey-bg);padding:0 4px;border-radius:4px}
 
 /* ---------- day / night switch ---------- */
 .nx-theme{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--headline);background:rgba(255,255,255,.08);
-  color:var(--headink);border-radius:999px;padding:5px 12px 5px 6px;font-size:12px;font-weight:600;cursor:pointer;
+  color:var(--headink);border-radius:999px;padding:5px 12px 5px 6px;font-size:var(--fs-s,14px);font-weight:600;cursor:pointer;
   transition:background .2s ease,transform .2s ease}
 .nx-theme:hover{background:rgba(255,255,255,.16);transform:translateY(-1px)}
 .nx-theme:focus-visible{outline:2px solid #7fd6c6;outline-offset:2px}
 .nx-theme .knob{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#ffe08a;color:#7a5200;
-  font-size:13px;transition:transform .45s cubic-bezier(.5,1.6,.4,1),background .3s ease}
+  font-size:var(--fs-s,14px);transition:transform .45s cubic-bezier(.5,1.6,.4,1),background .3s ease}
 :root[data-theme="dark"] .nx-theme .knob{background:#cfe3ff;color:#23406b;transform:rotate(-360deg)}
 html.nx-switching *{transition:background-color .35s ease,border-color .35s ease,color .35s ease !important}
 

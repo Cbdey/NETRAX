@@ -12,26 +12,43 @@
 //   8. NETRAX's reply can turn the station RED too (e.g. the camera saw fire in this zone) - the stronger of the
 //      local rule and the dashboard's view wins.
 //
-// Arduino IDE: board "ESP32 Dev Module"; libraries: "DHT sensor library" (Adafruit). WiFi + HTTPClient come with the ESP32 core.
+// 11 Nov - merged the team's NEW version ("dashboard free, NEO-6M GPS"):
+//   9.  NEO-6M GPS on UART2 (GPS TX -> GPIO16, GPS RX -> GPIO17, 9600 baud), read without blocking. With a fix the
+//       position goes to NETRAX every 10 s (POST /api/location/hardware) -> events get the station's GPS location.
+//   10. Buzzer ON continuously for WARNING or CRITICAL (team's new rule); relay only for CRITICAL. LEDs blink
+//       (green 500 ms / yellow 250 ms / red 100 ms) like the team's version.
+//   11. Vibration: the MPU6050 reading is sent as vibration_metric (how far the total acceleration is from 1 g, in g),
+//       so the dashboard's vibration graph shows real values (the raw arrays were ignored).
+//   12. The laptop address is in secrets.h (SECRET_NETRAX_HOST) - a new laptop IP = change one line there
+//       (python -m tools.lan_setup --write does it for you), not this file.
+//
+// Arduino IDE: board "ESP32 Dev Module"; libraries: "DHT sensor library" (Adafruit) and "TinyGPSPlus" (Mikal Hart).
+// WiFi + HTTPClient come with the ESP32 core.
 
 #include <Wire.h>
 #include <DHT.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <TinyGPSPlus.h>
+#include <math.h>
 
 // =====================================================
-// 1. WI-FI AND DASHBOARD SETTINGS  (fill in before flashing)
+// 1. WI-FI AND DASHBOARD SETTINGS  (in secrets.h)
 // =====================================================
 
-// Wi-Fi name + password live in secrets.h next to this file (NOT in git). Copy secrets.example.h -> secrets.h.
-// It must be the SAME Wi-Fi as the laptop (2.4 GHz - the ESP32 has no 5 GHz).
+// Wi-Fi name + password + laptop address live in secrets.h next to this file (NOT in git). Copy secrets.example.h ->
+// secrets.h. It must be the SAME Wi-Fi as the laptop (2.4 GHz - the ESP32 has no 5 GHz).
 #include "secrets.h"
+#ifndef SECRET_NETRAX_HOST
+#define SECRET_NETRAX_HOST "http://10.115.43.235:8000"   // old default - put the laptop address in secrets.h
+#endif
 const char* WIFI_SSID     = SECRET_WIFI_SSID;
 const char* WIFI_PASSWORD = SECRET_WIFI_PASSWORD;
 
-// http://<laptop IP>:8000/api/hw/telemetry  - laptop on Wi-Fi "NOTHING" (6 Nov): 10.115.43.235.
-// The laptop's IP changes with the Wi-Fi: run `ipconfig` on the laptop, take the Wi-Fi "IPv4 Address".
-const char* DASHBOARD_URL = "http://10.115.43.235:8000/api/hw/telemetry";
+// The laptop's IP changes with the Wi-Fi: on the laptop run  python -m tools.lan_setup  (or ipconfig, Wi-Fi IPv4).
+const String NETRAX_HOST  = SECRET_NETRAX_HOST;
+const String DASHBOARD_URL = NETRAX_HOST + "/api/hw/telemetry";
+const String LOCATION_URL  = NETRAX_HOST + "/api/location/hardware";
 const char* DEVICE_ID     = "esp32-ppe-01";           // must match config/hardware.yaml
 
 const unsigned long SEND_EVERY_MS = 1000;            // NETRAX marks the station OFFLINE after 6 s without data
@@ -69,6 +86,11 @@ const unsigned long SEND_EVERY_MS = 1000;            // NETRAX marks the station
 // Outputs
 #define BUZZER_PIN       14
 #define RELAY_PIN        25
+
+// GPS NEO-6M (UART2)
+#define GPS_RX_PIN       16   // ESP32 receives from GPS TX
+#define GPS_TX_PIN       17   // ESP32 transmits to GPS RX
+#define GPS_BAUD_RATE    9600
 
 
 // =====================================================
@@ -128,6 +150,15 @@ bool motionAvailable = false;
 
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
+float vibrationG = 0;             // | total acceleration - 1 g |, in g (MPU6050 +-2 g range: 16384 per g)
+
+TinyGPSPlus gps;
+unsigned long lastGpsSend = 0;
+int lastGpsHttp = 0;
+const unsigned long GPS_SEND_EVERY_MS = 10000;
+
+bool ledState = false;
+unsigned long lastBlink = 0;
 
 bool temperatureWarning = false;
 bool temperatureCritical = false;
@@ -235,6 +266,8 @@ bool readMotionSensor() {
   gx = (int16_t)((data[8] << 8) | data[9]);
   gy = (int16_t)((data[10] << 8) | data[11]);
   gz = (int16_t)((data[12] << 8) | data[13]);
+  float g = sqrt((float)ax * ax + (float)ay * ay + (float)az * az) / 16384.0;
+  vibrationG = fabs(g - 1.0);
   return true;
 }
 
@@ -260,9 +293,15 @@ void setRelay(bool state) {
 }
 
 void setIndicators(bool red, bool yellow) {
-  digitalWrite(GREEN_LED, (!red && !yellow) ? HIGH : LOW);
-  digitalWrite(YELLOW_LED, (!red && yellow) ? HIGH : LOW);
-  digitalWrite(RED_LED, red ? HIGH : LOW);
+  // team's new version: the LED of the current state BLINKS - green 500 ms, yellow 250 ms, red 100 ms
+  unsigned long every = red ? 100 : yellow ? 250 : 500;
+  if (millis() - lastBlink >= every) {
+    lastBlink = millis();
+    ledState = !ledState;
+  }
+  digitalWrite(GREEN_LED, (!red && !yellow && ledState) ? HIGH : LOW);
+  digitalWrite(YELLOW_LED, (!red && yellow && ledState) ? HIGH : LOW);
+  digitalWrite(RED_LED, (red && ledState) ? HIGH : LOW);
 }
 
 
@@ -337,8 +376,35 @@ void checkSafetyConditions() {
   bool red = criticalDanger || dashboardRed;
   bool yellow = mediumDanger || dashboardOrange;
   setIndicators(red, yellow);
-  setBuzzer(red);
-  setRelay(red);
+  setBuzzer(red || mediumDanger);  // team's new rule: buzzer ON continuously for WARNING or CRITICAL
+  setRelay(red);                   // relay only for CRITICAL
+}
+
+
+// =====================================================
+// 11b. GPS (NEO-6M) - never blocks; position to NETRAX every 10 s once there is a fix
+// =====================================================
+
+void readGPS() {
+  while (Serial2.available() > 0) {
+    gps.encode(Serial2.read());
+  }
+}
+
+void sendLocation() {
+  if (WiFi.status() != WL_CONNECTED || !gps.location.isValid() || gps.location.age() > 5000) return;
+  String j = "{\"device_id\":\"" + String(DEVICE_ID) + "\",\"fix\":true";
+  j += ",\"lat\":" + String(gps.location.lat(), 6);
+  j += ",\"lon\":" + String(gps.location.lng(), 6);
+  if (gps.hdop.isValid()) j += ",\"accuracy_m\":" + String(gps.hdop.hdop() * 5.0, 1);   // rough: HDOP x 5 m
+  j += "}";
+  HTTPClient http;
+  http.setConnectTimeout(800);
+  http.setTimeout(1200);
+  if (!http.begin(LOCATION_URL)) return;
+  http.addHeader("Content-Type", "application/json");
+  lastGpsHttp = http.POST(j);
+  http.end();
 }
 
 
@@ -362,12 +428,17 @@ void sendToDashboard() {
   j += ",\"helmet_fsr_adc\":" + String(fsrValue);
   j += ",\"pm_adc\":" + String(pmADC);
   j += ",\"pm_sensor_v\":" + String(pmSensorVoltage, 3);       // raw voltage only - PM2.5 is NOT calibrated
+  j += ",\"mpu6050_available\":" + String(motionAvailable ? "true" : "false");
   if (motionAvailable) {
+    j += ",\"vibration_metric\":" + String(vibrationG, 3);
     j += ",\"accel\":[" + String(ax) + "," + String(ay) + "," + String(az) + "]";
     j += ",\"gyro\":[" + String(gx) + "," + String(gy) + "," + String(gz) + "]";
   }
+  if (gps.location.isValid()) {
+    j += ",\"gps\":{\"lat\":" + String(gps.location.lat(), 6) + ",\"lon\":" + String(gps.location.lng(), 6) + "}";
+  }
   j += ",\"alarm_level\":\"" + String(criticalDanger ? "CRITICAL" : mediumDanger ? "WARNING" : "NORMAL") + "\"";
-  j += ",\"buzzer_on\":" + String((criticalDanger || dashboardRed) ? "true" : "false");
+  j += ",\"buzzer_on\":" + String((criticalDanger || mediumDanger || dashboardRed) ? "true" : "false");
   j += ",\"relay_on\":" + String((criticalDanger || dashboardRed) ? "true" : "false");
   j += ",\"rssi\":" + String(WiFi.RSSI());
   j += "}";
@@ -405,7 +476,16 @@ void printReport() {
   Serial.print("MQ-2 ADC "); Serial.print(mq2Value); Serial.print("   MQ-135 ADC "); Serial.println(mq135Value);
   Serial.print("Helmet FSR "); Serial.print(fsrValue); Serial.println(helmetWarning ? "  (no pressure - check helmet)" : "  (pressure ok)");
   Serial.print("Dust sensor "); Serial.print(pmSensorVoltage, 2); Serial.println(" V (not calibrated)");
-  Serial.print("Motion sensor: "); Serial.println(motionAvailable ? "ok" : "NOT AVAILABLE");
+  Serial.print("Motion sensor: "); if (motionAvailable) { Serial.print("ok, vibration "); Serial.print(vibrationG, 3); Serial.println(" g"); } else Serial.println("NOT AVAILABLE");
+  Serial.print("GPS: ");
+  if (gps.location.isValid()) {
+    Serial.print(gps.location.lat(), 6); Serial.print(", "); Serial.print(gps.location.lng(), 6);
+    Serial.print("  satellites "); Serial.print(gps.satellites.isValid() ? (int)gps.satellites.value() : 0);
+    Serial.print(lastGpsHttp == 200 ? "  (sent to NETRAX)" : "  (not sent yet)"); Serial.println();
+  } else {
+    Serial.print("waiting for satellite fix (characters from GPS: "); Serial.print(gps.charsProcessed());
+    Serial.println(gps.charsProcessed() < 10 ? " - check GPS wiring TX->16, RX->17)" : ")");
+  }
   Serial.print("Local status: "); Serial.println(criticalDanger ? "RED - CRITICAL" : mediumDanger ? "YELLOW - WARNING" : "GREEN - NORMAL");
   Serial.print("NETRAX: ");
   if (lastHttpCode == 200) Serial.println(dashboardRed ? "connected - dashboard says ALARM" : dashboardOrange ? "connected - dashboard says WARNING" : "connected - OK");
@@ -448,6 +528,11 @@ void setup() {
   delay(100);
   Serial.println(writeRegister(0x6B, 0x00) ? "Motion sensor wake-up command sent" : "Motion sensor communication failed");
 
+  // GPS NEO-6M on UART2. Bigger receive buffer: an HTTP send can take ~1 s, the GPS keeps talking meanwhile.
+  Serial2.setRxBufferSize(2048);
+  Serial2.begin(GPS_BAUD_RATE, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  Serial.println("NEO-6M GPS started (TX -> GPIO16, RX -> GPIO17, 9600 baud). First fix outdoors can take 1-5 min.");
+
   connectWiFi();
   Serial.println("System initialization complete. Serial Monitor: 115200 baud");
 }
@@ -461,6 +546,7 @@ unsigned long lastReport = 0;
 
 void loop() {
   keepWiFi();
+  readGPS();
   readAllSensors();
   checkSafetyConditions();
 
@@ -469,9 +555,14 @@ void loop() {
     sendToDashboard();
     checkSafetyConditions();                   // apply NETRAX's reply at once
   }
+  if (millis() - lastGpsSend >= GPS_SEND_EVERY_MS) {
+    lastGpsSend = millis();
+    sendLocation();
+  }
   if (millis() - lastReport >= 5000) {
     lastReport = millis();
     printReport();
   }
-  delay(100);
+  readGPS();
+  delay(20);                                   // short: smooth LED blinking, GPS buffer emptied often
 }

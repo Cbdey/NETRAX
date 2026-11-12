@@ -41,6 +41,44 @@ class _EchoDetector:
                  "items": [], "parts": [], "fire": [] if fl else None, "timings": {"total_ms": 10}} for f, fl in zip(frames, flags)]
 
 
+def _warm_shapes(det, settings, max_batch):
+    """11 Nov: with cudnn.benchmark every NEW (picture shape, batch size) pair is tuned on first use - measured ~3 s each
+    on this laptop (on battery). With 3 cameras those pairs turned up one by one during the first minute: every camera
+    timed out ('inference engine did not answer in time'), tiles went DEGRADED / OFFLINE = 'the cameras closed'.
+    Tune the usual camera shapes NOW, before the engine says ready. A real snapshot (with a person) is used so the PPE /
+    shoe models are tuned too. settings processing.warm_shapes [[h, w], ...]; [] = off."""
+    import glob
+    import os
+    shapes = (settings.get("processing") or {}).get("warm_shapes", [[720, 1280], [640, 480], [480, 640]])
+    if not shapes:
+        return
+    t0 = time.perf_counter()
+    img = None
+    try:
+        import cv2
+        from .config import path
+        snaps = sorted(glob.glob(path("data/snapshots/*.jpg")), key=os.path.getmtime)[-20:]
+        for p in reversed(snaps):
+            img = cv2.imread(p)
+            if img is not None:
+                break
+    except Exception:                                    # noqa: BLE001
+        img = None
+    sizes = sorted({1, min(2, max_batch)})
+    for h, w in shapes:
+        try:
+            if img is not None:
+                import cv2
+                frame = cv2.resize(img, (int(w), int(h)))
+            else:
+                frame = np.zeros((int(h), int(w), 3), np.uint8)
+            for n in sizes:
+                det.detect_batch([frame.copy() for _ in range(n)], [True] * n)
+        except Exception as e:                           # noqa: BLE001 - warm-up must never stop the engine
+            print(f"[engine] warm-up {h}x{w} skipped: {e!r}", flush=True)
+    print(f"[engine] tuned for camera shapes {shapes} x batch {sizes} in {time.perf_counter() - t0:.1f} s", flush=True)
+
+
 def _child(settings, factory, req_q, res_q, max_batch, gather_s):
     import os
     os.environ.setdefault("OMP_NUM_THREADS", "4")
@@ -55,6 +93,7 @@ def _child(settings, factory, req_q, res_q, max_batch, gather_s):
     else:
         from .detector import Detector
         det = Detector(settings)
+        _warm_shapes(det, settings, max_batch)
     res_q.put(("ready", {"supported": sorted(det.supported), "has_parts": bool(det.has_parts),
                          "device": str(det.device), "runtime": getattr(det, "runtime", "pytorch")}))
     shms = {}
@@ -125,6 +164,7 @@ class ProcessEngine:
         assert kind == "ready"
         self.det = _DetInfo(info)
         self.pending, self.lock, self.n = {}, threading.Lock(), 0
+        self.inflight = {}                              # cam -> its newest _Req (one request per camera at a time)
         self.shm = {}                                   # cam -> SharedMemory
         self.batch_ms, self.wait_ms, self.batch_sizes = deque(maxlen=200), deque(maxlen=200), deque(maxlen=200)
         self.busy = deque(maxlen=400)
@@ -147,18 +187,24 @@ class ProcessEngine:
     def infer(self, cam, frame, want_fire, rank=1, timeout=5.0):
         if not self.proc.is_alive():
             raise RuntimeError("AI process stopped")
+        old = self.inflight.get(cam)
+        if old is not None and not old.done.is_set():
+            # 11 Nov: the previous request of this camera timed out but is still queued / running in the AI process.
+            # Sending another one piled stale frames into the queue (every camera fell further behind) and overwrote
+            # the shared picture while the AI was reading it. Wait for that answer first; never queue a second one.
+            if not old.done.wait(timeout):
+                raise TimeoutError("inference engine did not answer in time")
         s = self._buffer(cam, frame)                    # one frame per camera in flight: safe to overwrite now
         r = _Req()
         with self.lock:
             self.n += 1
             rid = self.n
             self.pending[rid] = r
+            self.inflight[cam] = r
         self.req_q.put({"id": rid, "cam": cam, "shm": s.name, "shape": tuple(frame.shape), "dtype": str(frame.dtype),
                         "fire": want_fire, "rank": rank, "t": time.perf_counter()})
         if not r.done.wait(timeout):
-            with self.lock:
-                self.pending.pop(rid, None)
-            raise TimeoutError("inference engine did not answer in time")
+            raise TimeoutError("inference engine did not answer in time")     # stays in pending/inflight: see above
         if r.error:
             raise RuntimeError(r.error)
         return r.result

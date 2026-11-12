@@ -102,6 +102,23 @@ def ppe_evt(eid, action, items, wid=None, **kw):
                  "captured_at": datetime.now(timezone.utc).isoformat()}, **kw)
 
 
+def voice_sentences():
+    """12 Nov (prompt pack step 7): the three fixed sentences, name first, all items in icon order."""
+    reg = m.ppe_text({"type": "ppe_missing", "worker_id": "W-004", "worker_name": "Ritika", "zone_name": "Welding bay",
+                      "items_missing": ["gloves", "helmet"]})
+    unreg = m.ppe_text({"type": "ppe_missing", "worker_id": "V-003", "zone_name": "Welding bay", "items_missing": ["helmet"]})
+    acc = m.access_text({"type": "unauthorized_entry", "worker_id": "W-002", "worker_name": "Sourav", "zone_name": "Control room"})
+    nobody = m.ppe_text({"type": "ppe_missing", "worker_id": None, "worker_name": "Guess", "zone_name": "Store", "items_missing": ["vest"]})
+    check(f"voice, registered: '{reg}'", reg == "Attention Ritika, worker W 0 0 4. Helmet and gloves missing. Please wear them now.")
+    check(f"voice, unregistered: '{unreg}'",
+          unreg == "Attention, unregistered person in the Welding bay. Helmet missing. Please wear it now. Report to the supervisor.")
+    check(f"voice, unauthorised: '{acc}'", acc == "Attention Sourav, worker W 0 0 2. You are not authorised in the Control room. Please leave now.")
+    check("voice never speaks a name we do not know (no worker ID = unregistered person)", "Guess" not in nobody)
+
+
+voice_sentences()
+
+
 async def run_voice():
     await m.ingest_event(ppe_evt("evt_voice1", "open", ["helmet", "vest"], "W-001"))
     check("PPE alarm -> spoken once", said("evt_voice1", "ppe") == 1)
@@ -109,8 +126,8 @@ async def run_voice():
     check("update with the SAME items (handover / new snapshot / name) -> no second call", said("evt_voice1") == 1)
     await m.ingest_event(ppe_evt("evt_voice1", "update", ["helmet", "vest", "goggles"], "W-001"))
     last = db.q("SELECT text FROM announcements WHERE event_id='evt_voice1' ORDER BY id DESC LIMIT 1")[0]["text"]
-    check("29 Oct: goggles found missing later on the same person -> NEW call 'Also missing: safety goggles'",
-          said("evt_voice1", "ppe") == 2 and "Also missing: safety goggles" in last
+    check(f"29 Oct / 12 Nov: goggles found missing later on the same person -> NEW call '{last}'",
+          said("evt_voice1", "ppe") == 2 and last == "Allowed, safety goggles also missing."
           and db.get_event("evt_voice1")["items_missing"] == ["helmet", "vest", "goggles"])
     kinds_ = [r["kind"] for r in db.q("SELECT kind FROM notifications WHERE event_id='evt_voice1'")]
     check("29 Oct: ... and ONE Telegram/e-mail 'more PPE missing: GOGGLES' per channel",
@@ -145,8 +162,8 @@ async def run_voice():
     # 29 Oct bug: supervisor pressed Resolve, the worker still wears nothing -> the camera is told, looks again,
     # and the NEW alert gets the full alarm + messages (no 'same person' silence, no flood-control hold)
     m.SPOKEN.clear()
-    await m.ingest_event(ppe_evt("evt_rs1", "open", ["helmet", "vest", "goggles"], "W-001"))
-    await m.ingest_event(ppe_evt("evt_rs1", "update", ["helmet", "vest", "goggles", "gloves"], "W-001"))
+    await m.ingest_event(ppe_evt("evt_rs1", "open", ["helmet", "vest", "goggles"], "W-095"))
+    await m.ingest_event(ppe_evt("evt_rs1", "update", ["helmet", "vest", "goggles", "gloves"], "W-095"))
     await m._act("evt_rs1", "ack", "acknowledged", {})
     await m._act("evt_rs1", "resolve", "resolved", {})
 
@@ -159,11 +176,21 @@ async def run_voice():
     reply2 = await m.camera_frame("cam_02", _Req())
     check("29 Oct: Resolve -> the camera's next frame reply tells it (closed: evt_rs1); other cameras not told",
           "evt_rs1" in (reply.get("closed") or []) and "closed" not in reply2)
-    await m.ingest_event(ppe_evt("evt_rs2", "open", ["helmet", "vest", "goggles", "gloves"], "W-001", reopen_of="evt_rs1"))
-    k2 = [r["kind"] for r in db.q("SELECT kind FROM notifications WHERE event_id='evt_rs2'")]
-    check("29 Oct: still no PPE after Resolve -> NEW alert spoken again + Telegram/e-mail 'still missing after resolve'",
-          said("evt_rs2", "ppe") == 1 and db.get_event("evt_rs2")["status"] == "open"
-          and any(k.startswith("still missing after resolve") for k in k2))
+    n1 = said("evt_rs1", "ppe")
+    await m.ingest_event(ppe_evt("evt_rs2", "open", ["helmet", "vest", "goggles", "gloves"], "W-095", reopen_of="evt_rs1"))
+    k1 = [(r["kind"], r["channel"]) for r in db.q("SELECT kind, channel FROM notifications WHERE event_id='evt_rs1'")]
+    still = [c for k, c in k1 if k.startswith("still missing after resolve")]
+    # 12 Nov (prompt pack step 6, one alert per violation): within regrace_s the SAME alert comes back (not a second
+    # alert): spoken again once + ONE Telegram update 'still missing after resolve' (no new e-mail)
+    check(f"12 Nov: still no PPE right after Resolve -> the SAME alert re-opens, spoken again, ONE Telegram update "
+          f"({db.get_event('evt_rs1')['status']}, {still})",
+          db.get_event("evt_rs2") is None and db.get_event("evt_rs1")["status"] == "open"
+          and said("evt_rs1", "ppe") == n1 + 1 and still == ["telegram"])
+    await m._act("evt_rs1", "resolve", "resolved", {})
+    db.x("UPDATE events SET ended_at=? WHERE event_id='evt_rs1'", (time.time() - 200,))     # resolved > regrace_s ago
+    await m.ingest_event(ppe_evt("evt_rs3", "open", ["helmet"], "W-095"))
+    check("12 Nov: seen violating again after the grace time -> a NEW alert", db.get_event("evt_rs3") is not None
+          and db.get_event("evt_rs3")["status"] == "open")
 
 
 m.SPK.update(repeat_after_s=60, max_repeats=1)

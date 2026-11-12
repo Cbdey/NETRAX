@@ -10,7 +10,7 @@ window.NetraxZentrix = (function () {
     get(k, d, s = sessionStorage) { try { const v = s.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v, s = sessionStorage) { try { s.setItem(k, JSON.stringify(v)); } catch {} }
   };
-  const HOME = {focus: "/", unfocus: "/", view: "/", fullscreen: "/", report: "/admin#reports"};
+  const HOME = {focus: "/", unfocus: "/", view: "/", fullscreen: "/", box: "/", report: "/admin#reports"};
   const WAKE = /^\s*(?:(?:hey|hi|hello|ok|okay)\s+)?(?:zentrix|zen\s*trix|zentrex|zentricks|zen\s*tricks|sentrix|centrix|sentry\s*x|zendrix|xentrix|zentrics|sentrics|sun\s*tricks)\b[\s,.:!-]*/i;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let voiceWhy = "";
@@ -20,49 +20,53 @@ window.NetraxZentrix = (function () {
   let history = store.get("zx-log", []);
 
   const css = `
-.zx-launch{position:fixed;left:16px;bottom:16px;z-index:96;display:flex;align-items:center;gap:10px;border:2px solid var(--teal,#14b8a6);
-  background:var(--panel,#11222b);color:var(--ink,#eaf3f4);border-radius:999px;padding:10px 18px 10px 10px;font:800 16px/1.1 inherit;cursor:pointer;
-  box-shadow:0 8px 28px rgba(0,0,0,.45),0 0 18px -4px var(--teal,#14b8a6)}
-.zx-launch small{display:block;font-weight:600;font-size:11.5px;color:var(--muted,#93aab1)}
-.zx-navbtn{border:1px solid var(--teal,#14b8a6);background:transparent;color:var(--teal,#14b8a6);border-radius:8px;padding:5px 10px;font-weight:800;cursor:pointer;font-size:13px;margin-left:4px}
-.zx-navbtn:hover{background:var(--teal,#14b8a6);color:#05201c}
-.zx-launch .dot{width:34px;height:34px;font-size:17px;border-radius:50%;background:var(--teal,#14b8a6);color:#05201c;display:grid;place-items:center;font-size:14px}
-.zx-launch.listen .dot{animation:zxp 1.2s infinite}
+.zx-launch{display:inline-flex;align-items:center;gap:9px;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:5px 15px 5px 5px;cursor:pointer;
+  background:linear-gradient(135deg,#0ea5a4 0%,#6366f1 60%,#a855f7 100%);color:#fff;font:800 var(--fs-s,14px)/1.1 "Segoe UI",system-ui,sans-serif;letter-spacing:.02em;
+  box-shadow:0 6px 22px -6px rgba(99,102,241,.75),inset 0 1px 0 rgba(255,255,255,.25);white-space:nowrap;transition:transform .15s,box-shadow .15s;flex:none}
+.zx-launch:hover{transform:translateY(-1px);box-shadow:0 10px 28px -6px rgba(99,102,241,.9),inset 0 1px 0 rgba(255,255,255,.25)}
+.zx-launch[aria-expanded="true"]{box-shadow:0 0 0 3px rgba(129,140,248,.45),0 6px 22px -6px rgba(99,102,241,.75)}
+.zx-launch small{display:block;font-weight:600;font-size:var(--fs-xs,13px);opacity:.85;letter-spacing:.04em}
+.zx-launch .dot{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.2);display:grid;place-items:center;font-size:var(--fs-m,16px)}
+.zx-launch.fixed{position:fixed;top:12px;right:16px;z-index:96}
+.zx-launch.listen .dot{animation:zxp 1.2s infinite;background:#ef4444}
+@media (max-width:1800px){.zx-launch small{display:none}.zx-launch{padding:5px 13px 5px 5px}}
 @keyframes zxp{0%{box-shadow:0 0 0 0 rgba(20,184,166,.6)}100%{box-shadow:0 0 0 12px rgba(20,184,166,0)}}
 .zx{display:flex;flex-direction:column;background:var(--panel,#11222b);color:var(--ink,#eaf3f4);border:1px solid var(--line,#24414b);border-radius:14px;overflow:hidden}
-.zx.float{position:fixed;left:16px;bottom:16px;z-index:97;width:min(420px,calc(100vw - 32px));height:min(620px,calc(100vh - 90px));box-shadow:0 16px 48px rgba(0,0,0,.45)}
+.zx.float{position:fixed;right:16px;top:74px;z-index:97;width:min(430px,calc(100vw - 32px));height:min(620px,calc(100vh - 92px));
+  box-shadow:0 24px 60px -12px rgba(0,0,0,.6),0 0 0 1px rgba(129,140,248,.35);border-top:3px solid #818cf8;animation:zxdrop .22s ease-out}
+@keyframes zxdrop{from{opacity:0;transform:translateY(-8px)}}
 .zx.inline{height:520px}
 .zx-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line,#24414b);background:var(--panel2,#162c37)}
-.zx-head b{font-size:16px;letter-spacing:.03em}.zx-head .sp{flex:1}
-.zx-head small{color:var(--muted,#93aab1);font-size:12px}
-.zx-ib{border:1px solid var(--line,#24414b);background:transparent;color:var(--ink,#eaf3f4);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:13px}
+.zx-head b{font-size:var(--fs-m,16px);letter-spacing:.03em}.zx-head .sp{flex:1}
+.zx-head small{color:var(--muted,#93aab1);font-size:var(--fs-s,14px)}
+.zx-ib{border:1px solid var(--line,#24414b);background:transparent;color:var(--ink,#eaf3f4);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:var(--fs-s,14px)}
 .zx-ib[aria-pressed="true"]{background:var(--teal,#14b8a6);color:#05201c;border-color:var(--teal,#14b8a6)}
 .zx-ib:disabled{opacity:.45;cursor:not-allowed}
 .zx-log{flex:1;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
-.zx-m{max-width:92%;padding:8px 11px;border-radius:12px;font-size:14px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word}
+.zx-m{max-width:92%;padding:8px 11px;border-radius:12px;font-size:var(--fs-s,14px);line-height:1.4;white-space:pre-wrap;word-wrap:break-word}
 .zx-m.u{align-self:flex-end;background:var(--teal,#14b8a6);color:#05201c;border-bottom-right-radius:4px}
 .zx-m.a{align-self:flex-start;background:var(--panel2,#162c37);border:1px solid var(--line,#24414b);border-bottom-left-radius:4px}
 .zx-m.a.err{border-color:var(--crit,#ef4444)}
-.zx-m .mic{font-size:11px;opacity:.7;display:block;margin-bottom:2px}
+.zx-m .mic{font-size:var(--fs-xs,13px);opacity:.7;display:block;margin-bottom:2px}
 .zx-an{display:flex;flex-direction:column;gap:6px;margin-top:6px;white-space:normal}
 .zx-ac{border:1px solid var(--line,#24414b);border-left:5px solid var(--grey,#64748b);border-radius:8px;padding:6px 8px;background:var(--panel,#11222b);cursor:pointer}
 .zx-ac.hot{border-left-color:var(--crit,#ef4444)}.zx-ac.ok{border-left-color:var(--ok,#22c55e)}.zx-ac.unk{border-left-color:var(--warn,#f5b301)}
-.zx-ac b{display:block;font-size:13px}.zx-ac small{color:var(--muted,#93aab1);font-size:12px;display:block}
-.zx-ac .rec{display:inline-block;margin-top:3px;font-size:11px;font-weight:800;padding:1px 7px;border-radius:999px;background:var(--panel2,#162c37);border:1px solid var(--line,#24414b)}
+.zx-ac b{display:block;font-size:var(--fs-s,14px)}.zx-ac small{color:var(--muted,#93aab1);font-size:var(--fs-s,14px);display:block}
+.zx-ac .rec{display:inline-block;margin-top:3px;font-size:var(--fs-xs,13px);font-weight:800;padding:1px 7px;border-radius:999px;background:var(--panel2,#162c37);border:1px solid var(--line,#24414b)}
 .zx-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.zx-btns button{border:1px solid var(--line,#24414b);background:var(--panel,#11222b);color:var(--ink,#eaf3f4);border-radius:8px;padding:5px 11px;cursor:pointer;font-weight:700;font-size:13px}
+.zx-btns button{border:1px solid var(--line,#24414b);background:var(--panel,#11222b);color:var(--ink,#eaf3f4);border-radius:8px;padding:5px 11px;cursor:pointer;font-weight:700;font-size:var(--fs-s,14px)}
 .zx-btns button.pri{background:var(--teal,#14b8a6);color:#05201c;border-color:var(--teal,#14b8a6)}
 .zx-btns button.red{background:var(--crit,#ef4444);color:#fff;border-color:var(--crit,#ef4444)}
 .zx-chips{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding:0 12px 8px;scrollbar-width:thin}
-.zx-chips button{flex:none;white-space:nowrap;border:1px dashed var(--line,#24414b);background:transparent;color:var(--muted,#93aab1);border-radius:999px;padding:3px 9px;cursor:pointer;font-size:12px}
+.zx-chips button{flex:none;white-space:nowrap;border:1px dashed var(--line,#24414b);background:transparent;color:var(--muted,#93aab1);border-radius:999px;padding:3px 9px;cursor:pointer;font-size:var(--fs-s,14px)}
 .zx-foot{display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--line,#24414b)}
-.zx-foot input{flex:1;min-width:0;padding:9px 11px;border-radius:9px;border:1px solid var(--line,#24414b);background:var(--panel2,#162c37);color:var(--ink,#eaf3f4);font-size:14px}
-.zx-foot button{border-radius:9px;border:1px solid var(--line,#24414b);background:var(--panel2,#162c37);color:var(--ink,#eaf3f4);padding:0 12px;cursor:pointer;font-size:16px}
-.zx-foot button.send{background:var(--teal,#14b8a6);color:#05201c;border-color:var(--teal,#14b8a6);font-weight:800;font-size:14px}
+.zx-foot input{flex:1;min-width:0;padding:9px 11px;border-radius:9px;border:1px solid var(--line,#24414b);background:var(--panel2,#162c37);color:var(--ink,#eaf3f4);font-size:var(--fs-s,14px)}
+.zx-foot button{border-radius:9px;border:1px solid var(--line,#24414b);background:var(--panel2,#162c37);color:var(--ink,#eaf3f4);padding:0 12px;cursor:pointer;font-size:var(--fs-m,16px)}
+.zx-foot button.send{background:var(--teal,#14b8a6);color:#05201c;border-color:var(--teal,#14b8a6);font-weight:800;font-size:var(--fs-s,14px)}
 .zx-foot button.rec{background:var(--crit,#ef4444);color:#fff;border-color:var(--crit,#ef4444);animation:zxp 1.2s infinite}
-.zx-state{font-size:12px;color:var(--muted,#93aab1);padding:0 12px 6px;min-height:16px}
+.zx-state{font-size:var(--fs-s,14px);color:var(--muted,#93aab1);padding:0 12px 6px;min-height:16px}
 .zx-recs{display:flex;flex-direction:column;gap:4px;margin-top:6px}
-.zx-recs a{color:inherit;text-decoration:none;font-size:12px;border:1px solid var(--line,#24414b);border-radius:7px;padding:4px 7px;display:block}
+.zx-recs a{color:inherit;text-decoration:none;font-size:var(--fs-s,14px);border:1px solid var(--line,#24414b);border-radius:7px;padding:4px 7px;display:block}
 @media (prefers-reduced-motion:reduce){.zx-launch.listen .dot,.zx-foot button.rec{animation:none}}`;
 
   /* ---------- UI ---------- */
@@ -100,18 +104,18 @@ window.NetraxZentrix = (function () {
     if (!inline) {
       root.querySelector("#zxClose").onclick = () => setOpen(false);
       const l = document.createElement("button"); l.className = "zx-launch"; l.id = "zxLaunch"; l.type = "button";
-      l.innerHTML = `<span class="dot" aria-hidden="true">🎙</span><span>Zentrix AI<small>type or speak a command · Alt+Z</small></span>`; l.title = "Zentrix AI assistant (Alt+Z)";
-      l.onclick = () => setOpen(true); document.body.appendChild(l);
+      l.innerHTML = `<span class="dot" aria-hidden="true">🎙</span><span>Zentrix AI<small>type or speak · Alt+Z</small></span>`; l.title = "Zentrix AI assistant (Alt+Z)";
+      l.setAttribute("aria-expanded", "false");
+      l.onclick = () => { setOpen(!open); if (open) input.focus(); };
+      // 11 Nov: in the page's top bar (a page marks the place with data-zx-slot), else top-right corner
+      const slot = document.querySelector("[data-zx-slot]") || document.querySelector(".nxnav") || document.querySelector("header nav");
+      if (slot) (slot.matches("[data-zx-slot]") ? slot.appendChild(l) : slot.insertAdjacentElement("afterend", l));
+      else { l.classList.add("fixed"); document.body.appendChild(l); }
     }
     document.addEventListener("keydown", ev => {
       if (ev.altKey && (ev.key === "z" || ev.key === "Z")) { ev.preventDefault(); setOpen(inline ? true : !open); if (open || inline) input.focus(); }
       if (ev.altKey && (ev.key === "m" || ev.key === "M")) { ev.preventDefault(); setOpen(true); micBtn.click(); }
     });
-    const nav = document.querySelector(".nxnav");          // a Zentrix button in every page's top menu too
-    if (nav && !document.getElementById("zxNavBtn")) {
-      const b = document.createElement("button"); b.type = "button"; b.id = "zxNavBtn"; b.className = "zx-navbtn"; b.textContent = "🤖 Zentrix";
-      b.title = "Open the Zentrix AI assistant (Alt+Z)"; b.onclick = () => { setOpen(true); input.focus(); }; nav.appendChild(b);
-    }
     if (!SR || !window.isSecureContext) {                  // keep the buttons visible; explain on click
       voiceWhy = !SR ? "Voice needs Microsoft Edge or Google Chrome (this browser has no speech recognition). You can type the command." :
         `The browser allows the microphone only on a secure page. On the laptop open http://127.0.0.1:8000${location.pathname} - voice works there. From another device: type the command.`;
@@ -126,8 +130,8 @@ window.NetraxZentrix = (function () {
     open = v; store.set("zx-open", v);
     if (inline) return;
     root.style.display = v ? "" : "none";
-    const l = document.getElementById("zxLaunch"); if (l) l.style.display = v ? "none" : "";
-    if (v) log.scrollTop = log.scrollHeight;
+    const l = document.getElementById("zxLaunch"); if (l) l.setAttribute("aria-expanded", v ? "true" : "false");
+    if (v) { const r = l && l.getBoundingClientRect(); if (r && !l.classList.contains("fixed")) root.style.top = Math.max(12, Math.round(r.bottom + 10)) + "px"; log.scrollTop = log.scrollHeight; }
   }
   function paint() {
     if (!root) return;

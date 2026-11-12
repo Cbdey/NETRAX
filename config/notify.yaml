@@ -6,9 +6,9 @@ timezone: Asia/Kolkata          # time printed in every message (IST)
 dashboard_url: http://127.0.0.1:8000   # link in messages - use the laptop's Wi-Fi IP for phones
 include_worker_names: true      # worker name/ID in messages (only for registered, consented workers)
 
-# Channels in use (29 Oct: team decision - Telegram + e-mail only; phone call / SMS switched off).
-# Add call / sms back here to use Twilio again (code and settings are kept).
-enabled_channels: [telegram, email]
+# Channels in use. 11 Nov: phone CALL on - for EVERY fire / smoke detection (any level, camera or safety station), never
+# for PPE / access (see phone: below). SMS stays off (Twilio). Telegram + e-mail messages exactly as before.
+enabled_channels: [telegram, email, call]
 
 # Which channels fire for which incident. Keys are matched in this order:
 #   fire_level_3 / fire_level_2 / fire_level_1   (fire and smoke, by severity level)
@@ -16,19 +16,46 @@ enabled_channels: [telegram, email]
 #   <event type>              e.g. entrance_denied
 #   <Severity>                Critical / High / Medium / Low
 rules:
-  fire_level_3: [telegram, call, sms, email]      # VERY CRITICAL - evacuate: everything, immediately
-  fire_level_2: [telegram, call, sms, email]      # CRITICAL: Telegram + phone immediately, SMS + email
+  fire_level_3: [telegram, call, sms, email]      # VERY CRITICAL - evacuate: phone call again + everything
+  fire_level_2: [telegram, call, sms, email]      # CRITICAL: Telegram + phone call immediately, SMS + email
+  fire_Critical: [telegram, call, email]          # station-only fire (sensors, no camera) before its level is set
+  smoke_Critical: [telegram, call, email]
   fire_level_1: [telegram, email]                 # WARNING: responsible operator
-  ppe_missing_Critical: [telegram, call, sms, email]
+  ppe_missing_Critical: [telegram, sms, email]    # 11 Nov: no phone CALLS for PPE (SMS stays as before)
   ppe_missing_High: [telegram, email]
   ppe_missing_Medium: [telegram]
   unauthorized_entry: [telegram, email]
   entrance_denied: [telegram, email]
-  escalation: [telegram, call, sms, email]        # supervisor did not acknowledge in time
-  Critical: [telegram, call, sms, email]
+  escalation: [telegram, call, sms, email]        # not acknowledged in time (the call is made only for a fire / smoke)
+  Critical: [telegram, sms, email]               # no calls (calls only for fire / smoke)
   High: [telegram]
   Medium: []
   Low: []
+
+# 12 Nov (prompt pack, step 6): ONE alert per violation. Key = worker ID (or, for an unidentified person, the same
+# camera + zone + nearby position) + type + zone. While that alert is open / acknowledged a new detection UPDATES it.
+# If it ended (left view, put the PPE on, AI restart, supervisor resolve) less than regrace_s ago, the same alert is
+# RE-OPENED instead of a new one. Fire / smoke are never merged. Update messages go to Telegram only.
+one_alert:
+  regrace_s: 120
+  update_channels: [telegram]
+
+# 12 Nov (prompt pack step 9): fewer e-mails. Own e-mail only for these; everything else -> one digest e-mail every 15 min.
+# Measured before: 913 sent, 203 failed (124 x Gmail "daily sending limit exceeded", 75 x no internet).
+email:
+  send_now_for: [fire, smoke, ppe_missing_Critical, ppe_missing_High, unauthorized_entry]   # + every escalation
+  digest_every_s: 900
+  daily_max: 300                # safe under Gmail's limit; when reached only fire / smoke e-mails go out (dashboard says so)
+
+# 12 Nov (prompt pack step 10): the first Telegram message of a PPE / access / fire / smoke alert has Acknowledge / Resolve
+# buttons. Only presses from the configured group chat count; audited as telegram:<name>; same path as the dashboard button.
+telegram:
+  buttons: true
+
+# No internet (DNS / connection error) is NOT a failed try: the message waits and is resent in order when the internet returns.
+offline:
+  waits_s: [5, 15, 30, 60]      # then every 60 s
+  keep_s: 7200                  # older than 2 h -> 'expired' with the reason
 
 retry:
   max_attempts: 3               # bounded retries per message (recoverable errors only)
@@ -40,6 +67,24 @@ cooldown:                       # same continuous incident is never re-sent; the
   never_for: [fire, smoke]      # fire/evacuation alerts are NEVER delayed or merged by a cooldown
 
 phone:
-  provider: twilio              # twilio (voice call + SMS)
-  voice: alice
+  # WHO is called: config/secrets.local.yaml ->  call: {to: ["+9198xxxxxxxx"]}   (phone numbers work for both providers)
+  provider: twilio              # 11 Nov (team decision): Twilio voice call. Other choices, tried in the order written:
+                                #   android   = NORMAL SIM call from an Android phone on the laptop's USB (or Wi-Fi adb). No internet.
+                                #               The phone rings the supervisor; Telegram / e-mail carry the details.
+                                #   callmebot = free Telegram VOICE call that READS the alert (backup when the phone is not connected;
+                                #               the supervisor sends /start to @CallMeBot_txtbot once; Android phones only)
+                                #   twilio    = Twilio voice call to twilio.to_numbers in secrets.local.yaml (IN USE)
+  call_every_fire: true         # EVERY fire / smoke detection rings the supervisor (any level, camera or station)
+  only_fire_smoke: true         # never call for PPE / access / entrance alerts
+  lang: en-IN-Standard-A        # CallMeBot voice (Google standard voices)
   repeat_message: 2             # the call reads the alert twice
+  text_copy: missed             # CallMeBot: also send a Telegram text if the call is missed / rejected
+  recall_after_s: 120           # (level raises) a new level within this time does not ring again - Level 3 always does
+  # 12 Nov (prompt pack step 8): the FIRST fire / smoke detection calls at once; the call is REPEATED until a supervisor
+  # presses Acknowledge or Resolve. busy / no answer / failed / network -> next try after retry_after_failed_s.
+  repeat_until_ack: true
+  repeat_every_s: 60
+  retry_after_failed_s: 20
+  max_calls: 10                 # per fire / smoke event; every attempt is its own row in the delivery log
+  ring_s: 40                    # android: hang up after this many seconds
+  voice: alice                  # twilio only

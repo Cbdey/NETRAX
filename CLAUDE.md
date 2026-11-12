@@ -362,3 +362,253 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   Fixes vs the team version: never sent anything; URL was old IP + /api/rfid; DHT22 read every 2 s; helmet FSR = WARNING (was
   CRITICAL -> buzzer always on); Wi-Fi auto-reconnect; 1.2 s HTTP timeout. Verified on a scratch backend (login on): normal -> green,
   2 flame readings -> CRITICAL red / alarm / relay. Laptop Wi-Fi "CoE In HPC and EmTek" (Public), firewall allows python.
+
+## 11 Nov 2026: "Industrial Safety Intelligence" dashboard (team's ChatGPT 9-section spec)
+- NEW page /intelligence = dashboard/intelligence.html (one self-contained file, vanilla JS + inline SVG charts, offline; loads only
+  video.js + zentrix.js). ADDITIVE: it only READS existing APIs (/api/hw/state, /api/hw/history, /api/cameras, /api/zones, /api/events,
+  /api/workers, /api/attendance, /api/health, /api/analytics/summary, /api/reports/custom, /ws/alerts, /ws/video); the only writes are the
+  normal ack / resolve / dismiss calls. No pipeline, alert logic or existing page changed (only a "Safety Intelligence" menu link added to
+  index / entrance / admin / hardware, route + PAGE_PATHS in main.py, one PAGES entry in agent.py: "open safety intelligence / factory map").
+- Sections: Overview (SAFE / WARNING / CRITICAL / NOT MONITORED - offline is never shown as safe), Live Sensors (10-min graphs, limit +
+  baseline lines, "no reading" = sensor failure, CSV), AI Monitoring (live tiles, per-camera PPE chips), Worker Management (RFID, entry /
+  exit, safety score = 100 - Critical 20 / High 12 / Medium 6 / Low 3 per violation in 30 days), Alerts Centre (tabs + actions + system
+  notices), Predictive Analytics, Factory Map (schematic of zones.yaml, not to scale), Device Health, Reports (PDF / CSV).
+- HONEST LABELS (keep): Predictive = least-squares trend line over 3 min projected 5 min + vibration z-score, NOT a trained ML model;
+  battery "not measured"; AI accuracy table = model-card numbers, not live accuracy; compliance % needs the live edge.
+- Not adopted from the ChatGPT plan: React / Tailwind / MQTT / Firebase / Chart.js (our dashboards are offline, no build step; HTTP + WebSocket
+  already do the job). The team station sketch sends accel / gyro / pm_adc, which hardware.FIELDS drops -> vibration and PM2.5 show "no reading"
+  for that firmware (the simulator sends them).
+- Tests: final_selftest [INT] x3 (116 PASS). Checked in headless Edge (dark / light, 1500 px and 390 px): 0 JS errors, no sideways scroll.
+- 11 Nov REDESIGN (user: "eye-catching, each panel its own job, no repeated data, every section its own bordered container, Zentrix at the top,
+  a new alert pops inside its PPE / fire box"). Backups: _to_delete/before_redesign_11nov/.
+  * zentrix.js: launcher is a gradient "Zentrix AI" pill in each page's TOP BAR (pages mark the place with <span data-zx-slot>; fallback
+    .nxnav / header nav / fixed top-right). Panel drops down under it (top-right). The old bottom-left launcher and the extra menu button are gone.
+  * Control room (index.html rewritten, same features + ids used by Zentrix): KPI band; left = Live cameras (3 cameras -> 1 big + 2 small) and
+    under it Entrance alerts (gate camera live + today's permitted / not permitted / manual + latest cards), Zones & people, Safety station
+    (live ESP32 readings via /api/hw/state + ws 'hardware'), System health (no camera / station rows - they have their own boxes);
+    right = separate 🔥 Fire & smoke box (L1/L2 details + live feed INSIDE the card; L3 = full-screen overlay) and 🦺 PPE & access box, each with
+    its own Active / Acknowledged / History tabs. New alert -> card pops (nx-new) + its box border pops / glows (.box.bump). The old alertzone
+    panels and the health strip were merged into these boxes (no duplicates).
+  * Safety Intelligence (intelligence.html rewritten): one colour per section, banner + bordered boxes; Overview = status + 6 KPIs + "Needs
+    attention now" (links, no alert list); AI = judging mix + camera feeds (no alert lines); Alerts Centre = 3 boxes (fire / PPE / restricted
+    access) keyed, pop + box bump on new; Predictive no longer shows 7-day bars (moved to Reports "trends"); Map detail = counts + links (no
+    sensor table); Device Health hides camera / station rows from the component table (shown above). final_selftest [INT] still passes.
+  * Checked in headless Edge (dark / light, 1600 px and 390 px): 0 JS errors, no sideways scroll; new-alert pop verified (ppeBox bump + nx-new).
+- 11 Nov evening (user: "3 cams 50/25/25, camera on/off from the dashboard, same alerts in every panel"):
+  * Control room camera wall with 3 zone cameras = ONE row: first camera (welding bay) 50 %, the two phones 25 % each, same height
+    (phones are upright, so the tall tiles suit them). < 1100 px: big on top, two below.
+  * Camera ON / OFF from the dashboard: edge/power.py (data/camera_power.json, env SENTINELEYE_POWER_FILE for tests). OFF -> the edge
+    reader goes STANDBY (device / phone stream released) = no picture, no AI, no alarms; survives restarts. POST /api/cameras/{id}/power
+    {"on": bool} (supervisor + admin; auth.classify special case, the rest of /api/cameras/ stays admin), audit camera_on / camera_off,
+    broadcast 'cameras'. cameras_payload adds fields power ("on"/"off") + can_power; a powered-off camera shows status OFF, no badge.
+    cameras.yaml enabled:false cameras cannot be switched on from the dashboard (config decision). Buttons: control room tiles (⏻ Off next
+    to Enlarge, green "Turn on" in the off tile, confirm before off), intelligence AI tiles, admin Cameras & zones.
+  * Same alerts everywhere: alerts.js side panel (admin / entrance / hardware) now has the control room's sections - 🔥 Fire & smoke,
+    🦺 PPE & access, 🚪 Entrance - each a bordered group; a new alert pops inside its group and the group border glows (nx.css .rgrp.bump).
+    Admin camera tiles and intelligence AI tiles list each camera's active alerts (same records as the control room).
+  * Tests: final_selftest [CAM] x2 (118 PASS).
+- 11 Nov late: STALE RFID "inside" fixed: ANUSKA (W-004) entered welding_bay 13 Oct 12:59, exit tap never recorded -> shown inside +
+  NOT AUTHORISED for a month. Added a manual EXITED attendance row (device_id 'dashboard') + audit_log 'attendance_checkout'.
+  DB backup: _to_delete/db_backup_11nov/sentineleye_before_anuska_fix.db. (Future idea: a "check out" button for stale entries.)
+- 11 Nov late PHONE CALLS ONLY FOR CRITICAL FIRE / SMOKE (user: "Twilio not good, call the supervisor for fire/smoke from software or
+  hardware"): notify.py phone.provider (config/notify.yaml) = callmebot (default: free CallMeBot API, Telegram VOICE call that reads
+  msg["call"] <= 250 chars; recipient sends /start to @CallMeBot_txtbot once; no audio on iPhone Telegram) | android (adb on a USB
+  Android phone: am start CALL tel:+91..., hang up after ring_s; no internet, rings only) | twilio (kept). Recipients: secrets.local.yaml
+  call.to (@telegram_name or +91 number; env ALERT_CALL_TO). notify.call_allowed: fire/smoke, Level >= 2 or severity Critical (a
+  station-only fire before its level), not verifying/suppressed; enforced in channels_for (phone.only_fire_critical). One call per
+  fire (recall_after_s 120); again for Level 3 or an unacknowledged escalation. 'sent' = provider accepted (never 'delivered').
+  enabled_channels now [telegram, email, call]; PPE / access / Critical rules have no call. Tests: final_selftest [CALL] x5 (fake HTTP /
+  fake adb; legacy tests run with NETRAX_CALL_PROVIDER=twilio) -> 123 PASS. Backups of notify.py / notify.yaml in _to_delete/db_backup_11nov/.
+- SECURITY 11 Nov: config/secrets.example.yaml (tracked) had the real Gmail app password since commit fb74e29 (local only, NOT pushed -
+  origin/main does not contain it). Template blanked; the real values are in the git-ignored secrets.local.yaml. Before any push:
+  revoke that Google app password (or rewrite the commit).
+- 11 Nov evening CALLS v2 (user: "Telegram + e-mail as before; a NORMAL phone call for EVERY fire / smoke, critical or not"):
+  notify.call_allowed = any fire / smoke not verifying / suppressed / closed; channels_for ADDS "call" to the unchanged Telegram /
+  e-mail rules (phone.call_every_fire) and strips it for everything else (phone.only_fire_smoke). phone.provider = "android,callmebot"
+  (comma TEXT on purpose - the older running code could not read a YAML list): send_call tries each in order -> Android SIM call
+  (adb; call.adb_device optional serial or Wi-Fi "ip:5555" -> adb connect) then CallMeBot Telegram voice call; the record says
+  which one worked and why the others failed. call.to = phone numbers (both providers accept +91...). tools/phone_call_setup.py
+  (status, --connect, --test with a yes-prompt). adb is NOT installed: unzip Google platform-tools into tools/platform-tools
+  (git-ignored) - the download is in the scratchpad, running it from here was blocked. Tests [CALL] x6.
+- 11 Nov evening ZENTRIX v2 (user: "open every panel / sub-panel / section, camera on/off, do everything we do by hand, only on
+  command"): agent.INTEL (intelligence#sensors/ai/workers/alerts/predict/map/devices/reports/overview), BOXES + _box (control-room
+  box + tab: "show acknowledged fire alerts", "show ppe history", "show zones and people"; op 'box', index handler scrolls + bumps
+  + clicks the tab; zentrix.js HOME box -> /), _power ("turn off camera 2" -> confirm; "turn on the warehouse camera" -> at once;
+  "all cameras"), siren ("silence the siren" / "stop the alarm"; "mute the alarm SOUND" stays the screen mute), notify test
+  (admin, confirm). main._zx_execute kinds camera_power / silence / notify_test call the SAME endpoint functions (audit, broadcast).
+  FIX: normalise() turned "acknowledged" into "acknowledge" -> "show acknowledged alerts" was read as an ACKNOWLEDGE command; past
+  tense now kept, _action_of / _actions_all ignore "acknowledged". "worker" -> "workers" by difflib (regex accepts both).
+  Tests [ZX] +4 (127 PASS when the live system is not running; [12] GPU batch / [CLIP] are timing tests that can fail while the
+  real NETRAX uses the GPU).
+- 11 Nov night: SETUP_PHONE_CALL.bat (project root, one double-click): downloads platform-tools into tools/ (curl.exe + tar; downloads
+  are blocked for Claude), asks the supervisor's number -> tools.phone_call_setup --to (writes only call.to in secrets.local.yaml;
+  10-digit Indian numbers -> +91...), checks the USB phone (data/phone_call_setup.log), offers one real test call. Not run yet.
+- 11 Nov 18:10 TEAM DECISION: phone call = TWILIO again. config/notify.yaml phone.provider: twilio (was android,callmebot; backup
+  _to_delete/before_twilio_11nov/). Who is called = twilio.to_numbers in secrets.local.yaml (1 number set). Rules unchanged: a call for
+  every fire / smoke, never for PPE / access; SMS channel still off. Trial account -> Twilio's template voice, verified numbers only.
+  SETUP_PHONE_CALL.bat / call.to are only for the android / callmebot providers (not needed now).
+- 11 Nov night (user: "cameras got closed while running; test the fire call; latency / smooth video"). MEASURED causes:
+  * cudnn.benchmark tunes every NEW (picture shape, batch size) on first use: ~3 s each on battery -> first ~16 s every camera
+    timed out, tiles DEGRADED / OFFLINE. engine_proc._warm_shapes tunes [[720,1280],[640,480],[480,640]] x batch 1-2 with a real
+    snapshot BEFORE 'ready' (settings processing.warm_shapes, [] = off; ~18 s extra start on battery). Startup timeouts: 0.
+  * A timed-out request stayed queued while the camera sent another (stale-frame pile-up + shared picture overwritten while read):
+    ProcessEngine.inflight = one request per camera; a camera waits for its late answer instead of queuing more.
+  * USB camera reopened after a black picture failed ("can't be used to capture by index") and the doubling wait reached 30 s:
+    stream waits 1 s after release, retries every <= 3 s for 10 tries, then slows down.
+  * run_edge._single_instance (127.0.0.1:48765): a second edge (run_all.bat twice) stops at once (two copies stole the cameras);
+    SENTINELEYE_EDGE_MULTI=1 allows several. Tests [12] x2 (final_selftest 129 PASS).
+  * ON BATTERY the laptop GPU / CPU are throttled: AI batch 140-180 ms, 2.5-3.8 checks/s per camera; ON CHARGER 68 ms, 5.4-10.5/s.
+    Keep the charger in for demos. Fire call path checked (no call made): any open fire / smoke -> telegram + call + email.
+- 11 Nov late night PPE ACCURACY + ALERT LOGIC (user: "vest seen on other cams but not at the entrance; one alert per violation").
+  MEASURED on own labelled frames (scratchpad decide_eval / reject_eval, live detector + association):
+  * Vest colour check threw away 301/406 REAL vests (the team's fluorescent vest is washed out to saturation 74-85 on the USB C270;
+    entrance snapshots showed 'vest? rejected: not hi-vis' at conf 0.95). validate.hivis_share also counts pale yellow / lime
+    (hue 24-48, S > vest_pale_s_min 50, V > vest_pale_v_min 130), vest_hivis_min 0.25 -> 0.20. Per-frame vest false alarms 283 -> 16
+    (not-worn caught 211 -> 203; the 14 'missed' frames are crowd / far scenes, checked: no shirt accepted as a vest).
+  * Size: helmet max width 0.60 -> 0.95 (slim standing people; close-up max 0.75), vest max height 0.62 -> 0.85. Helmet false alarms 36 -> 23.
+  * association: box top within 2.5 % of the picture (top_cut_frac) -> helmet / goggles / mask 'unverifiable' UNLESS the bare head /
+    face is seen (HEAD_EVIDENCE) - entrance close-up with the head above the picture said 'NO HELMET'. Caught counts unchanged.
+  * Entrance (edge/entrance.py): same person under a new tracker id (same place <= same_person_gap_s 3 s) or the same registered worker
+    within same_person_quiet_s 30 s inherits what was announced -> no repeated identical popup (live: 12 decisions in 2 min);
+    head cut at the top for most frames -> manual 'too close to the camera - step back so head to feet are visible'.
+  * Backend main._ppe_merge (settings incidents.merge_same_person): ONE active ppe_missing alert per person (W-id; V-id only within one
+    edge run) per camera; another edge alert of that person = update (new items -> one 'more PPE missing' message) and the alert resolves
+    only when every merged edge alert ended (PPE_SOURCES). Live 20:21-20:23: one worker had 5 open alerts on cam_01.
+    Edge health has edge_started; on a new edge run main.close_orphaned_ppe resolves older open PPE alerts of its cameras (end_reason
+    edge_restarted). Tests: final_selftest [PPE] x6 + [ENT] x2 (138 PASS); older tests run with merge off (they reuse W-001).
+  * final_selftest now always uses a scratch camera power file (data/camera_power.json had cam_02 OFF from the dashboard, 20:20 -
+    the Warehouse phone is switched OFF there; turn it on from its tile).
+  * Not changed: models (no retraining), timings (helmet off -> alert ~1.4-2.2 s high-risk), goggles false alarms (39 frames = model
+    itself, no validation) - remove goggles from a zone's required list if they disturb the demo.
+- 11 Nov night SHARED WI-FI + TEAM'S NEW STATION SKETCH (user: "everybody on friend's Wi-Fi NOTHING; hardware data on the dashboard;
+  teammates open the project from their laptops"). Backend already listens on 0.0.0.0:8000; login works over plain http (cookie not Secure).
+  * tools/lan_setup.py: Wi-Fi name + laptop IPv4 + network type, links to share (/, /intelligence, /hardware, /entrance, /admin), ESP32
+    URLs, firewall check (Python allowed on Public only - a Private network would block teammates; prints the netsh fix), backend
+    reachable; --write sets SECRET_SERVER (firmware/rfid_direct/secrets.h) + SECRET_NETRAX_HOST (firmware/netrax_station_team/secrets.h).
+    run_all.bat prints the share link (--brief) and pauses.
+  * firmware/netrax_station_team: merged the team's NEO-6M GPS version - TinyGPSPlus on UART2 (GPIO16/17, 9600, rx buffer 2048),
+    POST /api/location/hardware every 10 s with a fix (accuracy ~ HDOP x 5 m, rough); buzzer ON for WARNING or CRITICAL (team's rule),
+    relay CRITICAL only, blinking LEDs; vibration_metric = |total accel - 1 g| (mpu6050_available sent); laptop address from
+    secrets.h SECRET_NETRAX_HOST. Not compiled here (no Arduino toolchain on this laptop). Backup: _to_delete/before_gps_station_11nov/.
+    Verified on a scratch backend: telemetry + GPS accepted without login, vibration stored, welding-bay location = hardware GPS.
+  * The RFID sketch the friend sent = the old team version; firmware/rfid_direct (adapted 12 Oct) is the one to flash.
+  * Laptop IP on NOTHING unknown until it joins (on OPPO hotspot 11 Nov: 10.27.101.235). After joining: lan_setup --write, flash both
+    boards, tools.find_phones --write for the phone cameras.
+- 12 Nov: ALL devices on the friend's Wi-Fi NOTHING. Laptop 10.248.34.235 (dashboard http://10.248.34.235:8000), warehouse phone
+  10.248.34.173. PHONE ADDRESS FOLLOW: edge/phones.py - a phone camera (http://...:8080) unreachable twice -> subnet scan for IP
+  Webcam (/shot.jpg JPEG, ~1.3 s measured), takes an address no other camera uses, switches + rewrites only that camera's source:
+  line in cameras.yaml (one scan per camera per 20 s). final_selftest [CAM] phone_follow_test (139 PASS).
+  Final sketches for the friend (git-ignored, Wi-Fi password inline): firmware/friend_final/rfid_reader_final (his code, only
+  DASHBOARD_URL -> /api/rfid) and firmware/friend_final/safety_station_final (his code + lines marked [NETRAX]: Wi-Fi, telemetry
+  every 1 s, GPS every 10 s, vibration_metric). His RFID code skips unknown cards (only 3 known cards reach the dashboard). Not compiled here.
+- 12 Nov PM2.5 + GPS ON THE DASHBOARDS (user: "PM2.5 works on the Serial Monitor but never reached the dashboard; GPS instead of the
+  thermistor; live map"). backend/hardware.py: FIELDS + pm_adc, pm_sensor_v, pm_estimated, pm_zero_v; Hub._pm turns the Sharp GP2Y1010
+  voltage into pm2_5_ugm3 = (V - zero) / 0.005 (datasheet slope 0.5 V per 100 ug/m3), zero = lowest voltage of the last 30 min
+  (self-zeroing; default 0.6 V for the first 30 readings). pm_estimated=True -> NEVER a warning / smoke hazard (evaluate ignores it;
+  dashboards show no limit, "estimated · not calibrated"); a real PM sensor sending pm2_5_ugm3 alarms as before.
+  Thermistor removed (not fitted). hardware.html: GPS card (LIVE <= 60 s / LAST KNOWN / NO FIX, click -> map) + "Live location" panel
+  (OpenStreetMap embed iframe, moved only when the position changes > ~10 m, coordinates / accuracy / Google Maps / OSM / copy;
+  /api/location every 10 s + ws 'location'). intelligence.html: GPS card in Live Sensors, NEO-6M row in Device Health, persistent
+  "Live location" box under the Factory Map (built once: the section re-renders every second). Map tiles need internet; coordinates
+  work offline. Tests final_selftest [HW] x3 (142 PASS), hw_selftest ok; headless Edge on a scratch backend: 0 JS errors.
+- 12 Nov JURY FEEDBACK ("detect every PPE correctly + smoothly: safety vs normal goggles, jacket vs vest, helmet vs cap, safety vs
+  normal shoes"). tools/ppe_scene_eval.py = per-scene OK / FALSE alarm / MISSED / unsure for helmet, vest, gloves, goggles, boots on
+  datasets/own (live pipeline, frames in order). MEASURED before -> after:
+  * CAP vs HELMET: main model called caps 'helmet' (up to 0.8); v3B never did (0/35) and confirms real helmets in 67 % of frames
+    (near people 56-100 %, far ~22 %). detector._confirm_helmets gives each helmet 'confirm' (+ v3-only helmets >= 0.5);
+    association._helmet_check per-person memory (worker.helmet_mem, only when has_parts): confirmed within helmet_confirm_keep_s 30
+    -> compliant; first helmet_confirm_wait_s 1.0 -> unverifiable; then unconfirmed = cap = missing; only for people >=
+    helmet_confirm_min_height 0.35 of the picture. Cap scene ppe_08: 23/32 missed -> 0/32; ALL helmet OK/FALSE/MISSED 464/23/34 ->
+    487/19/16. Test final_selftest cap_vs_helmet_test.
+  * Goggles: v3B confidence overlaps worn / not-worn (thr 0.45: 77 % worn seen, 7 % bare faces wrongly seen; dim scene bare faces up to
+    0.69) -> no threshold fixes it; needs more training data (spectacles vs safety goggles) = retraining (ASK the user first).
+  * Jacket vs vest: vest needs hi-vis colour (>= 20 %): dark / blue / grey jackets rejected, mustard T-shirts rejected (32/32); a
+    hi-vis jacket passes (it is PPE). No jacket footage -> not measured.
+  * Shoes: safety vs normal 64/1 already (shoe_cls).
+  * Speed: live new-person PPE alarms took 4-6 s (median) - mostly detection flicker (+ first look). first_look_s high 2.0 -> 1.6,
+    medium 2.5 -> 2.0, low 3.0 -> 2.5 (backup _to_delete/settings_before_fast_12nov.yaml); 1.2 s broke 'one complete alarm with the
+    right name' -> rejected. Simulated: high 2.0 -> 1.6 s at 8 AI checks/s. state_machine.operator_closed now also clears the person's
+    item history (truly fresh look; with old 'missing' frames a worker who had put the PPE on got a new alarm).
+  * TensorRT: not installed / never measured -> not switched.
+  All suites pass (edge.selftest, final 143, access, hw).
+- 12 Nov evening SAFETY GOGGLES vs NORMAL GLASSES (user: "normal glasses are detected as industrial goggles - do whatever you need").
+  v3B 'goggles' cannot tell them apart: MEASURED with public eyeglasses photos (HF giqu/glasses_celeb) pasted at CCTV size onto our
+  workers' faces in our own frames, live pipeline: 60 of 186 never-seen spectacles faces judged 'goggles worn'. Our own footage has
+  NO clear prescription spectacles (only the team's clear safety glasses, sunglasses in ppe_08/09/19, bare faces).
+  * edge/eyewear.py: second stage on every goggles box (like shoe_cls): square eye crop (eye_crop, 2.2 x box width) -> CLIP ViT-B-32
+    (open_clip, models/clip_vit_b32_laion2b.safetensors 605 MB, git-ignored, `python -m tools.eyewear fetch`) image embedding + zero-shot
+    text directions -> logistic head models/eyewear_head.npz -> p(safety eyewear). p >= eyewear_hi 0.5 goggles | lo 0.2..0.5 'unclear'
+    (validate reason 'unclear' -> association `unsure` -> goggles UNVERIFIABLE, no alarm) | < lo 'normal glasses' (rejected; face seen ->
+    goggles MISSING). Runs in the AI process, one CLIP call per batch, max 6 crops (12 ms per crop on the GTX 1650, only when goggles are
+    seen). Live picture / snapshot: red "NORMAL GLASSES - not safety goggles". settings models.eyewear_* (eyewear_head: '' = off).
+  * Zero-shot CLIP alone REJECTED: it threw away 25/26 of the team's real clear safety glasses on the overhead camera (ppe_20) -> head
+    trained on own goggles + own sunglasses/bare + pasted public spectacles (+ pasted own faces so 'pasted' is no cue; pasted own BARE faces
+    left out: they taught the head to reject blurry real goggles). ViT-B-16 tested: same accuracy, 4x slower -> B-32.
+  * MEASURED, whole scenes / identities held out: own safety goggles 148 kept / 3 unclear / 0 'normal glasses' (of 151); spectacles the
+    detector called goggles -> normal glasses 150/150; sunglasses 16/19 (3 unclear). END-TO-END (186 never-seen spectacles faces pasted onto
+    our workers, live detector + association): accepted as goggles 60 -> 1, NO GOGGLES 120 -> 158, unverifiable 6 -> 27. ppe_scene_eval
+    goggles OK/FALSE/MISSED/unsure 363/39/18/43 -> 374/41/4/44 (sunglasses scenes 08/09 missed 14 -> 0; +2 'false' = sunglasses labelled
+    goggles in ppe_19); every other item identical. CAVEAT: spectacles test = pasted public photos, not real camera footage.
+  * tools/eyewear.py: fetch | check <image|folder|video> (verdict per goggles box, pictures in data/eyewear_check/) | train [--neg video
+    of the team in NORMAL spectacles] [--pos video of other safety goggles] (rebuilds the head, prints held-out table, old head -> .bak).
+    Best next improvement: record 30 s per person in their own spectacles + jury-style strap goggles, then `train --neg ... --pos ...`.
+  * ppe_scene_eval EYEWEAR=0 = without the check. requirements: open_clip_torch. Tests final_selftest [PPE] eyewear x3 (146 total; [12]
+    batch + [CLIP] x2 failed only because the live NETRAX was running - FakeDet / encoder timing). edge, access, hw selftests pass.
+
+## 12-13 Nov 2026: POLISH (team "NETRAX Claude Code prompt pack", prompts 0-11). Backups: _to_delete/before_polish_12nov/ (+ shots/)
+- DESIGN RULES (keep on every page): one system in dashboard/nx.css (bottom "12 Nov POLISH" section). Type tokens --fs-xs 13 (time stamps
+  only) / --fs-s 14 / --fs-m 16 body / --fs-l 19 panel titles / --fs-xl 24 / --fs-num 34; NOTHING below 13 px (tools/font_tokens.py
+  converts any px font size to a token, re-run after edits). Space --sp-1..5 = 4/8/12/16/24, radius 12. Colour = status only: --ok green
+  compliant, --crit red violation / fire, --warn amber unauthorised / warning, --unk grey cannot see / offline. Components: .nx-panel >
+  .nx-panel-head (icon + title + count chip + max 2 buttons, NO subtitle; explanations = (i) .nx-info tooltip) > .nx-panel-body (scrolls
+  inside); .nx-grid-2/3/4 (1 column < 1100 px); .btn 36 px (.btn-primary / -ok / -danger / -ghost); .nx-kpi (big number + one word);
+  .nx-card (the alert card); .nx-tabs. Shared header .nxbar on every page (logo · NETRAX + page · clock · nav · Zentrix · theme · user);
+  every page honours ?theme=dark|light. Bump ?v=12nov1 on /static links when JS/CSS change.
+- ICONS + PERSON: dashboard/ppe_icons.js ppeIcon(item, ok|miss|unk) / ppeRow / ppeRowFor(event) (original flat SVGs: green worn, red
+  prohibition = missing, grey + ? = cannot see; order helmet vest gloves goggles mask boots). dashboard/people.js personLabel(e):
+  "Name · W-004" / "Unregistered person #17" / "Name · W-002" + amber UNAUTHORISED; W-*** stays "Registered worker". NO "NO HELMET" /
+  "Missing PPE:" text anywhere on the dashboards (camera badges show icons too). Video overlay (annotate.py) unchanged = AI view.
+- PAGES: control room = 4 KPI tiles (Workers in view / Compliant = edge counts worker.people -> health -> cameras_payload "people",
+  live cameras only, "–" when the AI is off; Open violations; Fire / smoke), cameras 2/3 (tiles stretch to the row), ONE Alerts panel 1/3
+  (green "Fire / smoke: clear" line, big fire cards only during a fire, Active / Acknowledged / History, icon cards with Acknowledge +
+  Resolve, details drawer = snapshot, clip, all actions incl. Escalate / False alarm, messages, audit), bottom row Entrance · Zones ·
+  Safety station · System health (overall state + location moved there). Entrance: PERMITTED / NOT PERMITTED result block + icons, Required
+  PPE per zone as icons, log with icons. Hardware: station strip + 3 groups Environment / Safety / People & location, equal sensor tiles.
+  Admin: 6 tabs (Overview · Incidents & reports · Workers · Alerts & delivery · Site setup · System; old #hashes still work, last tab
+  remembered). Intelligence: sections as top tabs, subtitles -> tooltips, status colours only. ROI + login: same style.
+- DATA (Prompt 5): edge state_machine._item_view -> every PPE action carries items_ok / items_uncertain / items_required (display only;
+  decision unchanged). events columns items_ok / items_uncertain / items_required (ALTER TABLE; old rows = None = unknown). A W- id always
+  gets its name from the workers table (main._fill_name, db._worker_name). notify.who_text / ppe_line: same identity rule in messages.
+- ONE ALERT PER VIOLATION (Prompt 6): main._same_violation key = worker ID + type + ZONE (unidentified: same camera + zone + box nearby);
+  active alert -> update; ended (left view / PPE on / AI restart / supervisor resolve / false alarm) < notify.yaml one_alert.regrace_s 120 s
+  ago -> the SAME alert is RE-OPENED (dismissed ones stay quiet); fire / smoke never merged; access re-entry too (ACCESS_REOPEN). Update
+  messages ("more PPE missing", "still missing after resolve") -> Telegram only. MEASURED replay of all 967 recorded PPE alerts: 967 -> 338
+  alerts, Telegram 967 -> 471, e-mail 527 -> 255 (scratchpad replay_alerts.py). Supervisor resolve + still violating within 120 s = same
+  alert back (spoken once + one Telegram), after 120 s = new alert (replaces the 29 Oct "new alert at once" behaviour; tests updated).
+- VOICE (Prompt 7): main.ppe_text / access_text fixed sentences, name first, icon order: "Attention Ritika, worker W 0 0 4. Helmet and gloves
+  missing. Please wear them now." / "Attention, unregistered person in the Welding bay. Helmet missing. Please wear it now. Report to the
+  supervisor." / "Ritika, gloves also missing." / "Attention Sourav, worker W 0 0 2. You are not authorised in the Control room. Please
+  leave now." Browser speech (zentrix.js) only reads Zentrix replies, never alerts.
+- FIRE CALL (Prompt 8): main.fire_call_tick (in fire_level_loop, 1 s): first call with the alert (camera fire in a zone with an ONLINE station
+  still waits for the station check - project rule), then every phone.repeat_every_s 60 while open / escalated, failed / busy / no answer /
+  network -> phone.retry_after_failed_s 20, max_calls 10, each attempt its own row ("call #n"); Acknowledge / Resolve stops at once
+  (Dispatcher._call_still_wanted skips queued calls). Call text "NETRAX fire alarm. Fire detected in <zone> by <camera> at <time>. Open the
+  dashboard and acknowledge." (read twice).
+- DELIVERY (Prompt 9): e-mail only for notify.yaml email.send_now_for (fire, smoke, Critical / High PPE, unauthorised) + escalations;
+  everything else -> status 'digest' -> notify.send_digest one e-mail every 15 min (health_loop); email.daily_max 300 -> PPE e-mail 'skipped',
+  fire still sent, health says so. No internet (notify.is_network) = status 'waiting', NOT a failed try: resend after offline.waits_s
+  5/15/30/60 s, in order, up to 2 h then 'expired'. notify.requeue_unfinished() at start-up resends rows left queued / sending / waiting.
+  SMTP: one reused connection (_smtp_conn), 20 s timeout, one retry on a dropped connection, Gmail limit recognised. Telegram: photo + short
+  caption (person, "Helmet ❌ · Vest ✅ · Goggles ❔", place, action, link); updates are REPLIES to the first message. Admin delivery log:
+  plain-word reasons, per channel today sent / waiting / failed.
+- SUPERVISOR (Prompt 10): unacknowledged cards blink red, acknowledged steady + "Ack by <user> <time>"; Resolve asks a one-tap reason (note);
+  viewer sees no buttons (API refuses anyway). Telegram buttons ✅ Acknowledge / ✔ Resolve on the first message (notify.telegram.buttons):
+  notify._tg_poll (getUpdates, no public URL needed) -> handle_tg_callback (only the configured group chat) -> main._telegram_action ->
+  the same _act (audit user "telegram:<name>"); stale presses change nothing.
+- TESTS: final_selftest 163 PASS (new: [PPE] polish data x6 incl. browser test of people.js / ppe_icons.js via Edge --dump-dom, [CALL]
+  repeat x4, [NOTIFY] x7), access_selftest (voice sentences x4, re-open), edge.selftest, hw_selftest pass. UI audited in headless Edge
+  (1920 / 1366 / 390 px, day + night): 0 JS errors, no sideways scroll, no "NO <ITEM>" text. Before / after shots: docs/polish_12nov/.
+- NOT done (needs people / hardware): the 5-minute live run with 3 cameras (helmet off -> 1 card + 1 Telegram + 1 voice; test fire -> call
+  repeats, stops on Acknowledge) and the real Wi-Fi-off test - simulated in the tests above, still to be done live.
+- REMINDER: headless Edge left running from a test keeps its port and its page cache -> later checks see OLD files. Kill test browsers
+  (taskkill /T) before measuring.

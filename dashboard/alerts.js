@@ -20,26 +20,33 @@ window.NetraxAlerts = (function () {
   /* ---------- shared card html + keyed list (no re-render flicker, animation only for new / worse) ---------- */
   const whoOf = e => e.worker_id === "W-***" ? "Registered worker (name hidden)" : e.worker_id && String(e.worker_id).startsWith("W-")
     ? `${e.worker_id} · ${e.worker_name || ""}` : "Unregistered person";
+  /* 12 Nov polish: ONE icon card everywhere - person · camera · zone · time · PPE icons · Acknowledge / Resolve.
+     No sentences; everything else (snapshot, confidence, messages, escalate, false alarm) is in the details drawer. */
+  const person = e => window.personLabel ? personLabel(e) : esc(whoOf(e));
+  const ACKED = e => e.status === "acknowledged";
   function alertCard(e) {
     const fire = e.type === "fire" || e.type === "smoke", f = fresh.get(e.event_id);
-    const cls = fire || e.severity === "Critical" || e.severity === "High" ? "crit" : "warn";
-    const head = fire ? `🔥 ${e.type === "smoke" ? "SMOKE" : "FIRE"} · LEVEL ${e.fire_level || "?"}` : e.type === "unauthorized_entry" ? "⛔ NOT AUTHORISED" : `▲ ${String(e.severity || "").toUpperCase()} · PPE MISSING`;
-    const chips = e.type === "ppe_missing" ? `<div class="items">${(e.items_missing || []).map(i => `<span class="item${f && (f.added || []).includes(i) ? " fresh" : ""}">✖ ${iname(i)}</span>`).join("")}</div>` : "";
     const isNew = f && Date.now() - f.at < 12000;
-    return {cls: "nxc " + cls, html: `<div class="h"><b>${head}</b>${isNew ? `<span class="newpill">${(f.added || []).length ? "UPDATED" : "NEW"}</span>` : ""}<span class="sp"></span><span class="t" data-t="${e.started_at}">${ago(e.started_at)}</span></div>
-      ${chips}${fire ? "" : `<div class="w">👷 ${esc(whoOf(e))}</div>`}
-      <div class="m">${esc(e.zone_name || e.zone_id || "")} · ${esc(e.camera_id || "safety station")} · ${fmt(e.started_at)}</div>
-      ${opt.canAct() ? `<div class="a"><button class="btn sm red" data-nxact="ack" data-id="${esc(e.event_id)}">Acknowledge</button><button class="btn sm" data-nxview="${esc(e.event_id)}">Details</button></div>` : ""}`};
+    const pill = isNew ? `<span class="newpill">${(f.added || []).length ? "UPDATED" : "NEW"}</span>` : "";
+    const head = fire ? `<span class="fireh">🔥 ${e.type === "smoke" ? "Smoke" : "Fire"} · Level ${e.fire_level || "?"}</span>` : person(e);
+    const body = fire ? "" : e.type === "unauthorized_entry" ? `<div class="zonebar">⛔ Not allowed in this zone</div>`
+      : window.ppeRowFor ? ppeRowFor(e, 28, f && f.added) : esc((e.items_missing || []).map(iname).join(", "));
+    const acts = opt.canAct() ? `<div class="acts">${ACKED(e) ? "" : `<button class="btn btn-primary" data-nxact="ack" data-id="${esc(e.event_id)}">Acknowledge</button>`}<button class="btn btn-ok" data-nxact="resolve" data-id="${esc(e.event_id)}">Resolve</button></div>` : "";
+    const ack = ACKED(e) && e.acked_by ? `<div class="ackby">Ack by ${esc(e.acked_by)} ${fmt(e.acked_at)}</div>` : "";
+    return {cls: "nx-card" + (fire ? " fire" : e.type === "unauthorized_entry" ? " warn" : "") + (ACKED(e) ? " acked" : " unacked"),
+      html: `<div class="top">${head}${pill}<span class="t" data-t="${e.started_at}">${ago(e.started_at)}</span></div>
+      <div class="where">${esc(e.camera_name || e.camera_id || "Safety station")} · ${esc(e.zone_name || e.zone_id || "")} · ${fmt(e.started_at)}</div>${body}${ack}${acts}`};
   }
   function gateCard(g) {
     const r = g.override ? g.override.decision : g.result, w = who(g), f = fresh.get(g.event_id);
-    // 5 Nov (user): green light "VERIFIED · PERMITTED", red light "NOT VERIFIED · NOT PERMITTED" - a small card, never a full screen
-    const head = {approved: "VERIFIED · PERMITTED", denied: "NOT VERIFIED · NOT PERMITTED", manual: "MANUAL CHECK · WAIT"}[r] || r;
+    // big PERMITTED (green) / NOT PERMITTED (red) / MANUAL CHECK (amber) + person + icons - a small card, never a full screen
+    const head = {approved: "PERMITTED", denied: "NOT PERMITTED", manual: "MANUAL CHECK"}[r] || r;
     const can = opt.canAct() && g.result === "manual" && !g.override;
-    return {cls: "nxc gate " + ({approved: "ok", denied: "crit", manual: "warn"}[r] || "warn"), html: `<div class="h"><i class="lamp" aria-hidden="true"></i><b>${head}</b>${f && Date.now() - f.at < 12000 ? `<span class="newpill">NEW</span>` : ""}<span class="sp"></span><span class="t" data-t="${g.at}">${ago(g.at)}</span></div>
-      <div class="w">${esc(w.name)}</div><div class="items">${chips(g)}</div>
-      <div class="m">${esc(g.verdict || "")}${g.override ? ` · decided by ${esc(g.override.by)}` : ""}</div>
-      ${can ? `<div class="a"><button class="btn sm pri" data-gate="approved" data-id="${esc(g.event_id)}">Allow</button><button class="btn sm red" data-gate="denied" data-id="${esc(g.event_id)}">Refuse</button></div>` : ""}`};
+    const tone = {approved: "ok", denied: "crit", manual: "warn"}[r] || "warn";
+    return {cls: "nx-card gate " + tone, html: `<div class="top"><i class="lamp" aria-hidden="true"></i><b class="verdict ${tone}">${head}</b>${f && Date.now() - f.at < 12000 ? `<span class="newpill">NEW</span>` : ""}<span class="sp"></span><span class="t" data-t="${g.at}">${ago(g.at)}</span></div>
+      <div class="top"><span class="nx-person">${esc(w.name)}</span></div>${window.ppeRowFor ? ppeRowFor(g, 26) : `<div class="items">${chips(g)}</div>`}
+      ${g.override ? `<div class="ackby">Decided by ${esc(g.override.by)}</div>` : ""}
+      ${can ? `<div class="acts"><button class="btn btn-ok" data-gate="approved" data-id="${esc(g.event_id)}">Allow</button><button class="btn btn-danger" data-gate="denied" data-id="${esc(g.event_id)}">Refuse</button></div>` : ""}`};
   }
   function keyed(box, items, idOf, cardOf, emptyHtml) {
     const nodes = box.__nodes || (box.__nodes = new Map()), keep = new Set();
@@ -73,8 +80,10 @@ window.NetraxAlerts = (function () {
     if (opt.rail === "dock") {
       rail = document.createElement("aside"); rail.className = "nxrail"; rail.setAttribute("aria-label", "Live alerts");
       rail.innerHTML = `<div class="rh"><b>Live alerts</b><span class="pill p-crit" id="nxrN">0</span><span class="sp"></span><button class="btn sm" id="nxrHide" aria-expanded="true" title="Hide / show">⟩</button></div>
-        <div class="rbody"><div class="rsec">Violations · newest first</div><div class="rlist" id="nxrA"></div>
-        ${opt.railGate ? `<div class="rsec">Entrance</div><div class="rlist" id="nxrG"></div>` : ""}</div>`;
+        <div class="rbody">
+          <div class="rgrp g-fire" id="nxrGF"><div class="rsec">🔥 Fire &amp; smoke<span class="rn" id="nxrNF"></span></div><div class="rlist" id="nxrF"></div></div>
+          <div class="rgrp g-ppe" id="nxrGA"><div class="rsec">🦺 PPE &amp; access<span class="rn" id="nxrNA"></span></div><div class="rlist" id="nxrA"></div></div>
+          ${opt.railGate ? `<div class="rgrp g-gate" id="nxrGG"><div class="rsec">🚪 Entrance</div><div class="rlist" id="nxrG"></div></div>` : ""}</div>`;
       document.body.append(rail); document.body.classList.add("nx-rail-on");
       rail.querySelector("#nxrHide").onclick = () => { const c = document.body.classList.toggle("nx-rail-min"); rail.querySelector("#nxrHide").textContent = c ? "⟨" : "⟩"; };
     }
@@ -111,12 +120,23 @@ window.NetraxAlerts = (function () {
     }
     renderRail();
   }
+  /* 11 Nov: the side panel has the SAME sections as the control room (fire & smoke / PPE & access / entrance); a new alert
+     pops inside its own section and that section's border glows once */
+  function bumpGrp(id) { const b = rail.querySelector("#" + id); if (!b) return; b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump");
+    clearTimeout(b._bt); b._bt = setTimeout(() => b.classList.remove("bump"), 2800); }
+  const isFire = e => e.type === "fire" || e.type === "smoke";
   function renderRail() {
     if (!rail) return;
-    const list = [...active.values()].sort((a, b) => ((b.type === "fire" || b.type === "smoke") - (a.type === "fire" || a.type === "smoke")) || b.started_at - a.started_at);
+    const list = [...active.values()].sort((a, b) => (b.fire_level || 0) - (a.fire_level || 0) || b.started_at - a.started_at);
+    const fl = list.filter(isFire), pl = list.filter(e => !isFire(e));
     rail.querySelector("#nxrN").textContent = list.length;
     rail.classList.toggle("hot", list.length > 0);
-    keyed(rail.querySelector("#nxrA"), list.slice(0, 30), e => e.event_id, alertCard, "✓ No active alerts. New violations appear here at once.");
+    rail.querySelector("#nxrNF").textContent = fl.length || ""; rail.querySelector("#nxrNA").textContent = pl.length || "";
+    rail.querySelector("#nxrGF").classList.toggle("hot", fl.length > 0); rail.querySelector("#nxrGA").classList.toggle("hot", pl.length > 0);
+    const popF = fl.some(e => fresh.has(e.event_id) && !fresh.get(e.event_id).shown), popA = pl.some(e => fresh.has(e.event_id) && !fresh.get(e.event_id).shown);
+    keyed(rail.querySelector("#nxrF"), fl.slice(0, 10), e => e.event_id, alertCard, "✓ No fire or smoke.");
+    keyed(rail.querySelector("#nxrA"), pl.slice(0, 30), e => e.event_id, alertCard, "✓ No PPE or access alert.");
+    if (popF) bumpGrp("nxrGF"); if (popA) bumpGrp("nxrGA");
     const g = rail.querySelector("#nxrG");
     if (g) keyed(g, gates.filter(x => Date.now() / 1000 - x.at < 3600).slice(0, 6), x => x.event_id, gateCard, "No entrance checks in the last hour.");
   }
@@ -147,9 +167,9 @@ window.NetraxAlerts = (function () {
   const MARK = {approved:'<path d="M28 52 l15 15 l30 -32"/>', denied:'<path d="M33 33 l34 34 M67 33 l-34 34"/>', manual:'<path d="M50 26 v30 M50 72 v1"/>'};
   function who(g) {
     const i = g.identity || {};
-    if (i.kind === "registered" && i.worker_id) return {name:`${i.worker_id} ${i.name || ""}`.trim(), how:{face:"IDENTIFIED BY FACE", rfid:"IDENTIFIED BY RFID CARD", "face+rfid":"IDENTIFIED BY FACE + RFID CARD"}[i.by] || "REGISTERED WORKER"};
-    if (i.kind === "unregistered" || !g.identity && !g.worker_id) return {name:"UNREGISTERED WORKER", how:"NOT IN THE WORKER LIST · LOGGED AS UNREGISTERED"};
-    return {name:"REGISTERED WORKER", how:"NAME HIDDEN FOR YOUR ROLE"};
+    if (i.kind === "registered" && i.worker_id) return {name: i.name ? `${i.name} · ${i.worker_id}` : i.worker_id, how:{face:"IDENTIFIED BY FACE", rfid:"IDENTIFIED BY RFID CARD", "face+rfid":"IDENTIFIED BY FACE + RFID CARD"}[i.by] || "REGISTERED WORKER"};
+    if (i.kind === "unregistered" || !g.identity && !g.worker_id) return {name:"Unregistered person", how:"NOT IN THE WORKER LIST · LOGGED AS UNREGISTERED"};
+    return {name:"Registered worker", how:"NAME HIDDEN FOR YOUR ROLE"};
   }
   function chips(g) {
     return (g.required || []).map(i => (g.missing || []).includes(i) ? `<span class="item">✖ ${iname(i)}</span>` : (g.ok || []).includes(i) ? `<span class="item ok">✓ ${iname(i)}</span>` : `<span class="item unk">? ${iname(i)}</span>`).join("");

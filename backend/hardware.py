@@ -81,7 +81,22 @@ def init_db():
 FIELDS = ["temperature_c", "humidity_pct", "thermistor_adc", "mq2_adc", "mq135_adc", "flame_detected",
           "pm1_0_ugm3", "pm2_5_ugm3", "pm10_ugm3", "helmet_fsr_adc", "shoe_fsr_adc", "touch_kit",
           "touch_helmet", "touch_shoe", "mpu6050_available", "vibration_metric", "alarm_level",
-          "green_led", "orange_led", "red_led", "buzzer_on", "relay_on", "rssi", "uptime_s", "fw"]
+          "green_led", "orange_led", "red_led", "buzzer_on", "relay_on", "rssi", "uptime_s", "fw",
+          # 12 Nov: Sharp GP2Y1010 dust sensor raw values (team station) + the estimate made from them
+          "pm_adc", "pm_sensor_v", "pm_estimated", "pm_zero_v"]
+
+# 12 Nov (user: "PM2.5 works on the friend's Serial Monitor but never reaches the dashboard"): the team station sends the
+# Sharp GP2Y1010 output voltage (pm_sensor_v), not ug/m3, and that field was dropped. Estimate = datasheet slope
+# 0.5 V per 100 ug/m3 above the clean-air voltage; the clean-air voltage differs per sensor (0.6-0.9 V) and is not
+# calibrated, so it is LEARNED as the lowest voltage seen in the last PM_ZERO_WINDOW_S (self-zeroing).
+# NOT CALIBRATED -> shown on the dashboards marked 'estimated', NEVER used for a warning or the smoke / fire check.
+PM_SLOPE_V_PER_UG = 0.005
+PM_ZERO_WINDOW_S = 1800
+PM_ZERO_DEFAULT_V = 0.6
+
+
+def pm_estimate(volts, zero_v):
+    return max(0.0, (float(volts) - zero_v) / PM_SLOPE_V_PER_UG)
 
 
 def flatten(p):
@@ -121,6 +136,7 @@ class Hub:
         self.flame_hits = {}                 # device -> deque[bool]
         self.hazard_at = {}                  # (device, kind) -> last time the hazard was seen
         self.last_store = {}
+        self.pm_low = {}                     # device -> deque[(at, dust volts)] for the self-zeroing PM estimate
 
     def device_zone(self, device_id):
         d = self.cfg["devices"].get(device_id) or {}
@@ -133,6 +149,7 @@ class Hub:
     def ingest(self, device_id, payload, now=None):
         now = time.time() if now is None else now
         data = flatten(payload)
+        self._pm(device_id, data, now)
         hist = self.hist.setdefault(device_id, deque())
         hist.append((now, data))
         while hist and now - hist[0][0] > self.cfg["history_s"]:
@@ -144,6 +161,27 @@ class Hub:
             db.x("INSERT INTO hw_readings (at, device_id, level, data) VALUES (?,?,?,?)",
                  (now, device_id, ev["level"], json.dumps(data)))
         return ev
+
+    def _pm(self, device_id, data, now):
+        """Sharp dust voltage -> estimated ug/m3 (see pm_estimate). A real PM sensor (pm2_5_ugm3 sent) is used as is."""
+        if data.get("pm2_5_ugm3") is not None:
+            data["pm_estimated"] = bool(data.get("pm_estimated"))
+            return
+        v = data.get("pm_sensor_v")
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return
+        if not (0.0 < v < 6.0):                          # not connected / nonsense reading
+            return
+        lows = self.pm_low.setdefault(device_id, deque())
+        lows.append((now, v))
+        while lows and now - lows[0][0] > PM_ZERO_WINDOW_S:
+            lows.popleft()
+        zero = min(min(x for _, x in lows), PM_ZERO_DEFAULT_V) if len(lows) < 30 else min(x for _, x in lows)
+        data["pm_zero_v"] = round(zero, 3)
+        data["pm2_5_ugm3"] = round(pm_estimate(v, zero))
+        data["pm_estimated"] = True
 
     def _baseline(self, device_id, data, hazard):
         b = self.base.setdefault(device_id, {})
@@ -183,7 +221,7 @@ class Hub:
         if mq135 is not None and warm and "mq135" in b and mq135 - b["mq135"] >= t["mq135_rise"]:
             hz["smoke"] = True
             reasons.append(f"MQ-135 rose {mq135 - b['mq135']:.0f} above baseline")
-        pm = d.get("pm2_5_ugm3")
+        pm = None if d.get("pm_estimated") else d.get("pm2_5_ugm3")      # an uncalibrated estimate never alarms
         if pm is not None and pm >= t["pm25_critical"]:
             hz["smoke"] = True
             reasons.append(f"PM2.5 {pm} >= {t['pm25_critical']} ug/m3")

@@ -42,7 +42,9 @@ def init(db_path):
                          ("fire_level", "INTEGER"), ("fire_reasons", "TEXT"),
                          ("frame_w", "INTEGER"), ("frame_h", "INTEGER"),
                          ("location", "TEXT"), ("acked_at", "REAL"), ("acked_by", "TEXT"),
-                         ("closed_by", "TEXT"), ("details", "TEXT"), ("clip_path", "TEXT")):
+                         ("closed_by", "TEXT"), ("details", "TEXT"), ("clip_path", "TEXT"),
+                         # 12 Nov polish: PPE icons need what was seen worn / could not be seen / was required
+                         ("items_ok", "TEXT"), ("items_uncertain", "TEXT"), ("items_required", "TEXT")):
             if col not in have:
                 _conn.execute(f"ALTER TABLE events ADD COLUMN {col} {typ}")
         have = {r[1] for r in _conn.execute("PRAGMA table_info(notifications)")}
@@ -115,11 +117,30 @@ def x(sql, args=()):
         return cur
 
 
+_NAMES = {"at": 0.0, "map": {}}
+
+
+def _worker_name(wid):
+    """Registered worker id -> name (cached 30 s; workers rarely change)."""
+    if time.time() - _NAMES["at"] > 30:
+        try:
+            _NAMES["map"] = {r["worker_id"]: r["name"] for r in q("SELECT worker_id, name FROM workers")}
+        except Exception:                         # noqa: BLE001 - a missing name never breaks an event
+            _NAMES["map"] = {}
+        _NAMES["at"] = time.time()
+    return _NAMES["map"].get(wid)
+
+
 def row_to_event(r):
     if r is None:
         return None
     e = dict(r)
     e["items_missing"] = json.loads(e["items_missing"] or "[]")
+    for k in ("items_ok", "items_uncertain", "items_required"):     # old events: None = unknown (shown as before)
+        e[k] = json.loads(e[k]) if e.get(k) else None
+    wid = e.get("worker_id")
+    if wid and str(wid).startswith("W-") and not e.get("worker_name"):   # old rows: the id without its name
+        e["worker_name"] = _worker_name(wid)
     e["bbox"] = json.loads(e["bbox"] or "null")
     e["snapshot"] = f"/snapshots/{e['event_id']}.jpg" if e.get("snapshot_path") else None
     e["clip"] = "/clips/" + os.path.basename(e["clip_path"]) if e.get("clip_path") else None

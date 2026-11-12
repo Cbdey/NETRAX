@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from . import annotate
 from .access import AccessGuard
-from .association import evaluate
+from .association import evaluate, forget_old
 from .config import path
 from .detector import Detector
 from .entrance import EntranceChecker
@@ -49,6 +49,7 @@ class CameraWorker(threading.Thread):
         self.sm = PPEStateMachine(settings["state_machine"])
         self.fv = FireVerifier(settings["fire"])
         self.access = AccessGuard(zones, settings.get("access"))     # restricted zones (zones.yaml allowed_workers)
+        self.helmet_mem = {}                                          # 12 Nov: tid -> helmet confirmation memory
         self.gpu_rank = RANK.get(zones[cam_cfg["default_zone"]]["risk"], 1)   # high-risk zone -> GPU first
         self.running = True
         self.proc_times = deque(maxlen=30)
@@ -65,6 +66,7 @@ class CameraWorker(threading.Thread):
             self.entrance = EntranceChecker(cam_id, ez, self.zonemap.required(ez), settings.get("entrance"))
             print(f"[{cam_id}] ENTRANCE check for zone {ez}: {', '.join(self.entrance.required)}")
         self.tile_badge = None
+        self.people = None          # 12 Nov: {"in_view", "compliant", "at"} for the control-room KPI tiles (display only)
         self.decisions = {"compliant": 0, "missing": 0, "unverifiable": 0}
         self.identity = identity
         self.stable = {}              # worker/visitor id -> stable integer id for the state machine
@@ -167,9 +169,13 @@ class CameraWorker(threading.Thread):
         tp = self._t("face_id", tp)
         zone_of = {p["tid"]: self.zonemap.zone_of(p["bbox"], w, h) for p in persons}
         required = {tid: self.zonemap.required(z) for tid, z in zone_of.items()}
+        # 12 Nov cap vs helmet (association._helmet_check): needs the v3 model (has_parts) - without it, no memory
+        hm = self.helmet_mem if self.s["association"].get("helmet_confirm", True) and self.detector.has_parts else None
         statuses, bad_items = evaluate(persons, items, required, w, h, self.s["association"],
                                        frame, self.s.get("validation", {}),
-                                       parts=parts if self.detector.has_parts else None)
+                                       parts=parts if self.detector.has_parts else None, helmet_mem=hm, now=now)
+        if hm is not None:
+            forget_old(hm, now)
         for st in statuses.values():
             for s, _ in st.values():
                 self.decisions[s] += 1
@@ -200,6 +206,10 @@ class CameraWorker(threading.Thread):
         tp = self._t("decisions_fire", tp)
 
         shown = self._smooth(statuses)                       # steady on-screen PPE list (no frame flicker)
+        # 12 Nov KPI tiles: people in view + people with EVERY required item seen worn (same steady list as the overlay)
+        self.people = {"in_view": len(persons), "at": time.time(),
+                       "compliant": sum(1 for p in persons if shown.get(p["tid"])
+                                        and all(s == "compliant" for s, _ in shown[p["tid"]].values()))}
         if self.live_view:                                   # edge/live.py draws this on every new camera frame
             self.overlay = {"at": time.time(), "ts": frame_ts, "persons": [dict(p) for p in persons], "shown": shown,
                             "items": list(items), "parts": list(parts or []), "fire": list(self.fv.boxes(self.cam_id)),

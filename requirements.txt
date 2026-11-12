@@ -8,6 +8,7 @@ uvicorn[standard]
 pyyaml
 numpy
 requests
+open_clip_torch  # 12 Nov: safety goggles vs normal glasses (edge/eyewear.py); weights: python -m tools.eyewear fetch
 reportlab
 pywin32          # Windows SAPI voice for the speaker
 tzdata           # IST time zone on Windows (fallback built in)

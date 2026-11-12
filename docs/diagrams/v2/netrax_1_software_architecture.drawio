@@ -1,0 +1,151 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="netrax_1_software_architecture" name="Software system architecture">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1560" pageHeight="1010" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="NETRAX · Software system architecture" parent="1" vertex="1" style="text;html=1;fontSize=22;fontStyle=1;fontColor=#24452C;align=left;verticalAlign=middle;">
+          <mxGeometry x="30" y="12" width="1500" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="bA" value="① INPUTS  -  cameras, IoT devices, location" style="rounded=1;arcSize=2;verticalAlign=top;align=left;spacingLeft=12;spacingTop=4;fontStyle=1;fontSize=15;whiteSpace=wrap;html=1;fillColor=#F7F9F5;strokeColor=#9AAE8C;fontColor=#33691E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="65" width="1500" height="165" as="geometry" />
+        </mxCell>
+        <mxCell id="bB" value="② EDGE AI  -  laptop GPU, Python  (folder edge/)" style="rounded=1;arcSize=2;verticalAlign=top;align=left;spacingLeft=12;spacingTop=4;fontStyle=1;fontSize=15;whiteSpace=wrap;html=1;fillColor=#F7F9F5;strokeColor=#9AAE8C;fontColor=#33691E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="255" width="1500" height="225" as="geometry" />
+        </mxCell>
+        <mxCell id="bC" value="③ BACKEND SERVER  -  FastAPI + SQLite  (folder backend/)" style="rounded=1;arcSize=2;verticalAlign=top;align=left;spacingLeft=12;spacingTop=4;fontStyle=1;fontSize=15;whiteSpace=wrap;html=1;fillColor=#F7F9F5;strokeColor=#9AAE8C;fontColor=#33691E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="505" width="1500" height="245" as="geometry" />
+        </mxCell>
+        <mxCell id="bD" value="④ OUTPUTS  -  people and alarms" style="rounded=1;arcSize=2;verticalAlign=top;align=left;spacingLeft=12;spacingTop=4;fontStyle=1;fontSize=15;whiteSpace=wrap;html=1;fillColor=#F7F9F5;strokeColor=#9AAE8C;fontColor=#33691E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="775" width="1500" height="155" as="geometry" />
+        </mxCell>
+        <mxCell id="cams" value="&lt;b&gt;4 cameras&lt;/b&gt;&lt;br&gt;Laptop webcam (welding bay) · Phone 1 (warehouse)&lt;br&gt;Phone 2 (assembly line) · USB webcam (entrance gate)" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="105" width="560" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="st" value="&lt;b&gt;ESP32 safety station&lt;/b&gt;&lt;br&gt;7 sensors&lt;br&gt;1 reading / s" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="960" y="105" width="170" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="rf" value="&lt;b&gt;ESP32 RFID reader&lt;/b&gt;&lt;br&gt;worker card tap" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="1150" y="105" width="160" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="loc" value="&lt;b&gt;Location (GPS)&lt;/b&gt;&lt;br&gt;browser / phone GPS&lt;br&gt;site position&lt;br&gt;GSM-GPS unit: planned" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="1330" y="105" width="180" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="rd" value="&lt;b&gt;1 · Camera readers&lt;/b&gt;&lt;br&gt;newest frame only" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="300" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai" value="&lt;b&gt;2 · AI engine (own process)&lt;/b&gt;&lt;br&gt;pose · PPE · NETRAX-YOLO&lt;br&gt;fire / smoke · shoe" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="245" y="300" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="tr" value="&lt;b&gt;3 · Track + match + ID&lt;/b&gt;&lt;br&gt;items to the right person&lt;br&gt;face ID / visitor" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="500" y="300" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="dc" value="&lt;b&gt;4 · Decision logic&lt;/b&gt;&lt;br&gt;zone rules · 6 of 10 frames&lt;br&gt;fire checks · entrance" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="735" y="300" width="190" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="lv" value="&lt;b&gt;Live view&lt;/b&gt;&lt;br&gt;15-19 fps + AI boxes" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="395" width="150" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="ob" value="&lt;b&gt;5 · Outbox (offline queue)&lt;/b&gt;&lt;br&gt;alert + snapshot + clip" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="735" y="395" width="190" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="api" value="&lt;b&gt;API + WebSocket  ·  /api/events · /api/cameras/{id}/frame · /api/hw/telemetry · /api/rfid · /api/location · /ws/alerts · /ws/video&lt;/b&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="545" width="1450" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="am" value="&lt;b&gt;Alert manager&lt;/b&gt;&lt;br&gt;fire level 1-3 · camera + sensor&lt;br&gt;fusion · access · entrance" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="650" width="250" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="ls" value="&lt;b&gt;Location service&lt;/b&gt;&lt;br&gt;best valid fix → incident&lt;br&gt;else “Location unavailable”" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="340" y="650" width="190" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="nt" value="&lt;b&gt;Notifications&lt;/b&gt;&lt;br&gt;Telegram · e-mail · Twilio call&lt;br&gt;retry · escalation" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="560" y="650" width="230" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="sv" value="&lt;b&gt;Services&lt;/b&gt;&lt;br&gt;login + roles · reports · assistant&lt;br&gt;Zentrix commands · audit log" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="820" y="650" width="260" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="db" value="&lt;b&gt;SQLite database&lt;/b&gt;&lt;br&gt;data/sentineleye.db" style="shape=cylinder3;boundedLbl=1;size=10;backgroundOutline=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="1115" y="640" width="170" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="spk" value="&lt;b&gt;Laptop speaker&lt;/b&gt;&lt;br&gt;voice call-out&lt;br&gt;siren (fire level 2+)" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="85" y="820" width="200" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="ph" value="&lt;b&gt;Supervisor's phone&lt;/b&gt;&lt;br&gt;Telegram · e-mail&lt;br&gt;phone call for fire / smoke" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="545" y="820" width="260" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="dash" value="&lt;b&gt;5 web dashboards&lt;/b&gt;&lt;br&gt;control room · entrance · admin&lt;br&gt;hardware · safety intelligence" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="820" y="820" width="260" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="led" value="&lt;b&gt;Station outputs&lt;/b&gt;&lt;br&gt;green / orange / red LED&lt;br&gt;buzzer · relay" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontColor=#1C2430;fontSize=13;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="1315" y="820" width="190" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="leg" value="Colours: blue = inputs · green = edge AI · yellow = backend / network · purple = outputs · red = hardware / alarms · dashed = planned   ·   Video never leaves the laptop; detection works without internet." style="text;fontSize=11;align=left;verticalAlign=middle;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#FFFFFF;fontColor=#56616E;strokeWidth=1.5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="945" width="1500" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe0" value="video" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.13392857142857142;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="cams" target="rd" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="rd" target="ai" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ai" target="tr" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="tr" target="dc" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="dc" target="ob" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="rd" target="lv" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe6" value="live frames" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.05172413793103448;entryY=0;entryDx=0;entryDy=0;" parent="1" source="lv" target="api" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe7" value="alerts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5310344827586206;entryY=0;entryDx=0;entryDy=0;" parent="1" source="ob" target="api" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe8" value="sensor JSON" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.6793103448275862;entryY=0;entryDx=0;entryDy=0;" parent="1" source="st" target="api" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe9" value="card UID" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.8068965517241379;entryY=0;entryDx=0;entryDy=0;" parent="1" source="rf" target="api" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe10" value="lat / lon" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.9379310344827586;entryY=0;entryDx=0;entryDy=0;" parent="1" source="loc" target="api" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.08620689655172414;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="api" target="am" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.25862068965517243;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="api" target="ls" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.4241379310344828;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="api" target="nt" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.6137931034482759;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="api" target="sv" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe15" value="store" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.7862068965517242;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="api" target="db" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe16" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ls" target="am" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe17" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="am" target="spk" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe18" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="nt" target="ph" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe19" value="live" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="sv" target="dash" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="NETe20" value="reply" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;html=1;endArrow=block;endFill=1;strokeColor=#4D5B6A;strokeWidth=1.6;fontSize=12;fontColor=#33691E;fontStyle=1;labelBackgroundColor=#FFFFFF;exitX=0.9310344827586207;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="api" target="led" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

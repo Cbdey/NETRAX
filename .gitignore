@@ -33,3 +33,13 @@ _to_delete/
 config/secrets.local.yaml
 config/users.local.yaml
 *.engine
+
+# Android platform-tools (adb) for the phone-call alarm - downloaded, not ours
+tools/platform-tools/
+
+# 12 Nov: final sketches for the friend - contain the Wi-Fi password inline
+firmware/friend_final/
+
+# 12 Nov: CLIP weights for the safety-goggles-vs-normal-glasses check (605 MB; python -m tools.eyewear fetch)
+models/clip_*.safetensors
+models/*.bak

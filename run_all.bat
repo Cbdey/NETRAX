@@ -8,3 +8,9 @@ timeout /t 4 /nobreak >nul
 start "NETRAX edge" cmd /k "venv\Scripts\activate && python -m edge.run_edge"
 timeout /t 3 /nobreak >nul
 start http://127.0.0.1:8000
+echo.
+REM 11 Nov: the link for teammates on the same Wi-Fi (and the address the ESP32 boards need)
+venv\Scripts\python.exe -m tools.lan_setup --brief
+echo Full check / ESP32 addresses: venv\Scripts\python.exe -m tools.lan_setup
+echo.
+pause

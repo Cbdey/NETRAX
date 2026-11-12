@@ -14,18 +14,18 @@
 cameras:
   cam_01:
     name: Welding bay
-    source: 1                               # 5 Nov: LAPTOP webcam (HP) = index 1 on this laptop while the USB webcam is plugged in
+    source: 0                               # 11 Nov: LAPTOP webcam = index 0 today (checked on the picture: people at the laptop)
     default_zone: welding_bay
     zones: []
   cam_02:
     name: Warehouse
-    source: http://192.168.60.53:8080/video     # PHONE 1, IP Webcam app (6 Nov: Wi-Fi 192.168.60.x, laptop .49)
+    source: http://10.248.34.114:8080/video      # PHONE, IP Webcam app (12 Nov: Wi-Fi NOTHING 10.248.34.x). Address changes are followed automatically (edge/phones.py)
     rotate: 90
     default_zone: warehouse
     zones: []
   cam_03:
     name: Assembly line
-    enabled: true                           # 6 Nov: second phone connected
+    enabled: false                          # 11 Nov: no second phone - switch on again with its address
     source: http://192.168.60.58:8080/video       # PHONE 2, IP Webcam app (6 Nov)
     rotate: 90
     default_zone: assembly_line
@@ -33,7 +33,7 @@ cameras:
   cam_04:
     name: Main entrance
     role: entrance                          # 29 Oct: automatic PPE check at the door (edge/entrance.py)
-    source: 0                               # 5 Nov: USB webcam (Logi C270) = index 0 when plugged in. Swapped? swap 0 / 1 here and in cam_01
+    source: 1                               # 11 Nov: USB webcam = index 1 today (picture checked). Swapped? swap 0 / 1 here and in cam_01
     default_zone: main_entrance             # required PPE = zones.yaml main_entrance
     capture: {width: 1280, height: 720, fps: 30, mjpg: true}
     zones: []

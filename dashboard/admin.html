@@ -4,59 +4,54 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NETRAX Admin</title>
+<script>try { var t = new URLSearchParams(location.search).get("theme") || localStorage.getItem("netrax-cr-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
-:root{
-  --bg:#0b161c; --side:#0e1d24; --panel:#11222b; --panel2:#162c37; --ink:#eaf3f4; --muted:#93aab1; --line:#24414b;
-  --ok:#22c55e; --ok-bg:#0f3a24; --warn:#f5b301; --warn-bg:#3d3006; --crit:#ef4444; --crit-bg:#4a1212;
-  --info:#38bdf8; --info-bg:#0c3346; --grey:#64748b; --teal:#14b8a6; --teal-bg:#0d3a36; --r:14px;
-  --shadow:0 1px 2px rgba(0,0,0,.25),0 8px 24px rgba(0,0,0,.18);
-}
-:root[data-theme="light"]{
-  --bg:#eef3f4; --side:#ffffff; --panel:#ffffff; --panel2:#f3f7f8; --ink:#0f1f26; --muted:#4f6a73; --line:#d4e0e3;
-  --ok:#15803d; --ok-bg:#dcfce7; --warn:#a16207; --warn-bg:#fef3c7; --crit:#b91c1c; --crit-bg:#fee2e2;
-  --info:#0369a1; --info-bg:#e0f2fe; --teal:#0f766e; --teal-bg:#ccfbf1; --shadow:0 1px 2px rgba(15,31,38,.06),0 8px 24px rgba(15,31,38,.08);
-}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 .g21,.g12{align-items:start}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
 button,input,select{font:inherit;color:inherit}
 a{color:var(--info)}
-.app{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:100vh}
+.app{max-width:1920px;margin:0 auto;padding:var(--sp-3) var(--sp-4) var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-4)}
+.tabbar{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.tabbar .nx-tabs{flex:1}
+.nx-tabs .cnt{margin-left:6px;font-size:var(--fs-xs);font-weight:800;padding:1px 7px;border-radius:999px;background:var(--crit);color:#fff}.nx-tabs .cnt:empty{display:none}
+main{padding:0!important}.panel h2{font:600 var(--fs-l)/1.2 var(--display)!important}
+.tsec{scroll-margin-top:90px}
 /* ---------- sidebar ---------- */
 aside{background:var(--side);border-right:1px solid var(--line);padding:18px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:6px}
 .brand{display:flex;align-items:center;gap:10px;padding:4px 6px 16px}
-.logo{width:40px;height:40px;border-radius:11px;background:var(--teal);color:#05201c;display:grid;place-items:center;font-weight:900;font-size:20px}
-.brand b{display:block;font-size:18px;letter-spacing:.06em}.brand small{color:var(--muted);font-size:11px;letter-spacing:.14em}
+.logo{width:40px;height:40px;border-radius:11px;background:var(--teal);color:#05201c;display:grid;place-items:center;font-weight:900;font-size:var(--fs-l,19px)}
+.brand b{display:block;font-size:var(--fs-l,19px);letter-spacing:.06em}.brand small{color:var(--muted);font-size:var(--fs-xs,13px);letter-spacing:.14em}
 nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;color:var(--ink);text-decoration:none;font-weight:600;position:relative}
-nav a .ic{width:22px;text-align:center;font-size:17px}
+nav a .ic{width:22px;text-align:center;font-size:var(--fs-m,16px)}
 nav a:hover{background:var(--panel2)}
 nav a[aria-current="page"]{background:var(--teal-bg);color:var(--teal)}
 nav a[aria-current="page"]::before{content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:4px;border-radius:0 4px 4px 0;background:var(--teal)}
-nav a .cnt{margin-left:auto;font-size:12px;font-weight:800;padding:1px 8px;border-radius:999px;background:var(--crit);color:#fff}
+nav a .cnt{margin-left:auto;font-size:var(--fs-s,14px);font-weight:800;padding:1px 8px;border-radius:999px;background:var(--crit);color:#fff}
 nav a .cnt:empty{display:none}
-.sidefoot{margin-top:auto;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--muted)}
+.sidefoot{margin-top:auto;display:flex;flex-direction:column;gap:8px;font-size:var(--fs-s,14px);color:var(--muted)}
 .sidefoot a{color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:9px;padding:8px 10px;display:flex;gap:8px;align-items:center}
 .sidefoot a:hover{background:var(--panel2)}
 /* ---------- top bar ---------- */
 main{padding:18px 24px 40px;min-width:0}
 .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
-.top h1{margin:0;font-size:26px}.top p{margin:2px 0 0;color:var(--muted);font-size:14px}
+.top h1{margin:0;font-size:var(--fs-xl,24px)}.top p{margin:2px 0 0;color:var(--muted);font-size:var(--fs-s,14px)}
 .grow{flex:1}
-.chip{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;font-weight:700;font-size:13px;border:1px solid var(--line);background:var(--panel);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;font-weight:700;font-size:var(--fs-s,14px);border:1px solid var(--line);background:var(--panel);white-space:nowrap}
 .chip.ok{color:var(--ok);border-color:var(--ok)}.chip.warn{color:var(--warn);border-color:var(--warn)}.chip.crit{color:var(--crit);border-color:var(--crit)}
 .dot{width:9px;height:9px;border-radius:50%;background:currentColor;display:inline-block}
 .live .dot{animation:blink 1.6s infinite}@keyframes blink{50%{opacity:.25}}
-.btn{border:1px solid var(--line);background:var(--panel2);border-radius:9px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink)}
+.btn{border:1px solid var(--line);background:var(--panel2);border-radius:9px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:var(--fs-s,14px);display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink)}
 .btn:hover{filter:brightness(1.12)}.btn:disabled{opacity:.5;cursor:default}
 .btn.pri{background:var(--teal);border-color:var(--teal);color:#05201c}
 .btn.red{background:var(--crit);border-color:var(--crit);color:#fff}
-.btn.sm{padding:4px 10px;font-size:13px;border-radius:7px}
+.btn.sm{padding:4px 10px;font-size:var(--fs-s,14px);border-radius:7px}
 .btn:focus-visible,input:focus-visible,select:focus-visible,nav a:focus-visible{outline:3px solid var(--info);outline-offset:2px}
 /* ---------- cards ---------- */
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow)}
-.panel h2{margin:0 0 12px;font-size:17px;display:flex;align-items:center;gap:10px}
-.panel h2 .grow{flex:1}.panel h2 small{font-weight:500;color:var(--muted);font-size:13px}
+.panel h2{margin:0 0 12px;font-size:var(--fs-m,16px);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.panel h2 .grow{flex:1}.panel h2 small{font-weight:500;color:var(--muted);font-size:var(--fs-s,14px)}
 .grid{display:grid;gap:16px}
 .g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .g21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}.g12{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}
@@ -65,52 +60,52 @@ main{padding:18px 24px 40px;min-width:0}
   transition:transform .2s ease, box-shadow .2s ease}
 .kpi:hover{transform:translateY(-3px)}
 .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--c,var(--teal))}
-.kpi small{color:var(--muted);font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
-.kpi b{display:block;font-size:32px;line-height:1.1;margin:6px 0 2px;font-variant-numeric:tabular-nums}
-.kpi span{color:var(--muted);font-size:12px}
+.kpi small{color:var(--muted);font-size:var(--fs-s,14px);font-weight:600;display:flex;align-items:center;gap:6px}
+.kpi b{display:block;font-size:var(--fs-num,34px);line-height:1.1;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+.kpi span{color:var(--muted);font-size:var(--fs-s,14px)}
 .kpi.hot{background:var(--crit-bg)}.kpi.hot b{color:var(--crit)}
 .bump{animation:bump .5s ease}@keyframes bump{40%{transform:scale(1.12)}}
 section.page{display:none}section.page.on{display:block;animation:fade .25s ease}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 /* ---------- lists / tables ---------- */
-table{width:100%;border-collapse:collapse;font-size:14px}
-th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-s,14px)}
+th{text-align:left;color:var(--muted);font-weight:600;font-size:var(--fs-s,14px);letter-spacing:.04em;text-transform:uppercase;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
 td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 tr.click{cursor:pointer}tr.click:hover td{background:var(--panel2)}
 .tw{overflow:auto;max-height:640px}
-.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:var(--fs-s,14px);font-weight:800;white-space:nowrap}
 .p-ok{background:var(--ok-bg);color:var(--ok)}.p-warn{background:var(--warn-bg);color:var(--warn)}.p-crit{background:var(--crit-bg);color:var(--crit)}
 .p-info{background:var(--info-bg);color:var(--info)}.p-grey{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
 .thumb{width:84px;height:52px;object-fit:cover;border-radius:7px;background:#000;display:block}
-.empty{color:var(--muted);text-align:center;padding:22px;font-size:14px}
-.small{font-size:13px;color:var(--muted)}
+.empty{color:var(--muted);text-align:center;padding:22px;font-size:var(--fs-s,14px)}
+.small{font-size:var(--fs-s,14px);color:var(--muted)}
 .feed{display:flex;flex-direction:column;gap:8px;max-height:520px;overflow:auto}
 .fi{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);cursor:pointer}
 .fi:hover{border-color:var(--teal)}
-.fi .ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:16px;font-weight:900}
-.fi b{display:block;font-size:14px}.fi small{color:var(--muted);font-size:12px}
+.fi .ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:var(--fs-m,16px);font-weight:900}
+.fi b{display:block;font-size:var(--fs-s,14px)}.fi small{color:var(--muted);font-size:var(--fs-s,14px)}
 .ic.crit{background:var(--crit-bg);color:var(--crit)}.ic.warn{background:var(--warn-bg);color:var(--warn)}.ic.ok{background:var(--ok-bg);color:var(--ok)}.ic.info{background:var(--info-bg);color:var(--info)}
 /* ---------- forms ---------- */
 .form{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;align-items:end}
-label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.03em}
-.inp,select.inp{padding:9px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);font-size:14px;width:100%}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-s,14px);font-weight:700;color:var(--muted);letter-spacing:.03em}
+.inp,select.inp{padding:9px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);font-size:var(--fs-s,14px);width:100%}
 /* ---------- workers ---------- */
 .wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .wcard{border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:14px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;transition:transform .2s ease}
 .wcard:hover{transform:translateY(-3px)}
 .wcard img{width:86px;height:86px;border-radius:50%;object-fit:cover;border:3px solid var(--teal);background:#000}
-.wcard b{font-size:17px}.wcard .id{font-weight:800;color:var(--teal);font-size:13px;letter-spacing:.05em}
+.wcard b{font-size:var(--fs-m,16px)}.wcard .id{font-weight:800;color:var(--teal);font-size:var(--fs-s,14px);letter-spacing:.05em}
 .wcard .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
 .drop{border:2px dashed var(--line);border-radius:12px;padding:16px;text-align:center;color:var(--muted)}
 /* ---------- charts ---------- */
 .bars{display:flex;align-items:flex-end;gap:10px;height:190px;padding-top:12px}
 .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
 .bar i{display:block;width:100%;max-width:56px;border-radius:8px 8px 3px 3px;background:var(--teal);transition:height .5s ease;min-height:3px}
-.bar span{font-size:12px;color:var(--muted)}.bar em{font-style:normal;font-size:13px;font-weight:800}
-.hbar{display:grid;grid-template-columns:120px minmax(0,1fr) 40px;gap:10px;align-items:center;margin:8px 0;font-size:14px}
+.bar span{font-size:var(--fs-s,14px);color:var(--muted)}.bar em{font-style:normal;font-size:var(--fs-s,14px);font-weight:800}
+.hbar{display:grid;grid-template-columns:170px minmax(0,1fr) 40px;gap:10px;align-items:center;margin:8px 0;font-size:var(--fs-s,14px)}
 .hbar .t{height:12px;border-radius:999px;background:var(--panel2);overflow:hidden}.hbar .t i{display:block;height:100%;border-radius:999px;background:var(--crit)}
-.heat{overflow-x:auto}.heat table{border-collapse:separate;border-spacing:3px;width:auto;font-size:11px}
+.heat{overflow-x:auto}.heat table{border-collapse:separate;border-spacing:3px;width:auto;font-size:var(--fs-xs,13px)}
 .heat td{padding:0;width:24px;height:24px;border:0;border-radius:5px;text-align:center;font-weight:700}
 .heat th{border:0;padding:0 8px 0 0;text-transform:none;letter-spacing:0;white-space:nowrap}
 .cams{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
@@ -119,16 +114,16 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
 .cam .scr{aspect-ratio:16/9;display:grid;place-items:center;color:#b6c6cb;position:relative}
 .cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .cam .cap{position:absolute;left:0;right:0;top:0;padding:8px 10px;display:flex;gap:8px;align-items:center;background:linear-gradient(rgba(0,0,0,.75),transparent);color:#fff;z-index:2;font-weight:700}
-.cam .cap span{margin-left:auto;font-size:12px;background:rgba(0,0,0,.55);padding:2px 8px;border-radius:6px}
+.cam .cap span{margin-left:auto;font-size:var(--fs-s,14px);background:rgba(0,0,0,.55);padding:2px 8px;border-radius:6px}
 .cam .bd{position:absolute;left:8px;right:8px;bottom:8px;z-index:2;background:var(--crit);color:#fff;font-weight:800;padding:6px 10px;border-radius:8px}
 /* ---------- modal / toasts ---------- */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;place-items:center;z-index:90;padding:18px}
 .modal.show{display:grid}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:980px;width:100%;max-height:92vh;overflow:auto;padding:20px}
 .modal img.big{width:100%;border-radius:10px;background:#000;margin-top:10px}
-.kv{display:grid;grid-template-columns:170px 1fr;gap:5px 12px;font-size:14px;margin:12px 0}.kv div:nth-child(odd){color:var(--muted)}
+.kv{display:grid;grid-template-columns:170px 1fr;gap:5px 12px;font-size:var(--fs-s,14px);margin:12px 0}.kv div:nth-child(odd){color:var(--muted)}
 .toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:99;max-width:420px}
-.toast{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--teal);padding:10px 14px;border-radius:10px;font-size:14px;box-shadow:var(--shadow);animation:fade .25s ease}
+.toast{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--teal);padding:10px 14px;border-radius:10px;font-size:var(--fs-s,14px);box-shadow:var(--shadow);animation:fade .25s ease}
 .toast.crit{border-left-color:var(--crit)}.toast b{display:block}
 .alarmbar{display:none;margin-bottom:14px;background:var(--crit);color:#fff;border-radius:12px;padding:12px 16px;font-weight:700;align-items:center;gap:12px}
 .alarmbar.show{display:flex}.alarmbar .btn{background:#fff;color:var(--crit);border:0}
@@ -136,46 +131,39 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
 .rpre{display:flex;gap:6px;flex-wrap:wrap}
 @media (max-width:1400px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:1100px){.g2,.g3,.g21,.g12{grid-template-columns:1fr}}
-@media (max-width:860px){.app{grid-template-columns:1fr}aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center}
+@media (max-width:860px){.app{padding:var(--sp-2) var(--sp-3)}aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center}
   nav{display:flex;flex-wrap:wrap;gap:4px}.sidefoot{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:14px 16px}
   nav a[aria-current="page"]::before{display:none}.kv{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/static/nx.css?v=5nov2">
+<link rel="stylesheet" href="/static/nx.css?v=12nov1">
 </head>
 <body>
 <div class="nxvig" aria-hidden="true"></div>
 <div class="app">
-<aside>
-  <div class="brand"><div class="logo" aria-hidden="true">N</div><div><b>NETRAX</b><small>ADMIN CONSOLE</small></div></div>
-  <nav aria-label="Admin sections">
-    <a href="#overview" data-p="overview"><span class="ic">◉</span>Overview</a>
-    <a href="#incidents" data-p="incidents"><span class="ic">▲</span>Incidents<span class="cnt" id="navInc"></span></a>
-    <a href="#workers" data-p="workers"><span class="ic">👷</span>Workers</a>
-    <a href="#alerts" data-p="alerts"><span class="ic">✉</span>Alerts &amp; channels<span class="cnt" id="navFail"></span></a>
-    <a href="#cameras" data-p="cameras"><span class="ic">◧</span>Cameras &amp; zones</a>
-    <a href="#users" data-p="users"><span class="ic">🔐</span>Users &amp; audit</a>
-    <a href="#system" data-p="system"><span class="ic">🩺</span>System health<span class="cnt" id="navHealth"></span></a>
-    <a href="#reports" data-p="reports"><span class="ic">📄</span>Report generator</a>
-    <a href="#acceptance" data-p="acceptance"><span class="ic">✔</span>Acceptance tests<span class="cnt" id="navAcc" style="background:var(--info)"></span></a>
-  </nav>
-  <div class="sidefoot">
-    <a href="/">◀ Control room</a>
-    <a href="/entrance">🚪 Entrance dashboard</a>
-    <a href="/hardware">⚙ Hardware &amp; RFID</a>
-    <a href="/static/roi.html">₹ Cost &amp; payback</a>
-    <div id="userInfo"></div>
+<header class="nxbar">
+  <a class="logo" href="/" aria-label="NETRAX home">N</a>
+  <div class="brand"><b>NETRAX</b><span>Admin</span></div>
+  <span class="clock" id="clock" aria-label="Current time">--:--:--</span>
+  <span class="hgrow"></span>
+  <nav class="nxnav" aria-label="Pages"><a href="/">Control room</a><a href="/entrance">Entrance</a><a href="/admin" aria-current="page">Admin</a><a href="/hardware">Hardware</a><a href="/intelligence">Intelligence</a></nav>
+  <span data-zx-slot></span>
+  <button class="ibtn" id="themeBtn" aria-label="Switch day / night">☀ / ☾</button>
+  <span class="chip" id="userInfo">…</span>
+  <button class="ibtn" id="logoutBtn" hidden>Sign out</button>
+</header>
+<div class="tabbar">
+  <div class="nx-tabs" role="tablist" aria-label="Admin sections">
+    <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+    <button role="tab" data-tab="incidents">Incidents &amp; reports<span class="cnt" id="navInc"></span></button>
+    <button role="tab" data-tab="workers">Workers</button>
+    <button role="tab" data-tab="alerts">Alerts &amp; delivery<span class="cnt" id="navFail"></span></button>
+    <button role="tab" data-tab="site">Site setup</button>
+    <button role="tab" data-tab="system">System<span class="cnt" id="navHealth"></span><span class="cnt" id="navAcc" style="background:var(--info)"></span></button>
   </div>
-</aside>
-
+  <span class="nx-count" id="liveChip"><span class="dot"></span><span>Connecting</span></span>
+  <a class="btn" href="/static/roi.html" title="Cost and payback">₹ ROI</a>
+</div>
 <main>
-  <div class="top">
-    <div><h1 id="pgTitle">Overview</h1><p id="pgSub">Live picture of safety across all zones</p></div>
-    <span class="grow"></span>
-    <span class="chip" id="liveChip"><span class="dot"></span><span>CONNECTING</span></span>
-    <span class="chip" id="clock">--:--:-- IST</span>
-    <button class="btn sm" id="themeBtn" aria-label="Switch day / night">☀ / ☾</button>
-    <button class="btn sm" id="logoutBtn" hidden>Sign out</button>
-  </div>
   <div class="alarmbar" id="alarmbar" role="alert"><span id="alarmText"></span><span class="grow"></span>
     <button class="btn sm" id="alarmSilence">Silence siren</button></div>
 
@@ -199,11 +187,11 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
         <div class="panel"><h2>Violations by zone &amp; hour · 7 days</h2><div class="heat" id="heat"></div></div>
       </div>
       <div class="grid" style="align-content:start">
-        <div class="panel"><h2>Live activity <span class="grow"></span><small>newest first</small></h2><div class="feed" id="activity"></div></div>
-        <div class="panel"><h2 id="sumTitle">Shift summary</h2><ul id="sumLines" style="margin:0;padding-left:18px;line-height:1.75"></ul>
-          <div class="small" style="margin-top:8px">Counted from the incident log; also in the PDF report.</div></div>
-        <div class="panel"><h2>Compliance mix</h2><div style="display:flex;gap:18px;align-items:center"><div id="donut"></div><div id="mix" style="display:grid;gap:6px"></div></div>
-          <div class="small" style="margin-top:8px">Unverifiable = body part not visible. It is never counted as missing.</div></div>
+        <div class="panel"><h2>Live activity <span class="grow"></span><span class="nx-info" tabindex="0" title="newest first">i</span></h2><div class="feed" id="activity"></div></div>
+        <div class="panel"><h2><span id="sumTitle">Shift summary</span> <span class="nx-info" tabindex="0" title="Counted from the incident log; also in the PDF report.">i</span></h2><ul id="sumLines" style="margin:0;padding-left:18px;line-height:1.75"></ul>
+          </div>
+        <div class="panel"><h2>Compliance mix <span class="nx-info" tabindex="0" title="Unverifiable = body part not visible. It is never counted as missing.">i</span></h2><div style="display:flex;gap:18px;align-items:center"><div id="donut"></div><div id="mix" style="display:grid;gap:6px"></div></div>
+          </div>
       </div>
     </div>
   </section>
@@ -211,7 +199,7 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
   <!-- ===================== INCIDENTS ===================== -->
   <section class="page" id="p-incidents">
     <div class="panel" style="margin-bottom:16px">
-      <h2>Search incident history <span class="grow"></span><small>every record is kept with its event ID, snapshot and audit trail</small></h2>
+      <h2>Search incident history <span class="grow"></span><span class="nx-info" tabindex="0" title="every record is kept with its event ID, snapshot and audit trail">i</span></h2>
       <form class="form" id="sForm">
         <label class="f">From<input class="inp" type="datetime-local" id="sFrom"></label>
         <label class="f">To<input class="inp" type="datetime-local" id="sTo"></label>
@@ -240,9 +228,9 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
         <h2>Register a worker</h2>
         <form id="regForm" style="display:grid;gap:12px">
           <label class="f">Name<input class="inp" id="regName" required maxlength="40" placeholder="e.g. Ravi Kumar" autocomplete="off"></label>
-          <label class="f">Photos (3–5 recommended: front, left, right, with helmet)<input class="inp" id="regPhotos" type="file" accept="image/*" multiple></label>
+          <label class="f" title="3-5 recommended: front, left, right, with helmet">Photos<input class="inp" id="regPhotos" type="file" accept="image/*" multiple></label>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" type="submit">Register from photos</button><button class="btn" type="button" id="regCam">📷 Capture from CAM-01 (3 shots)</button></div>
-          <div class="small" id="regMsg">Consent-based: only registered workers' photos are stored, on this computer. Unregistered people get a temporary visitor ID that is never saved. More photos = fewer wrong names.</div>
+          <div class="small" id="regMsg" title="Consent-based: only registered workers' photos are stored, on this computer. Unregistered people get a temporary visitor ID that is never saved. More photos = fewer wrong names."></div>
         </form>
       </div>
       <div class="panel"><h2>Registered workers <span class="pill p-info" id="wCount">0</span><span class="grow"></span><small id="wHint"></small></h2><div class="wgrid" id="wList"></div></div>
@@ -253,10 +241,10 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
   <section class="page" id="p-alerts">
     <div class="grid g3" style="margin-bottom:16px" id="chanCards"></div>
     <div class="panel" style="margin-bottom:16px" id="testPanel">
-      <h2>Send a test message <span class="grow"></span><small>clearly marked TEST · result shown only from the provider's answer</small></h2>
+      <h2>Send a test message <span class="grow"></span><span class="nx-info" tabindex="0" title="clearly marked TEST · result shown only from the provider's answer">i</span></h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="testBtns"></div>
     </div>
-    <div class="panel"><h2>Delivery log <span class="grow"></span><small>live · one message per incident per channel · fire never delayed</small></h2>
+    <div class="panel"><h2>Delivery log <span class="grow"></span><span class="nx-info" tabindex="0" title="live · one message per incident per channel · fire never delayed">i</span></h2>
       <div class="tw"><table><thead><tr><th>Time</th><th>Channel</th><th>Status</th><th>To</th><th>Tries</th><th>Delivery time</th><th>Incident</th><th>Provider / error</th></tr></thead><tbody id="nRows"></tbody></table></div></div>
   </section>
 
@@ -264,18 +252,18 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
   <section class="page" id="p-cameras">
     <div class="panel" style="margin-bottom:16px"><h2>Cameras <span class="grow"></span><small id="camSum"></small><a class="btn sm" href="/">Open control room</a></h2><div class="cams" id="cams"></div></div>
     <div class="grid g21">
-      <div class="panel"><h2>Zones · required PPE · access</h2><table><thead><tr><th>Zone</th><th>Required PPE</th><th>Risk</th><th>Allowed / inside</th><th>Now</th></tr></thead><tbody id="zones"></tbody></table></div>
-      <div class="panel"><h2>Speaker &amp; siren (this laptop)</h2><div id="resp"></div></div>
+      <div class="panel"><h2>Zones · required PPE · access</h2><div class="tw"><table><thead><tr><th>Zone</th><th>Required PPE</th><th>Risk</th><th>Allowed / inside</th><th>Now</th></tr></thead><tbody id="zones"></tbody></table></div></div>
+      <div class="grid" style="align-content:start"><div class="panel"><h2>Speaker &amp; siren</h2><div id="resp"></div></div>
+      <div class="panel"><h2>Safety station</h2><div id="station"></div></div></div>
     </div>
   </section>
 
   <!-- ===================== USERS ===================== -->
   <section class="page" id="p-users">
     <div class="grid g12">
-      <div class="panel" style="align-self:start"><h2>Dashboard users</h2><table><thead><tr><th>User</th><th>Role</th><th>Password set</th></tr></thead><tbody id="uRows"></tbody></table>
-        <div class="small" style="margin-top:10px">Roles: <b>viewer</b> (read-only, names and snapshots hidden) · <b>supervisor</b> (acknowledge, resolve, assistant) · <b>admin</b> (workers, tests, users, audit).<br>
-          Change a password on this laptop: <code>python -m tools.users set &lt;name&gt; &lt;password&gt; [role]</code></div></div>
-      <div class="panel"><h2>Audit log <span class="grow"></span><small>who did what, when</small></h2><div class="tw"><table><thead><tr><th>Time</th><th>User</th><th>Role</th><th>Action</th><th>Target</th><th>From</th></tr></thead><tbody id="aRows"></tbody></table></div></div>
+      <div class="panel" style="align-self:start"><h2>Dashboard users <span class="nx-info" tabindex="0" title="viewer: read-only, names and snapshots hidden · supervisor: acknowledge, resolve, assistant · admin: workers, tests, users, audit. Change a password on this laptop: python -m tools.users set NAME PASSWORD [role]">i</span></h2><table><thead><tr><th>User</th><th>Role</th><th>Password set</th></tr></thead><tbody id="uRows"></tbody></table>
+        </div></div>
+      <div class="panel"><h2>Audit log <span class="grow"></span><span class="nx-info" tabindex="0" title="who did what, when">i</span></h2><div class="tw"><table><thead><tr><th>Time</th><th>User</th><th>Role</th><th>Action</th><th>Target</th><th>From</th></tr></thead><tbody id="aRows"></tbody></table></div></div>
     </div>
   </section>
 
@@ -284,15 +272,14 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
     <div class="grid g2">
       <div class="panel"><h2>Components <span class="grow"></span><small id="hAt"></small></h2><table><tbody id="health"></tbody></table></div>
       <div class="grid" style="align-content:start">
-        <div class="panel"><h2>Measured latency <span class="grow"></span><small>median · 95th percentile</small></h2><div id="perf" class="grid g2"></div><div class="small" id="perfNote" style="margin-top:8px"></div></div>
-        <div class="panel"><h2>Safety station (ESP32)</h2><div id="station"></div></div>
+        <div class="panel"><h2>Measured latency <span class="grow"></span><span class="nx-info" tabindex="0" title="median · 95th percentile">i</span></h2><div id="perf" class="grid g2"></div><div class="small" id="perfNote" style="margin-top:8px"></div></div>
       </div>
     </div>
   </section>
 
   <section class="page" id="p-reports">
     <div class="panel" style="margin-bottom:16px">
-      <h2>Generate a report <span class="grow"></span><small>any time range · any filter · PDF or CSV · numbers come only from the saved records</small></h2>
+      <h2>Generate a report <span class="grow"></span><span class="nx-info" tabindex="0" title="any time range · any filter · PDF or CSV · numbers come only from the saved records">i</span></h2>
       <div class="rpre" role="group" aria-label="Time range">
         <button class="btn sm" data-pre="1h">Last hour</button><button class="btn sm" data-pre="shift">This shift</button>
         <button class="btn sm" data-pre="today">Today</button><button class="btn sm" data-pre="yday">Yesterday</button>
@@ -315,8 +302,8 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
   </section>
 
   <section class="page" id="p-acceptance">
-    <div class="panel"><h2>Live end-to-end run <span class="grow"></span><small id="accSum"></small><a class="btn sm" href="/api/acceptance/report.md">⬇ Export results</a></h2>
-      <p class="small" style="margin:0 0 10px">Brief section 11. The automatic tests use fake providers; this list is the real run. Do the test, then record the result and attach a screenshot. The evidence line is read from the database. Nothing is marked passed automatically.</p>
+    <div class="panel"><h2>Live end-to-end run <span class="nx-info" tabindex="0" title="Brief section 11. The automatic tests use fake providers; this list is the real run. Do the test, then record the result and attach a screenshot. The evidence line is read from the database. Nothing is marked passed automatically.">i</span> <span class="grow"></span><small id="accSum"></small><a class="btn sm" href="/api/acceptance/report.md">⬇ Export results</a></h2>
+      
       <div id="accList" class="grid" style="gap:10px"></div></div>
   </section>
 </main>
@@ -325,8 +312,10 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:70
 <div class="modal" id="modal" role="dialog" aria-modal="true"><div class="box" id="mBox"></div></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="/static/alerts.js?v=5nov2"></script>
-<script src="/static/zentrix.js?v=5nov2"></script>
+<script src="/static/ppe_icons.js?v=12nov1"></script>
+<script src="/static/people.js?v=12nov1"></script>
+<script src="/static/alerts.js?v=12nov1"></script>
+<script src="/static/zentrix.js?v=12nov1"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -351,27 +340,37 @@ function setNum(id, v){ const el = $(id); if (!el) return; const s = String(v); 
 /* ---------- theme, clock, navigation ---------- */
 try { const t = localStorage.getItem("netrax-cr-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
 $("themeBtn").onclick = () => { const r = document.documentElement; r.dataset.theme = r.dataset.theme === "light" ? "dark" : "light"; try { localStorage.setItem("netrax-cr-theme", r.dataset.theme); } catch {} };
-setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-IN", {timeZone:TZ, hour12:false}) + " IST"; }, 500);
+setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-IN", {timeZone:TZ, hour12:false}); }, 500);
 const PAGES = {overview:["Overview","Live picture of safety across all zones"], incidents:["Incidents","Search, review and export every incident"],
   workers:["Workers","Registration, face ID and RFID cards"], alerts:["Alerts & channels","Telegram, e-mail, phone and SMS — status and delivery log"],
   cameras:["Cameras & zones","Live feeds, zone rules and the speaker / siren"], users:["Users & audit","Who can do what, and who did what"],
   system:["System health","Edge computer, cameras, database, channels and measured speed"],
   reports:["Report generator","Specific reports for any time range: who, where, what was missing, how fast it was handled"],
   acceptance:["Acceptance tests","Brief section 11, tests 01-14: result, evidence and screenshot"]};
+/* 12 Nov polish: 6 tabs; each shows one or more of the old sections. Old links (#reports, #users, #cameras ...) still work. */
+const TABS = {overview: ["overview"], incidents: ["incidents", "reports"], workers: ["workers"], alerts: ["alerts"],
+              site: ["cameras"], system: ["system", "users", "acceptance"]};
+const TAB_OF = {}; for (const t in TABS) for (const p of TABS[t]) TAB_OF[p] = t;
+const LOADERS = {incidents: search, alerts: loadAlerts, users: loadUsers, system: loadSystem, workers: loadWorkers, cameras: loadCameras, acceptance: loadAcceptance, reports: initReports};
 function show(){
-  const p = (location.hash.slice(1) || "overview").split("=")[0]; const page = PAGES[p] ? p : "overview";
-  document.querySelectorAll("section.page").forEach(s => s.classList.toggle("on", s.id === "p-" + page));
-  document.querySelectorAll("nav a").forEach(a => { if (a.dataset.p === page) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
-  $("pgTitle").textContent = PAGES[page][0]; $("pgSub").textContent = PAGES[page][1];
-  ({incidents: search, alerts: loadAlerts, users: loadUsers, system: loadSystem, workers: loadWorkers, cameras: loadCameras, acceptance: loadAcceptance, reports: initReports}[page] || (() => {}))();
+  let h = location.hash.slice(1).split(/[=?&]/)[0];
+  if (!h){ try { h = localStorage.getItem("netrax-admin-tab") || "overview"; } catch { h = "overview"; } }
+  const tab = TABS[h] ? h : TAB_OF[h] || "overview", sub = PAGES[h] && TAB_OF[h] === tab && h !== TABS[tab][0] ? h : null;
+  try { localStorage.setItem("netrax-admin-tab", tab); } catch {}
+  document.querySelectorAll("section.page").forEach(s => { const p = s.id.slice(2); s.classList.toggle("on", TABS[tab].includes(p)); s.classList.add("tsec"); });
+  document.querySelectorAll(".nx-tabs [data-tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab));
+  document.title = "NETRAX Admin · " + document.querySelector(`.nx-tabs [data-tab="${tab}"]`).firstChild.textContent;
+  for (const p of TABS[tab]) (LOADERS[p] || (() => {}))();
+  if (sub) setTimeout(() => { const el = $("p-" + sub); if (el) el.scrollIntoView({behavior: "smooth", block: "start"}); }, 60);
 }
+document.querySelectorAll(".nx-tabs [data-tab]").forEach(b => b.onclick = () => { if (location.hash.slice(1) === b.dataset.tab) show(); else location.hash = b.dataset.tab; });
 window.addEventListener("hashchange", show);
 $("logoutBtn").onclick = async () => { await post("/api/logout").catch(()=>{}); location.href = "/login"; };
 
 /* ---------- shared: status + titles ---------- */
 const DONE = new Set(["resolved","closed","dismissed","suppressed"]);
 function title(e){
-  if (e.type === "ppe_missing") return "Missing PPE: " + (e.items_missing||[]).map(iname).join(", ");
+  if (e.type === "ppe_missing") return "PPE violation";
   if (e.type === "unauthorized_entry") return "Unauthorised entry — " + (e.worker_name || e.worker_id || "person");
   if (e.type === "fire") return `FIRE DETECTED${e.fire_level ? " · Level " + e.fire_level : ""}`;
   if (e.type === "smoke") return `SMOKE DETECTED${e.fire_level ? " · Level " + e.fire_level : ""}`;
@@ -385,7 +384,7 @@ function statusPill(e){
   return `<span class="pill ${m[0]}">${m[1]}</span>`;
 }
 const sevPill = s => `<span class="pill ${s === "Critical" || s === "High" ? "p-crit" : s === "Medium" ? "p-warn" : "p-grey"}">${esc(s || "–")}</span>`;
-function who(e){ if (!e.worker_id) return e.type === "ppe_missing" ? "not identified" : ""; if (e.worker_id === "W-***") return "hidden"; return `${e.worker_name || ""} (${e.worker_id})`; }
+function who(e){ return e.type === "ppe_missing" || e.type === "unauthorized_entry" ? personText(e) : ""; }
 function icon(e){ if (e.type === "fire" || e.type === "smoke") return ["crit","🔥"]; if (e.type === "entrance_check") return (e.details||{}).result === "approved" ? ["ok","✓"] : ["warn","🚪"];
   if (DONE.has(e.status)) return ["ok","✓"]; if (e.status === "acknowledged") return ["info","◐"]; return ["crit","▲"]; }
 
@@ -393,7 +392,7 @@ function icon(e){ if (e.type === "fire" || e.type === "smoke") return ["crit","�
 function renderKpis(){
   const act = [...EVENTS.values()].filter(e => ["open","escalated","verifying"].includes(e.status));
   setNum("kActive", act.length); $("kActiveBox").classList.toggle("hot", act.length > 0);
-  $("kActiveSub").textContent = act.length ? act.slice(0,2).map(title).join(" · ") : "all clear";
+  $("kActiveSub").textContent = act.length ? act.slice(0,2).map(e => personText(e)).join(" · ") : "all clear";
   $("navInc").textContent = act.length || "";
   const cams = CAMS.cameras || [], on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED");
   setNum("kCams", `${on.length} / ${cams.filter(c => c.status !== "OFF").length}`);
@@ -410,7 +409,7 @@ function renderKpis(){
 function renderActivity(){
   const evs = [...EVENTS.values()].filter(e => e.type !== "test").sort((a,b) => (b.updated_at||b.started_at) - (a.updated_at||a.started_at)).slice(0, 14);
   $("activity").innerHTML = evs.length ? evs.map(e => { const [c, i] = icon(e);
-    return `<div class="fi" data-ev="${esc(e.event_id)}"><div class="ic ${c}">${i}</div><div><b>${esc(title(e))}</b><small>${esc(e.zone_name || e.zone_id || "")} · ${esc(e.camera_id || "station")}${who(e) ? " · " + esc(who(e)) : ""}</small></div>
+    return `<div class="fi" data-ev="${esc(e.event_id)}"><div class="ic ${c}">${i}</div><div><b>${e.type === "ppe_missing" || e.type === "unauthorized_entry" ? personLabel(e) : esc(title(e))}</b><small>${esc(e.zone_name || e.zone_id || "")} · ${esc(e.camera_id || "station")}</small>${e.type === "ppe_missing" ? ppeRowFor(e, 24) : ""}</div>
       <div style="text-align:right">${statusPill(e)}<br><small>${ago(e.updated_at || e.started_at)}</small></div></div>`; }).join("") : `<div class="empty">No incidents yet.</div>`;
 }
 function renderAnalytics(a){
@@ -419,9 +418,9 @@ function renderAnalytics(a){
   const d = a.violations_7d || [], max = Math.max(1, ...d.map(x => x.count));
   $("bars").innerHTML = d.map(x => `<div class="bar" title="${esc(x.date)}: ${x.count}"><em>${x.count || ""}</em><i style="height:${Math.max(2, x.count/max*150)}px;background:${x.count >= max*.66 && x.count ? "var(--crit)" : x.count >= max*.33 && x.count ? "var(--warn)" : "var(--teal)"}"></i><span>${esc(x.label)}</span></div>`).join("");
   $("insight").textContent = (a.insights || [])[0] || "";
-  const hb = (obj, label) => { const ent = Object.entries(obj || {}).sort((x,y) => y[1] - x[1]).slice(0, 6); const m = Math.max(1, ...ent.map(e => e[1]));
-    return ent.length ? ent.map(([k,v]) => `<div class="hbar"><span>${esc(label(k))}</span><div class="t"><i style="width:${v/m*100}%"></i></div><b>${v}</b></div>`).join("") : `<div class="empty">No violations in this period.</div>`; };
-  $("byItem").innerHTML = hb(a.by_item, iname);
+  const hb = (obj, label, html) => { const ent = Object.entries(obj || {}).sort((x,y) => y[1] - x[1]).slice(0, 6); const m = Math.max(1, ...ent.map(e => e[1]));
+    return ent.length ? ent.map(([k,v]) => `<div class="hbar"><span>${html ? html(k) : esc(label(k))}</span><div class="t"><i style="width:${v/m*100}%"></i></div><b>${v}</b></div>`).join("") : `<div class="empty">No violations in this period.</div>`; };
+  $("byItem").innerHTML = hb(Object.fromEntries(Object.entries(a.by_item || {}).filter(([k]) => (window.PPE_ORDER || []).includes(k))), k => k, k => `<span style="display:inline-flex;align-items:center;gap:6px">${ppeIcon(k, "miss", 26)}${esc((window.PPE_LABEL || {})[k] || k)}</span>`);
   $("byZone").innerHTML = hb(a.by_zone, k => (ZONES.find(z => z.zone_id === k || z.name === k) || {}).name || k);
   const m = a.compliance_mix || {}, parts = [["Compliant", m.compliant||0, "var(--ok)"], ["Unverifiable", m.unverifiable||0, "var(--warn)"], ["Missing", m.missing||0, "var(--crit)"]];
   let off = 25; const R = 15.915;
@@ -459,9 +458,9 @@ async function search(){
     const rows = (await api("/api/events/search?" + p)).filter(e => e.type !== "test");
     $("sCount").textContent = `${rows.length} incident${rows.length === 1 ? "" : "s"}${rows.length === 300 ? " (first 300)" : ""}`;
     $("sRows").innerHTML = rows.length ? rows.map(e => `<tr class="click" data-ev="${esc(e.event_id)}">
-      <td>${e.snapshot ? `<img class="thumb" src="${e.snapshot}?v=${e.updated_at}" alt="" loading="lazy">` : `<div class="thumb" style="display:grid;place-items:center;color:#789;font-size:11px">no image</div>`}${e.clip ? `<div class="small" style="text-align:center">▶ clip</div>` : ""}</td>
+      <td>${e.snapshot ? `<img class="thumb" src="${e.snapshot}?v=${e.updated_at}" alt="" loading="lazy">` : `<div class="thumb" style="display:grid;place-items:center;color:#789;font-size:var(--fs-xs,13px)">no image</div>`}${e.clip ? `<div class="small" style="text-align:center">▶ clip</div>` : ""}</td>
       <td><b>${fmtT(e.started_at, false)}</b><br><span class="small">${new Date(e.started_at*1000).toLocaleDateString("en-IN",{timeZone:TZ, day:"2-digit", month:"short"})}</span></td>
-      <td><b>${esc(title(e))}</b><br><span class="small">${esc(e.event_id)}</span></td>
+      <td><b>${esc(title(e))}</b>${e.type === "ppe_missing" ? ppeRowFor(e, 24) : ""}<span class="small">${esc(e.event_id)}</span></td>
       <td>${esc(e.zone_name || e.zone_id || "–")}<br><span class="small">${esc(e.camera_id || "safety station")}</span></td>
       <td>${esc(who(e) || "–")}</td><td>${sevPill(e.severity)}</td><td>${statusPill(e)}</td>
       <td>${canAct() && !DONE.has(e.status) ? `${["open","escalated","verifying"].includes(e.status) ? `<button class="btn sm red" data-a="ack" data-id="${esc(e.event_id)}">Ack</button> ` : ""}<button class="btn sm" data-a="resolve" data-id="${esc(e.event_id)}">Resolve</button>` : ""}</td></tr>`).join("")
@@ -475,14 +474,14 @@ $("sReset").onclick = () => { $("sForm").reset(); search(); };
 async function openEvent(id){
   let e; try { e = await api(`/api/events/${encodeURIComponent(id)}`); } catch(x){ toast("Not found", id, true); return; }
   const n = (e.notifications||[]).map(x => `<tr><td>${chName(x.channel)}</td><td>${nPill(x.status)}</td><td class="small">${esc(x.recipient||"")}</td><td>${x.attempts||0}</td><td>${x.latency_ms != null ? (x.latency_ms/1000).toFixed(1)+" s" : "–"}</td><td class="small">${esc(x.provider_status || x.error || "")}</td></tr>`).join("");
-  $("mBox").innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:22px">${esc(title(e))}</h2>${statusPill(e)}${sevPill(e.severity)}<span class="grow"></span><button class="btn" id="mClose">Close</button></div>
+  $("mBox").innerHTML = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:var(--fs-xl,24px)">${esc(title(e))}</h2>${statusPill(e)}${sevPill(e.severity)}<span class="grow"></span><button class="btn" id="mClose">Close</button></div>
     ${e.clip ? `<video class="big" src="${e.clip}" controls autoplay muted loop playsinline preload="metadata" aria-label="Incident video clip (faces blurred)" style="width:100%;background:#000"></video><p class="small" style="margin:4px 0 8px">▶ Video clip: about 4 s before and 4 s after the alert (faces blurred).</p>` : ""}
     ${e.snapshot ? `<img class="big" src="${e.snapshot}?v=${e.updated_at}" alt="Saved snapshot (faces blurred)">` : `<p class="small">No saved snapshot for this record.</p>`}
     <div class="kv"><div>Event ID</div><div>${esc(e.event_id)}</div><div>Detected</div><div>${fmtT(e.started_at)} IST</div>
       <div>Ended</div><div>${e.ended_at ? fmtT(e.ended_at) + " IST · " + esc(e.end_reason || "") : "still active"}</div>
       <div>Zone · camera</div><div>${esc(e.zone_name || e.zone_id || "–")} · ${esc(e.camera_id || "safety station")}</div>
       ${who(e) ? `<div>Worker</div><div>${esc(who(e))}</div>` : ""}
-      ${(e.items_missing||[]).length ? `<div>Missing</div><div>${e.items_missing.map(iname).join(", ")}</div>` : ""}
+      ${e.type === "ppe_missing" ? `<div>PPE</div><div>${ppeRowFor(e, 32)}</div>` : ""}
       ${e.location && e.location.valid ? `<div>Location</div><div>${e.location.lat.toFixed(5)}, ${e.location.lon.toFixed(5)} (${esc(e.location.source_label)})</div>` : `<div>Location</div><div>Location unavailable · ${esc(e.zone_name || "")}</div>`}
       <div>Timing</div><div>time to alert ${e.time_to_alert_ms != null ? (e.time_to_alert_ms/1000).toFixed(2)+" s" : "–"} · edge → server ${e.latency_ms != null ? Math.round(e.latency_ms)+" ms" : "–"}</div></div>
     <h3 style="margin:10px 0 6px">Messages sent</h3>${n ? `<table><thead><tr><th>Channel</th><th>Status</th><th>To</th><th>Tries</th><th>Delivery</th><th>Provider</th></tr></thead><tbody>${n}</tbody></table>` : `<p class="small">No message for this record (policy: dashboard only).</p>`}
@@ -537,22 +536,43 @@ $("regCam").onclick = () => { if (!$("regName").value.trim()){ $("regName").focu
 /* ---------- ALERTS ---------- */
 const CHN = {telegram:["✈","Telegram"], email:["@","E-mail"], call:["☎","Phone call"], sms:["✉","SMS"], mock:["·","mock"]};
 const chName = c => (CHN[c] || ["", c]).join(" ");
-function nPill(s){ const m = {delivered:["p-ok","✓ DELIVERED"], sent:["p-ok","✓ SENT"], queued:["p-info","… QUEUED"], sending:["p-info","↻ SENDING"], retrying:["p-warn","↻ RETRYING"],
-  failed:["p-crit","✖ FAILED"], not_configured:["p-grey","○ NOT CONFIGURED"], skipped:["p-grey","– SKIPPED"]}[s] || ["p-grey", s || "–"]; return `<span class="pill ${m[0]}">${m[1]}</span>`; }
+function nPill(s){ const m = {delivered:["p-ok","✓ Delivered"], sent:["p-ok","✓ Sent"], queued:["p-info","… Queued"], sending:["p-info","↻ Sending"], retrying:["p-warn","↻ Retrying"],
+  waiting:["p-warn","⏳ Waiting for internet"], expired:["p-grey","✕ Expired"], digest:["p-info","✉ In next digest"], in_digest:["p-ok","✉ Sent in digest"],
+  failed:["p-crit","✖ Failed"], not_configured:["p-grey","○ Not configured"], skipped:["p-grey","– Skipped"]}[s] || ["p-grey", s || "–"]; return `<span class="pill ${m[0]}">${m[1]}</span>`; }
+/* 12 Nov: provider errors in plain words */
+function plainReason(n){
+  const e = String(n.error || ""), p = String(n.provider_status || "");
+  if (n.status === "waiting") return "No internet right now - it is sent automatically when the connection returns";
+  if (/getaddrinfo|gaierror|ConnectionError|NewConnectionError|unreachable|No route/i.test(e)) return "No internet connection";
+  if (/timed? ?out|Timeout/i.test(e)) return "The provider did not answer in time";
+  if (/daily (user )?sending limit|5\.4\.5/i.test(e)) return "Gmail daily sending limit reached";
+  if (/daily e-mail limit/i.test(e)) return "NETRAX daily e-mail limit reached - only fire / smoke e-mails today";
+  if (/login refused|Unauthorized|401/i.test(e)) return "Wrong password / token for this channel";
+  if (/acknowledged \/ closed/i.test(e)) return "Not needed any more - the alert was acknowledged";
+  if (/busy|no-answer/i.test(p + e)) return "The phone was busy / not answered - calling again";
+  return (p || e).slice(0, 90);
+}
 function renderNotifs(){
   const rows = [...NOTIFS.values()].sort((a,b) => b.id - a.id).slice(0, 150);
   $("nRows").innerHTML = rows.length ? rows.map(n => `<tr class="click" data-ev="${esc(n.event_id)}"><td>${fmtT(n.queued_at || n.at)}</td><td><b>${chName(n.channel)}</b></td><td>${nPill(n.status)}</td>
     <td class="small">${esc(n.recipient || "")}</td><td>${n.attempts || 0}</td><td>${n.latency_ms != null ? (n.latency_ms/1000).toFixed(1)+" s" : "–"}</td>
-    <td class="small">${esc(n.event_id)}</td><td class="small">${esc(String(n.provider_status || n.error || "").slice(0, 90))}</td></tr>`).join("") : `<tr><td colspan="8" class="empty">No messages yet.</td></tr>`;
+    <td class="small">${esc(n.event_id)}</td><td class="small" title="${esc(String(n.provider_status || n.error || ""))}">${esc(plainReason(n))}</td></tr>`).join("") : `<tr><td colspan="8" class="empty">No messages yet.</td></tr>`;
   const f = rows.filter(n => n.status === "failed" && (n.queued_at || n.at) > Date.now()/1000 - 3600).length;
   $("navFail").textContent = f || "";
 }
 async function loadAlerts(){
+  try { (await api("/api/notifications?limit=300")).forEach(n => NOTIFS.set(n.id, n)); } catch {}
   try { const s = await api("/api/notify/status"), chans = s.channels || {};
     $("chanCards").innerHTML = Object.entries(chans).map(([ch, c]) => { const last = c.last || {};
-      const st = !c.configured ? ["warn","NOT CONFIGURED","Add the key in config/secrets.local.yaml"] : last.status === "failed" ? ["crit","LAST MESSAGE FAILED", last.error || ""] : ["ok","READY", last.finished_at ? "last message " + ago(last.finished_at) + " · " + last.status : "no message yet"];
-      return `<div class="kpi" style="--c:var(--${st[0] === "ok" ? "ok" : st[0] === "crit" ? "crit" : "warn"})"><small>${chName(ch)}</small><b style="font-size:22px">${st[1]}</b><span>${esc(st[2])}</span></div>`; }).join("")
-      + `<div class="kpi" style="--c:var(--info)"><small>Queue</small><b style="font-size:22px">${s.queue} waiting · ${s.retries} retrying</b><span>background sender — never blocks detection</span></div>`;
+      const day0 = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
+      const today = [...NOTIFS.values()].filter(n => n.channel === ch && (n.queued_at || n.at) >= day0 && !String(n.event_id).startsWith("test_"));
+      const cnt = k => today.filter(n => k.includes(n.status)).length;
+      const nWait = cnt(["waiting", "queued", "sending", "retrying"]), nFail = cnt(["failed", "expired"]);
+      const st = !c.configured ? ["warn","Not configured","Add the key in config/secrets.local.yaml"] : nWait && today.some(n => n.status === "waiting") ? ["warn","Waiting for internet", "sent automatically when it returns"]
+        : last.status === "failed" ? ["crit","Last message failed", plainReason(last)] : ["ok","Ready", last.finished_at ? "last message " + ago(last.finished_at) : "no message yet"];
+      return `<div class="kpi" style="--c:var(--${st[0] === "ok" ? "ok" : st[0] === "crit" ? "crit" : "warn"})"><small>${chName(ch)}</small><b style="font-size:var(--fs-xl,24px)">${st[1]}</b>
+        <span>${esc(st[2])}</span><span>Today: <b style="display:inline;font-size:inherit;color:var(--ok)">${cnt(["sent","delivered","in_digest"])} sent</b> · <b style="display:inline;font-size:inherit;color:var(--warn)">${nWait} waiting</b> · <b style="display:inline;font-size:inherit;color:var(--crit)">${nFail} failed</b></span></div>`; }).join("")
+      + `<div class="kpi" style="--c:var(--info)"><small>Queue</small><b style="font-size:var(--fs-xl,24px)">${s.queue} waiting · ${s.retries} retrying</b><span>background sender — never blocks detection</span></div>`;
     $("testBtns").innerHTML = isAdmin() ? Object.keys(chans).map(ch => `<button class="btn" data-test="${ch}">Test ${chName(ch)}</button>`).join("") + `<button class="btn pri" data-test="${Object.keys(chans).join(",")}">Test all channels</button>`
       : `<span class="small">Only an admin can send test messages.</span>`;
   } catch {}
@@ -566,15 +586,27 @@ $("testBtns").onclick = async ev => { const b = ev.target.closest("[data-test]")
 function renderCams(){
   const cams = CAMS.cameras || [];
   $("camSum").textContent = `${cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED").length} of ${cams.length} live` + (CAMS.edge_online ? "" : " · edge computer offline");
-  const sig = JSON.stringify(cams.map(c => [c.camera_id, c.status === "ONLINE" || c.status === "DEGRADED"]));
+  const canPw = ME.role === "admin" || ME.role === "supervisor";
+  const sig = JSON.stringify([canPw, cams.map(c => [c.camera_id, c.status === "ONLINE" || c.status === "DEGRADED", c.power])]);
   if ($("cams").dataset.sig !== sig){ $("cams").dataset.sig = sig;
-    $("cams").innerHTML = cams.map(c => { const live = c.status === "ONLINE" || c.status === "DEGRADED";
-      return `<div class="cam" id="ac_${c.camera_id}"><div class="scr"><div class="cap">${esc(c.name)} <small style="opacity:.8">${esc(c.camera_id)}</small><span id="as_${c.camera_id}"></span></div>
-        ${live ? `<img data-cam="${c.camera_id}" alt="Live view ${esc(c.name)}">` : `<span>${esc(c.detail || "No signal")}</span>`}<div class="bd" id="ab_${c.camera_id}" hidden></div></div></div>`; }).join("") || `<div class="empty">No cameras configured.</div>`; }
-  cams.forEach(c => { const s = $("as_" + c.camera_id), b = $("ab_" + c.camera_id), box = $("ac_" + c.camera_id); if (!s) return;
-    s.textContent = `${c.status}${c.fps ? " · " + c.fps + " fps" : ""}`; b.hidden = !c.badge; b.textContent = c.badge || "";
-    box.className = "cam " + (c.status === "OFFLINE" || c.status === "OFF" ? "off" : c.badge && !/APPROVED/.test(c.badge) ? "alert" : "ok"); });
+    $("cams").innerHTML = cams.map(c => { const live = c.status === "ONLINE" || c.status === "DEGRADED", off = c.power === "off";
+      return `<div><div class="cam" id="ac_${c.camera_id}"><div class="scr"><div class="cap">${esc(c.name)} <small style="opacity:.8">${esc(c.camera_id)}</small><span id="as_${c.camera_id}"></span></div>
+        ${live ? `<img data-cam="${c.camera_id}" alt="Live view ${esc(c.name)}">` : `<span>${off ? "⏻ Turned off from the dashboard — no AI checks, no alarms" : esc(c.detail || "No signal")}</span>`}<div class="bd" id="ab_${c.camera_id}" hidden></div></div></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">${canPw && c.can_power !== false ? `<button class="btn sm ${off ? "pri" : "red"}" data-power="${esc(c.camera_id)}" data-on="${off ? 1 : 0}">⏻ ${off ? "Turn camera on" : "Turn camera off"}</button>` : ""}<span class="small" id="aa_${c.camera_id}"></span></div></div>`; }).join("") || `<div class="empty">No cameras configured.</div>`; }
+  cams.forEach(c => { const s = $("as_" + c.camera_id), b = $("ab_" + c.camera_id), box = $("ac_" + c.camera_id), a = $("aa_" + c.camera_id); if (!s) return;
+    s.textContent = `${c.power === "off" ? "TURNED OFF" : c.status}${c.fps ? " · " + c.fps + " fps" : ""}`; b.hidden = !c.badge; b.textContent = c.badge || "";
+    box.className = "cam " + (c.status === "OFFLINE" || c.status === "OFF" ? "off" : c.badge && !/APPROVED/.test(c.badge) ? "alert" : "ok");
+    // the same alerts the control room shows for this camera
+    const act = [...EVENTS.values()].filter(e => e.camera_id === c.camera_id && ["open", "escalated", "verifying", "acknowledged"].includes(e.status));
+    if (a) a.innerHTML = act.length ? act.slice(0, 3).map(e => `<a href="/#event=${encodeURIComponent(e.event_id)}" style="color:var(--crit);font-weight:700;text-decoration:none;display:flex;align-items:center;gap:8px">${e.type === "fire" || e.type === "smoke" ? "🔥 " + esc(e.type) : e.type === "unauthorized_entry" ? "⛔ " + esc(personText(e)) : esc(personText(e)) + ppeRowFor(e, 22)}</a>`).join("") : "✓ no active alert"; });
 }
+/* 11 Nov: camera ON / OFF from the dashboard (supervisor / admin) */
+document.addEventListener("click", async ev => { const b = ev.target.closest("[data-power]"); if (!b) return;
+  const on = b.dataset.on === "1", c = (CAMS.cameras || []).find(x => x.camera_id === b.dataset.power) || {name: b.dataset.power};
+  if (!on && !confirm(`Turn OFF ${c.name} (${b.dataset.power})?\n\nNo picture, no PPE / fire detection and no alarms from this camera until you turn it on again.`)) return;
+  b.disabled = true;
+  try { await post(`/api/cameras/${encodeURIComponent(b.dataset.power)}/power`, {on}); CAMS = await api("/api/cameras"); renderCams(); toast(on ? "Camera turned on" : "Camera turned off", c.name); }
+  catch (x){ toast("Camera not switched", x.message, true); b.disabled = false; } });
 async function pollFrames(){
   if (location.hash.startsWith("#cameras") && !document.hidden)
     for (const img of document.querySelectorAll("img[data-cam]")){
@@ -618,12 +650,12 @@ function renderHealth(){
   $("health").innerHTML = HEALTH.components.map(c => `<tr><td style="width:38%"><b>${esc(c.name)}</b></td><td style="width:18%"><span class="pill ${cl[c.state]}">${ic[c.state]} ${c.state.toUpperCase()}</span></td><td class="small">${esc(c.message)}</td></tr>`).join("");
   $("hAt").textContent = "updated " + fmtT(HEALTH.at, false);
   const f = HEALTH.components.filter(c => c.state === "fail").length; $("navHealth").textContent = f || "";
-  const lc = $("liveChip"); if (lc.dataset.ws === "1"){ lc.className = "chip live " + (f ? "warn" : "ok"); lc.querySelector("span:last-child").textContent = f ? `LIVE · ${f} fault${f>1?"s":""}` : "LIVE · all systems"; }
+  const lc = $("liveChip"); if (lc.dataset.ws === "1"){ lc.className = "nx-count " + (f ? "warn" : "ok"); lc.querySelector("span:last-child").textContent = f ? `Live · ${f} fault${f>1?"s":""}` : "Live"; }
 }
 async function loadSystem(){
   try { HEALTH = await api("/api/health"); renderHealth(); } catch {}
   try { const p = await api("/api/perf"), m = p.metrics || {};
-    const box = (k, label) => m[k] ? `<div class="kpi" style="--c:var(--info)"><small>${label}</small><b style="font-size:24px">${m[k].p50 < 1000 ? Math.round(m[k].p50) + " ms" : (m[k].p50/1000).toFixed(1) + " s"}</b><span>95%: ${m[k].p95 < 1000 ? Math.round(m[k].p95) + " ms" : (m[k].p95/1000).toFixed(1) + " s"} · n=${m[k].n}</span></div>` : "";
+    const box = (k, label) => m[k] ? `<div class="kpi" style="--c:var(--info)"><small>${label}</small><b style="font-size:var(--fs-xl,24px)">${m[k].p50 < 1000 ? Math.round(m[k].p50) + " ms" : (m[k].p50/1000).toFixed(1) + " s"}</b><span>95%: ${m[k].p95 < 1000 ? Math.round(m[k].p95) + " ms" : (m[k].p95/1000).toFixed(1) + " s"} · n=${m[k].n}</span></div>` : "";
     $("perf").innerHTML = box("event_e2e_ms","Detection → server") + box("dashboard_event_ms","Detection → screen") + box("preview_age_ms","Live picture age") + box("time_to_alert_ms","Hazard seen → alert")
       + box("notify_telegram_ms","Telegram delivered") + box("notify_email_ms","E-mail accepted") + box("notify_call_ms","Phone call") + box("assistant_ms","AI assistant") || `<div class="empty">No measurements yet — open the control room with cameras running.</div>`;
     $("perfNote").textContent = p.edge && p.edge.engine ? `GPU engine: batch ${p.edge.engine.batch_ms_p50 ?? "–"} ms median · ${p.edge.engine.batch_size_avg ?? "–"} cameras per batch · ${p.edge.runtime || ""}` : "Edge computer not reporting."; } catch {}
@@ -675,11 +707,11 @@ $("rForm").onsubmit = async ev => {
     $("rOut").innerHTML = `<div class="kpis">${kpi("Records", s.total, "var(--teal)")}${kpi("Still active", s.active, "var(--crit)")}${kpi("Closed", s.closed, "var(--ok)")}
         ${kpi("Median time to alert", s.median_time_to_alert_s != null ? s.median_time_to_alert_s + " s" : "–", "var(--warn)")}${kpi("Median time to acknowledge", s.median_time_to_ack_s != null ? s.median_time_to_ack_s + " s" : "–", "var(--info)")}
         ${kpi("Entrance verified / refused", s.entrance && Object.keys(s.entrance).length ? `${s.entrance.approved || 0} / ${s.entrance.denied || 0}` : "–", "var(--violet)")}</div>
-      <div class="grid g2" style="margin-bottom:16px"><div class="panel"><h2>Summary <span class="grow"></span><small>${esc(r.period)}</small></h2><ul style="margin:0;padding-left:18px">${s.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
+      <div class="grid g2" style="margin-bottom:16px"><div class="panel"><h2>Summary <span class="grow"></span><span class="nx-info" tabindex="0" title="${esc(r.period)}">i</span></h2><ul style="margin:0;padding-left:18px">${s.lines.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
           <div style="display:flex;gap:8px;margin-top:12px"><button class="btn pri" onclick="$('rPdf').click()">⬇ Download PDF</button><button class="btn" onclick="$('rCsv').click()">⬇ CSV</button></div></div>
         <div class="panel"><h2>Most missed PPE</h2>${list(s.items)}</div></div>
       <div class="grid g3" style="margin-bottom:16px"><div class="panel"><h2>By zone</h2>${list(s.by_zone)}</div><div class="panel"><h2>By camera</h2>${list(s.by_camera)}</div><div class="panel"><h2>By worker</h2>${list(s.workers)}</div></div>
-      <div class="panel"><h2>Records <span class="grow"></span><small>newest first${r.rows.length >= 200 ? " · first 200 shown, the PDF / CSV has all" : ""}</small></h2>
+      <div class="panel"><h2>Records <span class="grow"></span><span class="nx-info" tabindex="0" title="newest first${r.rows.length >= 200 ? " · first 200 shown, the PDF / CSV has all" : ""}">i</span></h2>
         <div class="tw"><table><thead><tr><th>Time</th><th>Record</th><th>Zone · camera</th><th>Worker</th><th>Severity</th><th>Status</th></tr></thead><tbody>
         ${r.rows.map(e => `<tr class="click" data-ev="${esc(e.event_id)}"><td>${fmtT(e.started_at)}</td><td>${esc(e.type === "ppe_missing" ? "Missing " + (e.items_missing||[]).map(iname).join(", ") : e.type.replace(/_/g, " "))}</td>
           <td>${esc(e.zone_name || "")} · ${esc(e.camera_id || "-")}</td><td>${esc(e.worker_id ? (e.worker_id + " " + (e.worker_name || "")) : "-")}</td><td>${esc(e.severity || "")}</td><td>${esc(e.status || "")}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">No records in this range.</td></tr>`}</tbody></table></div></div>`;
@@ -691,7 +723,7 @@ let ACC = [];
 function accRow(t){
   const ans = v => `<button class="btn sm${t.result === v ? " pri" : ""}" data-acc="${t.id}" data-res="${v}">${{pass:"✓ Pass", fail:"✖ Fail", na:"N/A"}[v]}</button>`;
   return `<div style="border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:8px 12px;align-items:start;background:var(--panel2)">
-    <b class="nx-display" style="font-size:22px">${t.id}</b>
+    <b class="nx-display" style="font-size:var(--fs-xl,24px)">${t.id}</b>
     <div><b>${esc(t.name)}</b><div class="small"><b>Do:</b> ${esc(t.how)}</div><div class="small"><b>Expected:</b> ${esc(t.expect)}</div>
       <div class="small" style="margin-top:4px"><b>Database:</b> ${esc(t.evidence.text)}${t.evidence.event_id ? ` · <a href="/#event=${encodeURIComponent(t.evidence.event_id)}">open latest record</a>` : ""}</div>
       <input aria-label="Note for test ${t.id}" data-note="${t.id}" value="${esc(t.note || "")}" placeholder="Note (what you saw)" style="width:100%;margin-top:6px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel)">
@@ -714,9 +746,9 @@ document.addEventListener("change", async ev => { const f = ev.target.closest("[
   try { const r = await api(`/api/acceptance/${id}/photo`, {method:"POST", headers:{"Content-Type": f.files[0].type || "image/jpeg"}, body: f.files[0]}); ACC = ACC.map(t => t.id === id ? r : t); renderAcc(); } catch (x) { toast("Not saved", x.message, true); } });
 function connect(){
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
-  ws.onopen = () => { const lc = $("liveChip"); lc.dataset.ws = "1"; lc.className = "chip live ok"; lc.querySelector("span:last-child").textContent = "LIVE"; renderHealth(); };
+  ws.onopen = () => { const lc = $("liveChip"); lc.dataset.ws = "1"; lc.className = "nx-count ok"; lc.querySelector("span:last-child").textContent = "Live"; renderHealth(); };
   ws.onmessage = m => { const {kind, data} = JSON.parse(m.data);
-    if (kind === "event") upsert(data);
+    if (kind === "event"){ upsert(data); if (location.hash.startsWith("#cameras")) renderCams(); }
     else if (kind === "entrance") NetraxAlerts.gate(data);
     else if (kind === "cameras"){ CAMS = data; renderCams(); renderKpis(); }
     else if (kind === "health"){ HEALTH = data; renderHealth(); }
@@ -727,7 +759,7 @@ function connect(){
     else if (kind === "attendance"){ toast(data.access === "DENIED" && data.event === "ENTERED" ? "⚠ NOT AUTHORISED (RFID)" : "RFID " + (data.event || ""), data.message || ""); refreshSlow(); }
     else if (kind === "ppe_ok") toast("✓ PPE complete", `${data.worker_name || data.worker_id || "Worker"} · ${data.zone_name || ""}`);
   };
-  ws.onclose = ev => { if (ev.code === 4401){ location.href = "/login?next=/admin"; return; } const lc = $("liveChip"); lc.dataset.ws = ""; lc.className = "chip warn"; lc.querySelector("span:last-child").textContent = "RECONNECTING"; setTimeout(connect, 2000); };
+  ws.onclose = ev => { if (ev.code === 4401){ location.href = "/login?next=/admin"; return; } const lc = $("liveChip"); lc.dataset.ws = ""; lc.className = "nx-count crit"; lc.querySelector("span:last-child").textContent = "Reconnecting"; setTimeout(connect, 2000); };
   setInterval(() => ws.readyState === 1 && ws.send("ping"), 20000);
 }
 async function refreshSlow(){
@@ -736,7 +768,7 @@ async function refreshSlow(){
 }
 async function boot(){
   try { ME = await api("/api/me"); } catch { return; }
-  $("userInfo").innerHTML = `Signed in as <b>${esc(ME.user || "local")}</b> · ${esc(String(ME.role).toUpperCase())}`;
+  $("userInfo").textContent = `👤 ${ME.user || "local"} · ${ME.role}`;
   $("logoutBtn").hidden = !ME.auth;
   try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
   NetraxAlerts.init({canAct, onEvent: upsert, rail: "dock", view: id => openEvent(id)});
@@ -756,12 +788,12 @@ async function boot(){
       }, 300);
     }}});
   try { NetraxAlerts.seedGates(await api("/api/entrance?limit=10")); } catch {}
-  try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs); evs.forEach(e => EVENTS.set(e.event_id, e)); } catch {}
+  try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs); evs.forEach(e => EVENTS.set(e.event_id, e)); renderCams(); } catch {}
   try { (await api("/api/notifications?limit=150")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
   await loadWorkers(); await refreshSlow(); renderActivity(); renderKpis();
   try { HEALTH = await api("/api/health"); renderHealth(); } catch {}
   show(); connect(); pollFrames();
-  setInterval(refreshSlow, 8000); setInterval(renderActivity, 20000);
+  setInterval(refreshSlow, 8000); setInterval(renderActivity, 20000); setInterval(() => { if (location.hash.startsWith("#cameras")) renderCams(); }, 5000);
   setInterval(() => { if (location.hash.startsWith("#system")) loadSystem(); }, 10000);
 }
 boot();

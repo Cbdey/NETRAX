@@ -4,299 +4,258 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NETRAX Control Room</title>
+<script>try { var t = new URLSearchParams(location.search).get("theme") || localStorage.getItem("netrax-cr-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="/static/nx.css?v=12nov1">
 <style>
-:root{
-  --bg:#0b161c; --panel:#11222b; --panel2:#162c37; --ink:#eaf3f4; --muted:#93aab1; --line:#24414b;
-  --ok:#22c55e; --ok-bg:#0f3a24; --warn:#f5b301; --warn-bg:#3d3006; --crit:#ef4444; --crit-bg:#4a1212;
-  --info:#38bdf8; --info-bg:#0c3346; --grey:#64748b; --teal:#14b8a6; --r:12px;
-}
-:root[data-theme="light"]{
-  --bg:#eef3f4; --panel:#ffffff; --panel2:#f3f7f8; --ink:#0f1f26; --muted:#4f6a73; --line:#d4e0e3;
-  --ok:#15803d; --ok-bg:#dcfce7; --warn:#a16207; --warn-bg:#fef3c7; --crit:#b91c1c; --crit-bg:#fee2e2;
-  --info:#0369a1; --info-bg:#e0f2fe; --grey:#64748b;
-}
+/* 12 Nov polish (team prompt pack, Prompt 2): calm control room readable from 2 m. Shared look = nx.css;
+   only the page layout lives here. Top: 4 KPI tiles. Left 2/3: cameras. Right 1/3: ONE alerts list (fire on top)
+   + entrance. Below: zones & people · safety station · system health (equal height, lists scroll inside). */
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
-button,input,select{font:inherit}
+html,body{margin:0;color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+button,input,select{font:inherit;color:inherit}
 a{color:var(--info)}
-.wrap{padding:14px 18px 28px;max-width:1920px;margin:0 auto}
-/* ---------- header ---------- */
-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 16px}
-.logo{width:42px;height:42px;border-radius:10px;background:var(--teal);color:#05201c;display:grid;place-items:center;font-weight:800;font-size:21px;flex:none}
-header h1{margin:0;font-size:22px;letter-spacing:.05em}
-header .tag{margin:0;color:var(--muted);font-size:12px;letter-spacing:.14em}
-.hgrow{flex:1}
-.chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;font-weight:700;font-size:14px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
-.chip.ok{color:var(--ok);border-color:var(--ok)} .chip.warn{color:var(--warn);border-color:var(--warn)}
-.chip.fail,.chip.crit{color:var(--crit);border-color:var(--crit)} .chip.info{color:var(--info);border-color:var(--info)}
-.clock{font-variant-numeric:tabular-nums;font-size:18px;font-weight:700}
-.navl{color:var(--ink);text-decoration:none;border:1px solid var(--line);padding:6px 10px;border-radius:8px;font-size:13px}
-.navl:hover,.navl:focus-visible{background:var(--panel2);outline:none}
-.btn{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:15px}
-.btn:hover{filter:brightness(1.15)} .btn:disabled{opacity:.5;cursor:default}
-.btn.pri{background:var(--teal);color:#05201c;border-color:var(--teal)}
-.btn.red{background:var(--crit);color:#fff;border-color:var(--crit)} .btn.amber{background:var(--warn);color:#1f1600;border-color:var(--warn)}
-.btn.big{font-size:18px;padding:12px 22px}
-.btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--info);outline-offset:2px}
-/* ---------- health strip ---------- */
-.healthbar{display:none;margin-top:10px;border-radius:var(--r);padding:10px 16px;font-size:15px;border:1px solid}
-.healthbar.show{display:block} .healthbar.warn{background:var(--warn-bg);border-color:var(--warn)} .healthbar.fail{background:var(--crit-bg);border-color:var(--crit)}
-.healthbar b{margin-right:8px}
-/* ---------- emergency (section 2) + fire (sections 8-9) ---------- */
-body.emergency .wrap{box-shadow:inset 0 0 0 8px var(--crit);border-radius:6px}
-body.emergency header{background:var(--crit-bg);border-color:var(--crit)}
-.alertzone{display:flex;flex-direction:column;gap:12px;margin-top:12px}
-.bigpanel{border-radius:var(--r);padding:16px 18px;border:3px solid;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 18px;align-items:start}
-.bigpanel.crit{background:var(--crit-bg);border-color:var(--crit)} .bigpanel.warn{background:var(--warn-bg);border-color:var(--warn)}
-.bigpanel.ack{background:var(--info-bg);border-color:var(--info);border-width:2px}
-.bigpanel h2{margin:0;font-size:28px;line-height:1.15;letter-spacing:.02em}
-.bigpanel .what{font-size:22px;font-weight:700}
-.bigpanel .facts{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:17px}
-.bigpanel .facts b{font-weight:700}
-.bigpanel .acts{display:flex;flex-direction:column;gap:8px;grid-row:1/span 4;grid-column:2}
-.bigpanel .feed{width:min(420px,32vw);aspect-ratio:16/10;object-fit:cover;border-radius:8px;background:#000;grid-column:2;grid-row:1/span 4}
-.bigpanel.withfeed{grid-template-columns:minmax(0,1fr) auto auto}
-.bigpanel.withfeed .acts{grid-column:3}
-.items{display:flex;flex-wrap:wrap;gap:8px}
-.item{font-weight:800;font-size:18px;padding:5px 12px;border-radius:8px;background:var(--crit);color:#fff;letter-spacing:.03em}
-.item.ok{background:var(--ok);color:#03210f}.item.unk{background:var(--warn);color:#1f1600}
-.violations{border:3px solid var(--crit);background:var(--crit-bg);border-radius:var(--r);padding:12px 14px}
-.vhead{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px}.vhead h2{margin:0;font-size:26px}
-.vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:10px}
-.vcard{background:var(--panel);border:2px solid var(--crit);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
-.vtop{display:flex;gap:10px;align-items:flex-start}.vtop>div{flex:1}
-.vtop img{width:130px;aspect-ratio:16/10;object-fit:cover;border-radius:6px;cursor:zoom-in;background:#000}
-.vt{font-size:19px;font-weight:900;color:var(--crit);margin-bottom:6px}
-.vcard .facts{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:15px}
-.vcard .row{display:flex;gap:6px;flex-wrap:wrap}
-.pulse{animation:pulse 1.1s infinite}
-@keyframes pulse{50%{filter:brightness(1.35)}}
-@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
-.overlay{position:fixed;inset:0;z-index:80;background:rgba(127,10,10,.96);color:#fff;display:none;flex-direction:column;padding:28px 34px;gap:16px;overflow:auto}
+[hidden]{display:none!important}
+.wrap{padding:var(--sp-3) var(--sp-4) var(--sp-5);max-width:1920px;margin:0 auto;display:flex;flex-direction:column;gap:var(--sp-4)}
+.muted{color:var(--muted)}
+img[data-live]:not([src]),#evacImg:not([src]){visibility:hidden}
+
+/* KPI tiles */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sp-4)}
+.kpis .nx-kpi{cursor:pointer;border-width:1px;text-align:left;font:inherit;color:inherit}
+.kpis .nx-kpi .ki{font-size:26px;width:34px;text-align:center}
+
+/* main layout */
+/* the camera panel sets the row height (tiles stretch, bigger video); the alerts panel fills the same height and scrolls */
+.cr{display:grid;grid-template-columns:minmax(0,2fr) minmax(360px,1fr);gap:var(--sp-4);align-items:stretch;min-height:min(66vh,680px)}
+.side{position:relative;min-width:0;min-height:520px}
+.side>#ppeBox{position:absolute;inset:0}
+#ppeBox .nx-panel-body{overflow:hidden}
+#ppeBox .alist{flex:1;min-height:0;max-height:none}
+#camPanel .nx-panel-body{overflow:hidden}
+.lower{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--sp-4);align-items:stretch}
+.lower .nx-panel-body{max-height:440px}
+@media (max-width:1500px){.lower{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1250px){.cr{grid-template-columns:minmax(0,1fr);min-height:0}.side{min-height:0}.side>#ppeBox{position:static}#ppeBox .alist{max-height:560px}}
+@media (max-width:1100px){.lower{grid-template-columns:minmax(0,1fr)}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* cameras */
+.cams{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:var(--sp-3)}
+.cams.tri,.cams.focus{flex:1;grid-auto-rows:minmax(0,1fr)}
+.cams.tri{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)}
+.cams.tri .cam,.cams.focus .cam{display:flex;flex-direction:column}
+.cams.tri .screen,.cams.focus .screen{aspect-ratio:auto;flex:1;min-height:340px}
+.cams.focus{grid-template-columns:1fr}
+.cams.big{grid-template-columns:repeat(3,minmax(0,1fr))}.cams.big .cam.lead{grid-column:1/-1}
+#camPanel .nx-panel-body{display:flex;flex-direction:column}
+@media (max-width:1100px){.cams.tri{grid-template-columns:1fr 1fr}.cams.tri .cam:first-child{grid-column:1/-1}.cams.tri .screen{min-height:260px}}
+@media (max-width:760px){.cams,.cams.tri{grid-template-columns:1fr!important}}
+.cam{position:relative;border-radius:var(--rad);overflow:hidden;border:1px solid var(--line);background:#040912}
+.cam.alert{border:2px solid var(--crit)}.cam.warn{border:2px solid var(--warn)}.cam.off{border-style:dashed}
+.cam .screen{position:relative;aspect-ratio:16/9;display:grid;place-items:center;color:#c8d3e3;text-align:center}
+.cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.cam .top{position:absolute;left:0;right:0;top:0;display:flex;gap:var(--sp-2);align-items:center;padding:var(--sp-3);z-index:2;background:linear-gradient(rgba(0,0,0,.7),rgba(0,0,0,0))}
+.cam .name{font:600 var(--fs-m) var(--display);color:#fff;text-shadow:0 1px 2px #000}
+.cam .st{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:700;color:#fff;background:rgba(5,10,20,.7);border-radius:999px;padding:4px 10px;white-space:nowrap}
+.cam .st .nx-dot{width:9px;height:9px}
+.cam .badge{position:absolute;left:var(--sp-3);bottom:var(--sp-3);z-index:2;display:flex;align-items:center;gap:var(--sp-2);padding:6px 10px;border-radius:10px;background:rgba(5,10,20,.82);border:2px solid var(--crit);color:#fff;font:700 var(--fs-s) var(--display);max-width:calc(100% - 200px)}
+.cam .badge.ok{border-color:var(--ok)}.cam .badge.warn{border-color:var(--warn)}
+.cam .badge .ppe-row{gap:2px}.cam .badge .ppe-i{min-width:0;padding:0}.cam .badge .ppe-i small{display:none}
+.tbtns{position:absolute;right:var(--sp-3);bottom:var(--sp-3);z-index:3;display:flex;gap:6px}
+.tbtns button{min-height:32px;background:rgba(5,10,20,.75);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:0 12px;cursor:pointer;font-size:var(--fs-s);font-weight:600;white-space:nowrap}
+.tbtns .pw{color:#fca5a5}
+.offmsg{display:grid;gap:var(--sp-2);padding:0 var(--sp-5);font-size:var(--fs-s);color:var(--muted)}
+.offmsg b{font:600 var(--fs-l) var(--display);color:#dbe4f2}
+.offmsg .pw-big{justify-self:center}
+#camPanel:fullscreen{overflow:auto;background:var(--bg);padding:var(--sp-4)}
+
+/* alerts panel: fire strip + tabs + one list */
+.firestrip{display:flex;flex-direction:column;gap:var(--sp-2)}
+.fireclear{display:flex;align-items:center;gap:var(--sp-2);padding:10px var(--sp-3);border-radius:10px;background:var(--ok-bg);color:var(--ok);font-weight:700}
+.firebig{border:2px solid var(--crit);border-radius:var(--rad);background:var(--crit-bg);padding:var(--sp-3);display:flex;flex-direction:column;gap:var(--sp-2)}
+.firebig.verify{border-color:var(--warn);background:var(--warn-bg)}
+.firebig .fh{font:700 var(--fs-xl)/1.1 var(--display);color:var(--crit)}
+.firebig.verify .fh{color:var(--warn)}
+.firebig .where{font-size:var(--fs-s);color:var(--ink)}
+.firebig .ffeed{position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:16/9}
+.firebig .ffeed img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.firebig .acts{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+.tabs{display:flex;gap:var(--sp-1);padding:3px;border-radius:10px;background:var(--panel2);border:1px solid var(--line)}
+.tab{flex:1;min-height:34px;border:0;background:transparent;color:var(--muted);border-radius:8px;font-weight:600;font-size:var(--fs-s);cursor:pointer}
+.tab[aria-pressed="true"]{background:var(--info);color:#fff}
+.tab i{font-style:normal;margin-left:6px;opacity:.85}
+.alist{display:flex;flex-direction:column;gap:var(--sp-3);max-height:620px;overflow:auto;padding-right:2px}
+.empty{color:var(--muted);text-align:center;padding:var(--sp-4);font-size:var(--fs-s);border:1px dashed var(--line);border-radius:var(--rad)}
+.empty b{color:var(--ok);font-weight:700}
+.ibtn{min-height:36px;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:0 12px;cursor:pointer;font-size:var(--fs-s)}
+
+/* entrance */
+.gtop{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:var(--sp-3)}
+.gfeed{position:relative;border-radius:10px;background:#040912;overflow:hidden;aspect-ratio:4/3;display:grid;place-items:center;text-align:center;border:1px solid var(--line)}
+.gfeed img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.gfeed .offmsg b{font-size:var(--fs-m)}
+.gstats{display:grid;grid-template-rows:repeat(3,1fr);gap:var(--sp-2)}
+.gs{border-radius:10px;padding:0 var(--sp-3);display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:var(--fs-s);border:1px solid var(--line)}
+.gs b{font:700 var(--fs-xl) var(--display)}
+.gs.ok{background:var(--ok-bg);color:var(--ok)}.gs.crit{background:var(--crit-bg);color:var(--crit)}.gs.warn{background:var(--warn-bg);color:var(--warn)}
+#gateSide{display:flex;flex-direction:column;gap:var(--sp-2)}
+
+/* zones, station, health */
+.zrow{border:1px solid var(--line);border-left:5px solid var(--ok);border-radius:10px;padding:var(--sp-2) var(--sp-3);background:var(--panel2);display:flex;flex-direction:column;gap:var(--sp-1)}
+.zrow.warn{border-left-color:var(--warn)}.zrow.crit{border-left-color:var(--crit)}
+.zrow .zh{display:flex;align-items:center;gap:var(--sp-2)}
+.zrow .zh b{font:600 var(--fs-m) var(--display);flex:1;min-width:0}
+.zrow .zp{font-size:var(--fs-s);color:var(--muted)}
+.zrow .ppe-i{min-width:38px}.zrow .ppe-i small{display:none}
+.stlvl{display:flex;align-items:center;gap:var(--sp-3);padding:10px var(--sp-3);border-radius:10px;border:1px solid var(--line)}
+.stlvl b{font:700 var(--fs-l) var(--display);letter-spacing:.03em}
+.stlvl.NORMAL{background:var(--ok-bg)}.stlvl.NORMAL b{color:var(--ok)}
+.stlvl.WARNING,.stlvl.FAULT{background:var(--warn-bg)}.stlvl.WARNING b,.stlvl.FAULT b{color:var(--warn)}
+.stlvl.CRITICAL{background:var(--crit-bg);border-color:var(--crit)}.stlvl.CRITICAL b{color:var(--crit)}
+.stlvl.OFFLINE b{color:var(--unk)}
+.rd{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-2)}
+.r{border-radius:10px;background:var(--panel2);border:1px solid var(--line);padding:var(--sp-2) var(--sp-3);min-height:68px}
+.r small{display:block;font-size:var(--fs-xs);color:var(--muted);font-weight:600}
+.r b{font:700 var(--fs-l) var(--display);font-variant-numeric:tabular-nums}.r b i{font:600 var(--fs-xs) "Segoe UI",sans-serif;color:var(--muted);font-style:normal;margin-left:2px}
+.r.bad{border-color:var(--crit);background:var(--crit-bg)}.r.bad b{color:var(--crit)}
+.outs{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+.hrow{display:flex;gap:var(--sp-3);align-items:center;padding:var(--sp-2) 0;border-bottom:1px solid var(--line)}
+.hrow:last-child{border-bottom:0}
+.hrow b{flex:1;min-width:0;font-weight:600}
+.hrow .hs{font-size:var(--fs-xs);font-weight:700;letter-spacing:.05em}
+.hrow .hs.ok{color:var(--ok)}.hrow .hs.warn{color:var(--warn)}.hrow .hs.fail{color:var(--crit)}.hrow .hs.off{color:var(--unk)}
+.hrow .nx-dot.fail{background:var(--crit)}.hrow .nx-dot.off{background:var(--unk)}
+details.okl summary{cursor:pointer;color:var(--muted);font-size:var(--fs-s);padding:var(--sp-2) 0}
+#sysChip,#locChip{display:flex;align-items:center;gap:var(--sp-2);font-weight:700}
+#sysChip.ok{color:var(--ok)}#sysChip.warn{color:var(--warn)}#sysChip.crit{color:var(--crit)}
+#locChip{font-weight:600}
+
+/* L3 overlay, details drawer, toasts */
+.overlay{position:fixed;inset:0;z-index:80;color:#fff;display:none;flex-direction:column;padding:28px 34px;gap:var(--sp-4);overflow:auto;background:radial-gradient(circle at 50% 20%,rgba(185,20,40,.97),rgba(90,5,16,.98))}
 .overlay.show{display:flex}
-.overlay h1{font-size:clamp(34px,5.2vw,78px);line-height:1.05;margin:0;letter-spacing:.02em}
+.overlay h1{font:700 clamp(34px,5.2vw,78px)/1.05 var(--display);margin:0}
 .overlay .sub{font-size:clamp(20px,2.3vw,32px);font-weight:700}
 .overlay .grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:22px;align-items:start}
 .overlay img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;border:4px solid #fff;background:#000}
-.overlay .facts{font-size:clamp(18px,1.6vw,24px);display:grid;gap:8px}
-.overlay .facts b{display:inline-block;min-width:150px;color:#ffd1d1}
-.overlay .acts{display:flex;gap:12px;flex-wrap:wrap}
-.overlay .btn{font-size:20px;padding:14px 24px;background:#fff;color:#7f0a0a;border:0}
-.overlay .btn.ghost{background:transparent;color:#fff;border:2px solid #fff}
-/* ---------- 29 Oct: live summary band, compact strips, camera view modes ---------- */
-[hidden]{display:none!important}
-.kband{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:12px}
-.kb{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;position:relative;overflow:hidden;cursor:default}
-.kb::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--c,var(--teal))}
-.kb small{display:block;color:var(--muted);font-size:13px;font-weight:700}
-.kb b{display:block;font-size:28px;line-height:1.15;font-variant-numeric:tabular-nums}
-.kb span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kb.hot{background:var(--crit-bg)} .kb.hot b{color:var(--crit)} .kb.warm{background:var(--warn-bg)} .kb.warm b{color:var(--warn)}
-.kb.click{cursor:pointer}.kb.click:hover{filter:brightness(1.1)}
-.strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-radius:var(--r);padding:10px 16px;border:2px solid var(--info);background:var(--info-bg);font-size:16px}
-.strip b{font-size:17px}.strip .grow{flex:1}
-.healthbar .hline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.healthbar .hdet{margin-top:6px;display:none}.healthbar.open .hdet{display:block}
-.camtools{display:flex;gap:6px;align-items:center}
-.vbtn{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:8px;padding:5px 11px;font-weight:700;font-size:13px;cursor:pointer}
-.vbtn[aria-pressed="true"]{background:var(--teal);color:#05201c;border-color:var(--teal)}
-.cams.big{grid-template-columns:repeat(3,minmax(0,1fr))}
-.cams.big .cam.lead{grid-column:1/-1}
-.cams.big .cam:not(.lead) .name{font-size:16px}.cams.big .cam:not(.lead) .badge{font-size:15px;padding:5px 9px}
-.cams.big .cam.lead .name{font-size:24px}.cams.big .cam.lead .badge{font-size:26px;padding:10px 16px}
-#camPanel:fullscreen{overflow:auto;background:var(--bg);padding:14px}
-#camPanel:fullscreen .cams:not(.big){grid-template-columns:repeat(2,minmax(0,1fr))}
-@media (max-width:1250px){.kband{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:700px){.kband{grid-template-columns:repeat(2,minmax(0,1fr))}.cams.big{grid-template-columns:1fr}}
-/* ---------- layout ---------- */
-.main{display:grid;grid-template-columns:minmax(0,3fr) minmax(360px,1fr);gap:16px;margin-top:14px;align-items:start}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
-.panel h2{margin:0 0 10px;font-size:19px;display:flex;align-items:center;gap:10px}
-.panel h2 .sp{flex:1}
-.stack{display:flex;flex-direction:column;gap:16px}
-/* camera wall */
-.cams{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px}
-.cams.focus{grid-template-columns:1fr}
-.cam{position:relative;border-radius:10px;overflow:hidden;border:3px solid var(--line);background:#000}
-.cam.alert{border-color:var(--crit)} .cam.warn{border-color:var(--warn)} .cam.ok{border-color:var(--ok)} .cam.off{border-style:dashed}
-.cam .screen{position:relative;aspect-ratio:16/9;display:grid;place-items:center;color:#b6c6cb;font-size:18px;text-align:center;padding:0}
-.cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
-.cam .top{position:absolute;left:0;right:0;top:0;display:flex;gap:8px;align-items:flex-start;padding:8px;z-index:2;
-  background:linear-gradient(rgba(0,0,0,.7),rgba(0,0,0,0))}
-.cam .name{font-size:19px;font-weight:800;color:#fff;text-shadow:0 1px 2px #000}
-.cam .zone{font-size:14px;color:#d9e6e9}
-.cam .st{margin-left:auto;font-size:14px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);border-radius:6px;padding:4px 9px;white-space:nowrap}
-.cam .badge{position:absolute;left:8px;bottom:8px;right:8px;z-index:2;font-size:20px;font-weight:800;padding:8px 12px;border-radius:8px;color:#fff;background:var(--crit)}
-.cam .badge.ok{background:var(--ok);color:#03210f}.cam .badge.warn{background:var(--warn);color:#1f1600}
-.cam .fbtn{position:absolute;right:8px;bottom:8px;z-index:3;background:rgba(0,0,0,.6);color:#fff;border:1px solid #fff5;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px}
-.risk{font-size:12px;font-weight:800;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:2px}
-.risk.high{background:var(--crit);color:#fff}.risk.medium{background:var(--warn);color:#1f1600}.risk.low{background:var(--grey);color:#fff}
-/* incidents */
-.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-.tab{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:999px;padding:6px 12px;font-weight:700;font-size:14px;cursor:pointer}
-.tab[aria-pressed="true"]{background:var(--teal);color:#05201c;border-color:var(--teal)}
-.list{display:flex;flex-direction:column;gap:10px;max-height:760px;overflow:auto;padding-right:2px}
-.inc{border:1px solid var(--line);border-left:7px solid var(--grey);border-radius:10px;background:var(--panel2);padding:10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}
-.inc .state{font-size:13px;font-weight:800;letter-spacing:.06em}
-.inc .ttl{font-size:18px;font-weight:800;grid-column:1/-1}
-.inc .meta{font-size:15px;color:var(--muted);grid-column:1/-1}
-.inc .meta b{color:var(--ink);font-weight:600}
-.inc .when{font-size:14px;color:var(--muted);text-align:right}
-.inc .row{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px}
-.inc img{height:52px;border-radius:6px;margin-left:auto;cursor:zoom-in}
-.s-crit{border-left-color:var(--crit)} .s-crit .state{color:var(--crit)}
-.s-warn{border-left-color:var(--warn)} .s-warn .state{color:var(--warn)}
-.s-ack{border-left-color:var(--info)} .s-ack .state{color:var(--info)}
-.s-done{border-left-color:var(--grey);opacity:.85} .s-done .state{color:var(--muted)}
-.s-ok{border-left-color:var(--ok)} .s-ok .state{color:var(--ok)}
-.empty{color:var(--muted);text-align:center;padding:16px;font-size:15px}
-/* small tables */
-table{width:100%;border-collapse:collapse;font-size:15px}
-th{text-align:left;color:var(--muted);font-weight:600;font-size:13px;padding:6px;border-bottom:1px solid var(--line)}
-td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
-.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:13px;font-weight:800;white-space:nowrap}
+.overlay .facts{font-size:clamp(18px,1.6vw,24px);display:grid;gap:var(--sp-2)}.overlay .facts b{display:inline-block;min-width:150px;color:#ffd1d1}
+.overlay .acts{display:flex;gap:var(--sp-3);flex-wrap:wrap}
+.overlay .btn{font-size:var(--fs-l);min-height:52px;padding:0 24px;background:#fff;color:#7f0a0a;border:0}.overlay .btn.ghost{background:transparent;color:#fff;border:2px solid #fff}
+.modal{position:fixed;inset:0;background:rgba(2,6,15,.72);display:none;justify-content:flex-end;z-index:95}
+.modal.show{display:flex}
+.modal .box2{background:var(--panel);border-left:1px solid var(--line);width:min(760px,100%);height:100%;overflow:auto;padding:var(--sp-5);box-shadow:0 0 60px -10px #000;display:flex;flex-direction:column;gap:var(--sp-3)}
+.modal img{width:100%;border-radius:10px;background:#000}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:var(--sp-1) var(--sp-3);font-size:var(--fs-s)}.kv div:nth-child(odd){color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-s)}th{text-align:left;color:var(--muted);font-weight:600;padding:6px;border-bottom:1px solid var(--line)}
+td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:var(--fs-xs);font-weight:700;white-space:nowrap}
 .p-ok{background:var(--ok-bg);color:var(--ok)}.p-warn{background:var(--warn-bg);color:var(--warn)}.p-crit{background:var(--crit-bg);color:var(--crit)}
 .p-info{background:var(--info-bg);color:var(--info)}.p-grey{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
-.three{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;margin-top:16px}
-/* entrance */
-.gate{border-radius:10px;padding:14px;border:3px solid var(--line);display:grid;gap:6px}
-.gate .res{font-size:24px;font-weight:900;letter-spacing:.03em}
-.gate.approved{border-color:var(--ok);background:var(--ok-bg)}.gate.approved .res{color:var(--ok)}
-.gate.denied{border-color:var(--crit);background:var(--crit-bg)}.gate.denied .res{color:var(--crit)}
-.gate.manual{border-color:var(--warn);background:var(--warn-bg)}.gate.manual .res{color:var(--warn)}
-.popup{position:fixed;inset:0;z-index:90;display:none;place-items:center;background:rgba(0,0,0,.55);padding:20px}
-.popup.show{display:grid}
-.popup .card{max-width:760px;width:100%;border-radius:16px;padding:26px 28px;border:5px solid;background:var(--panel)}
-.popup .card h1{margin:0 0 6px;font-size:clamp(30px,4vw,52px);line-height:1.05}
-.popup .card p{font-size:22px;margin:6px 0}
-.popup .approved{border-color:var(--ok)} .popup .approved h1{color:var(--ok)}
-.popup .denied{border-color:var(--crit)} .popup .denied h1{color:var(--crit)}
-.popup .manual{border-color:var(--warn)} .popup .manual h1{color:var(--warn)}
-/* 5 Nov: two separate alert sections (entrance / PPE + fire + smoke) */
-.secbox{border-top:4px solid var(--line)} .sec-gate{border-top-color:var(--ok)} .sec-ppe{border-top-color:var(--crit)}
-.secscroll{max-height:330px;overflow:auto;padding-right:2px}
-/* assistant */
-.ask{display:flex;gap:8px}
-.ask input{flex:1;padding:11px 13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:16px}
-.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
-.chips button{border:1px dashed var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:4px 10px;cursor:pointer;font-size:13px}
-.answer{margin-top:10px;background:var(--panel2);border-radius:10px;padding:12px 14px;font-size:16px}
-.answer .ans{font-size:18px;font-weight:600}
-.answer ul{margin:8px 0 0;padding-left:20px}
-.answer .note{color:var(--muted);font-size:13px;margin-top:6px}
-.recs{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:320px;overflow:auto}
-.rec{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px 8px;cursor:pointer;background:var(--panel)}
-.rec img{width:72px;height:44px;object-fit:cover;border-radius:5px;background:#000}
-.rec small{color:var(--muted)}
-/* modal */
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;place-items:center;z-index:95;padding:18px}
-.modal.show{display:grid}
-.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:1000px;width:100%;max-height:92vh;overflow:auto;padding:18px}
-.modal img{width:100%;border-radius:8px;background:#000}
-.kv{display:grid;grid-template-columns:170px 1fr;gap:4px 12px;font-size:15px;margin:10px 0}
-.kv div:nth-child(odd){color:var(--muted)}
-.toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:99;max-width:420px}
-.toast{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--info);padding:10px 14px;border-radius:10px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
-.toast b{display:block;font-size:15px}
-.small{font-size:13px;color:var(--muted)}
-.perfgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
-.perf{background:var(--panel2);border-radius:8px;padding:8px 10px}
-.perf b{display:block;font-size:20px}
-.perf small{color:var(--muted);font-size:12px}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-@media (max-width:1250px){.main{grid-template-columns:1fr}.three{grid-template-columns:1fr}.two{grid-template-columns:1fr}}
-@media (max-width:700px){.cams{grid-template-columns:1fr}.bigpanel,.bigpanel.withfeed{grid-template-columns:1fr}.bigpanel .acts,.bigpanel .feed{grid-column:auto;grid-row:auto;width:100%}.overlay .grid{grid-template-columns:1fr}.kv{grid-template-columns:1fr}}
+.toasts{position:fixed;right:var(--sp-4);bottom:var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-2);z-index:99;max-width:400px}
+.toast{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--info);padding:10px 14px;border-radius:12px;font-size:var(--fs-s);box-shadow:var(--lift)}
+.toast b{display:block;font-size:var(--fs-m)}
+.resn{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+body.emergency .nxbar{border-color:var(--crit)}
+@media (max-width:700px){.overlay .grid{grid-template-columns:1fr}.kv{grid-template-columns:1fr}.rd{grid-template-columns:1fr 1fr}.gtop{grid-template-columns:1fr}.wrap{padding:var(--sp-2) var(--sp-3) var(--sp-5)}}
 </style>
-<link rel="stylesheet" href="/static/nx.css?v=5nov2">
 </head>
 <body>
 <div class="nxvig" aria-hidden="true"></div>
 <div class="wrap">
-<header>
-  <div class="logo" aria-hidden="true">N</div>
-  <div><h1>NETRAX CONTROL ROOM</h1><p class="tag">SEE. SENSE. SAFEGUARD.</p></div>
-  <span class="chip" id="sysChip" title="Overall state">… CONNECTING</span>
-  <span class="chip" id="healthChip" title="System health">… health</span>
-  <span class="chip" id="locChip" title="Location source">📍 …</span>
-  <span class="hgrow"></span>
+<header class="nxbar">
+  <a class="logo" href="/" aria-label="NETRAX home">N</a>
+  <div class="brand"><b>NETRAX</b><span id="siteName">Control room</span></div>
   <span class="clock" id="clock" aria-label="Current time">--:--:--</span>
-  <nav class="nxnav" aria-label="Pages"><a href="/" aria-current="page">Control room</a><a href="/entrance">Entrance</a><a href="/admin">Admin</a><a href="/hardware">Hardware</a></nav>
-  <button class="btn" id="themeBtn" aria-label="Switch day / night" style="font-size:13px;padding:6px 10px">☀/☾</button>
+  <span class="hgrow"></span>
+  <nav class="nxnav" aria-label="Pages"><a href="/" aria-current="page">Control room</a><a href="/entrance">Entrance</a><a href="/admin">Admin</a><a href="/hardware">Hardware</a><a href="/intelligence">Intelligence</a></nav>
+  <span data-zx-slot></span>
+  <button class="ibtn" id="themeBtn" aria-label="Switch day / night">☀ / ☾</button>
   <span class="chip" id="userChip">…</span>
-  <button class="btn" id="logoutBtn" style="font-size:13px;padding:6px 10px">Sign out</button>
+  <button class="ibtn" id="logoutBtn">Sign out</button>
 </header>
-<section class="kband" aria-label="Live summary">
-  <div class="kb click" id="kbInc" style="--c:var(--crit)" data-tab="active"><small>▲ Active incidents</small><b id="kbIncN">–</b><span id="kbIncS">open or escalated</span></div>
-  <div class="kb" id="kbFire" style="--c:var(--warn)"><small>🔥 Fire / smoke</small><b id="kbFireN">–</b><span id="kbFireS">no fire detected</span></div>
-  <div class="kb" style="--c:var(--info)"><small>◧ Cameras live</small><b id="kbCamN">–</b><span id="kbCamS">waiting for edge</span></div>
-  <div class="kb" id="kbIn" style="--c:#a78bfa"><small>👷 On site today</small><b id="kbInN">–</b><span id="kbInS">RFID check-ins</span></div>
-  <div class="kb" id="kbMsg" style="--c:var(--teal)"><small>✉ Alerts sent today</small><b id="kbMsgN">–</b><span id="kbMsgS">provider-confirmed</span></div>
+
+<section class="kpis" aria-label="Live summary">
+  <button class="nx-kpi" id="kbIn" data-go="camPanel" title="People the zone cameras see right now"><span class="ki" aria-hidden="true">👷</span><b id="kbInN">–</b><span>Workers in view</span></button>
+  <button class="nx-kpi" id="kbOk" data-go="camPanel" title="People in view with every required PPE item seen worn"><span class="ki" aria-hidden="true">✅</span><b id="kbOkN">–</b><span>Compliant</span></button>
+  <button class="nx-kpi" id="kbInc" data-go="ppeBox" title="Open PPE and restricted-zone violations"><span class="ki" aria-hidden="true">🦺</span><b id="kbIncN">–</b><span>Open violations</span></button>
+  <button class="nx-kpi" id="kbFire" data-go="fireBox" title="Fire / smoke status"><span class="ki" aria-hidden="true">🔥</span><b id="kbFireN">–</b><span>Fire / smoke</span></button>
 </section>
-<div class="healthbar" id="healthbar" role="status"></div>
-<div class="alertzone" id="alertzone" aria-live="assertive"></div>
 
-<div class="main">
-  <div class="stack">
-    <section class="panel" aria-label="Camera feeds" id="camPanel">
-      <h2>Live cameras <span class="sp"></span><span class="small" id="camSummary"></span>
-        <span class="camtools" role="group" aria-label="Camera view"><button class="vbtn" data-view="grid" aria-pressed="true">▦ Grid</button><button class="vbtn" data-view="big" aria-pressed="false">▣ Focus</button><button class="vbtn" id="fsBtn">⛶ Full screen</button></span>
-        <button class="btn" id="unfocus" hidden>Show all cameras</button></h2>
-      <div class="cams" id="cams"></div>
-    </section>
-  </div>
+<div class="cr">
+  <section class="nx-panel" aria-label="Live cameras" id="camPanel">
+    <div class="nx-panel-head"><span class="ico" aria-hidden="true">📹</span><h2>Live cameras</h2><span class="nx-count" id="camN">–</span>
+      <button class="btn" id="viewBtn" data-view="big" aria-pressed="false">▣ Focus view</button><button class="btn" id="fsBtn">⛶ Full screen</button>
+      <button class="btn" id="unfocus" hidden>Show all</button></div>
+    <div class="nx-panel-body"><div class="cams" id="cams"></div></div>
+  </section>
 
-  <div class="stack">
-    <section class="panel nxside secbox sec-gate" aria-label="Entrance alerts" id="gatePanel">
-      <div class="alerthead"><h2 style="margin:0">🚪 Entrance alerts</h2><span class="sp" style="flex:1"></span><span class="small" id="gateCount"></span><a class="small" href="/entrance">Entrance dashboard ›</a></div>
-      <p class="small" style="margin:4px 0 10px">Green = verified, may enter · Red = do not enter · Amber = manual check</p>
-      <div class="nxlist secscroll" id="gateSide"></div>
-    </section>
-    <section class="panel secbox sec-ppe" aria-label="PPE, fire and smoke alerts" id="alertPanel">
-      <div class="alerthead" id="alertHead"><h2 style="margin:0">⚠ PPE · 🔥 Fire · Smoke alerts</h2><span class="sp" style="flex:1"></span><span class="pill p-crit" id="nActive">0 active</span>
-        <button class="btn" id="muteBtn" style="font-size:12px;padding:4px 9px" aria-pressed="false" title="Alert sound on / off">🔔</button></div>
-      <p class="small" style="margin:4px 0 10px">One alert per violation, newest first. A new missing item glows on the same card. Stays until acknowledged and resolved.</p>
-      <div class="tabs" role="group" aria-label="Incident filter">
-        <button class="tab" data-f="active" aria-pressed="true">Active</button>
-        <button class="tab" data-f="ack" aria-pressed="false">Acknowledged</button>
-        <button class="tab" data-f="done" aria-pressed="false">Resolved / closed</button>
-        <button class="tab" data-f="all" aria-pressed="false">All</button>
+  <div class="side">
+    <section class="nx-panel" aria-label="Alerts" id="ppeBox">
+      <div class="nx-panel-head"><span class="ico" aria-hidden="true">🚨</span><h2>Alerts</h2><span class="nx-count" id="ppeN">–</span>
+        <button class="ibtn" id="muteBtn" aria-pressed="false" title="Alert sound on / off">🔔</button></div>
+      <div class="nx-panel-body">
+        <div class="firestrip" id="fireBox" aria-label="Fire and smoke"></div>
+        <div class="tabs" role="group" aria-label="Alerts filter"><button class="tab" data-f="active" aria-pressed="true">Active</button><button class="tab" data-f="ack" aria-pressed="false">Acknowledged</button><button class="tab" data-f="done" aria-pressed="false">History</button></div>
+        <div class="alist" id="ppeList"></div>
       </div>
-      <div class="list" id="incidents"></div>
     </section>
   </div>
 </div>
 
-<p class="small" style="text-align:center;margin:18px 0 0">Zones, alert delivery, measured latency and full system health:
-  <a href="/admin#cameras">Admin › Cameras &amp; zones</a> · <a href="/admin#alerts">Alerts &amp; channels</a> · <a href="/admin#system">System health</a></p>
+<div class="lower">
+  <section class="nx-panel" aria-label="Entrance" id="gateBox">
+    <div class="nx-panel-head"><span class="ico" aria-hidden="true">🚪</span><h2>Entrance</h2><span class="nx-count" id="gateN">–</span><a class="btn" href="/entrance">Open</a></div>
+    <div class="nx-panel-body">
+      <div class="gtop"><div class="gfeed" id="gateFeed"></div><div class="gstats" id="gateCount"></div></div>
+      <div id="gateSide"></div>
+    </div>
+  </section>
+  <section class="nx-panel" aria-label="Zones and people" id="zoneBox">
+    <div class="nx-panel-head"><span class="ico" aria-hidden="true">🗺</span><h2>Zones &amp; people</h2><span class="nx-count" id="zoneN">–</span></div>
+    <div class="nx-panel-body" id="zoneBody"></div>
+  </section>
+  <section class="nx-panel" aria-label="Safety station" id="stBox">
+    <div class="nx-panel-head"><span class="ico" aria-hidden="true">📟</span><h2>Safety station</h2><a class="btn" href="/hardware">Sensors</a></div>
+    <div class="nx-panel-body" id="stBody"></div>
+  </section>
+  <section class="nx-panel" aria-label="System health" id="hlBox">
+    <div class="nx-panel-head"><span class="ico" aria-hidden="true">🩺</span><h2>System health</h2><span class="nx-count" id="hlN">–</span></div>
+    <div class="nx-panel-body">
+      <div class="hrow"><span id="sysChip" title="Overall safety state">… connecting</span></div>
+      <div class="hrow"><span id="locChip" title="Location source">📍 …</span></div>
+      <div id="hlBody"><div class="empty">Waiting for the health report…</div></div>
+    </div>
+  </section>
+</div>
 </div>
 
-<!-- Level 3 full-screen evacuation overlay (section 9) -->
+<!-- Level 3 full-screen evacuation overlay -->
 <div class="overlay" id="evac" role="alertdialog" aria-labelledby="evacTitle">
   <h1 id="evacTitle">VERY CRITICAL — MAJOR FIRE DETECTED</h1>
   <div class="sub" id="evacSub">EVACUATE THE AFFECTED AREA IMMEDIATELY.</div>
   <div class="grid"><img id="evacImg" alt="Affected camera live view"><div class="facts" id="evacFacts"></div></div>
   <div class="acts" id="evacActs"></div>
 </div>
-<!-- incident details -->
-<div class="modal" id="modal" role="dialog" aria-labelledby="mTitle"><div class="box" id="mBox"></div></div>
+<div class="modal" id="modal" role="dialog" aria-labelledby="mTitle"><div class="box2" id="mBox"></div></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
-<script src="/static/alerts.js?v=5nov2"></script>
-<script src="/static/video.js?v=5nov2"></script>
-<script src="/static/zentrix.js?v=5nov2"></script>
+<script src="/static/ppe_icons.js?v=12nov1"></script>
+<script src="/static/people.js?v=12nov1"></script>
+<script src="/static/alerts.js?v=12nov1"></script>
+<script src="/static/video.js?v=12nov1"></script>
+<script src="/static/zentrix.js?v=12nov1"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const TZ = "Asia/Kolkata";
-const fmtT = (t, date=true) => t ? new Date(t*1000).toLocaleString("en-IN", Object.assign({timeZone:TZ, hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false}, date ? {day:"2-digit", month:"short"} : {})) + " IST" : "–";
+const fmtT = (t, date=true) => t ? new Date(t*1000).toLocaleString("en-IN", Object.assign({timeZone:TZ, hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false}, date ? {day:"2-digit", month:"short"} : {})) + (date ? " IST" : "") : "–";
+const hhmm = t => t ? new Date(t*1000).toLocaleTimeString("en-IN", {timeZone:TZ, hour:"2-digit", minute:"2-digit", hour12:false}) : "–";
 const ago = t => { const s = Math.max(0, Date.now()/1000 - t); return s < 60 ? `${Math.floor(s)} s ago` : s < 3600 ? `${Math.floor(s/60)} min ago` : `${Math.floor(s/3600)} h ${Math.floor(s%3600/60)} min ago`; };
-const ITEM = {helmet:"HELMET", vest:"SAFETY VEST", gloves:"GLOVES", boots:"SAFETY SHOES", goggles:"GOGGLES", mask:"MASK"};
-const iname = i => ITEM[i] || String(i).toUpperCase();
+const ITEM = {helmet:"Helmet", vest:"Safety vest", gloves:"Gloves", boots:"Safety shoes", goggles:"Safety goggles", mask:"Mask"};
+const iname = i => ITEM[i] || String(i);
+const day0 = () => new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
 const SIGS = new Map();
 let MUTED = false;
-let ME = {role:"viewer"}, EVENTS = new Map(), CAMS = {cameras:[]}, ZONES = [], NOTIFS = new Map(), ENTR = [], HEALTH = null, LOC = null;
-let FILTER = "active", FOCUS = null, CLOCK_OFF = 0, EVAC_MIN = new Set(), SEEN = new Set(), audio = null;
+let ME = {role:"viewer"}, EVENTS = new Map(), CAMS = {cameras:[]}, ZONES = [], NOTIFS = new Map(), ENTR = [], HEALTH = null, LOC = null, HW = null;
+let FOCUS = null, CLOCK_OFF = 0, EVAC_MIN = new Set(), SEEN = new Set(), audio = null;
 const PERF = {preview_age_ms: [], dashboard_event_ms: []};
 const canAct = () => ME.role === "supervisor" || ME.role === "admin";
 
@@ -307,44 +266,40 @@ async function api(path, opt){
   return r.status === 204 ? null : r.json();
 }
 const post = (p, b) => api(p, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(b || {})});
+function bump(id){ const b = $(id); if (!b) return; b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump");
+  clearTimeout(b._bt); b._bt = setTimeout(() => b.classList.remove("bump"), 2800); }
 
-/* ---------- state helpers: one visual language (text + icon + colour) ---------- */
+/* ---------- state helpers ---------- */
 const ACTIVE = new Set(["open","escalated","verifying"]), DONE = new Set(["resolved","closed","dismissed","suppressed"]);
+const isFire = e => e.type === "fire" || e.type === "smoke";
 function sev(e){
-  if (DONE.has(e.status)) return {cls:"s-done", label:e.status === "suppressed" ? "◌ NOT ALARMED (STATION CLEAR)" : `✓ ${e.status.toUpperCase()}`};
-  if (e.status === "acknowledged") return {cls:"s-ack", label:"◐ ACKNOWLEDGED — awaiting resolution"};
-  if (e.status === "verifying") return {cls:"s-warn", label:"⚠ VERIFYING WITH SAFETY STATION"};
-  if (e.type === "fire" || e.type === "smoke"){
-    const l = e.fire_level || 2;
-    return l >= 3 ? {cls:"s-crit", label:"⛔ EMERGENCY · LEVEL 3 · EVACUATE"} : l == 2 ? {cls:"s-crit", label:"▲ CRITICAL · LEVEL 2"} : {cls:"s-warn", label:"⚠ WARNING · LEVEL 1"};
-  }
-  if (e.type === "entrance_check"){ const r = (e.details||{}).result; return r === "denied" ? {cls:"s-crit", label:"✖ ENTRY DENIED"} : r === "manual" ? {cls:"s-warn", label:"⚠ MANUAL CHECK NEEDED"} : {cls:"s-ok", label:"✓ ENTRY APPROVED"}; }
-  if (e.severity === "Critical") return {cls:"s-crit", label:"▲ CRITICAL"};
-  if (e.severity === "High") return {cls:"s-crit", label:"▲ HIGH"};
-  if (e.severity === "Medium") return {cls:"s-warn", label:"⚠ MEDIUM"};
-  return {cls:"s-warn", label:"● LOW"};
+  if (DONE.has(e.status)) return {cls:"p-grey", label:e.status === "suppressed" ? "Not alarmed (station clear)" : e.status[0].toUpperCase() + e.status.slice(1)};
+  if (e.status === "acknowledged") return {cls:"p-info", label:"Acknowledged"};
+  if (e.status === "verifying") return {cls:"p-warn", label:"Checking with the safety station"};
+  if (isFire(e)){ const l = e.fire_level || 2; return {cls: l >= 2 ? "p-crit" : "p-warn", label:`Level ${l}`}; }
+  return {cls: e.severity === "Critical" || e.severity === "High" ? "p-crit" : "p-warn", label: e.severity || "Open"};
 }
 function title(e){
-  if (e.type === "ppe_missing") return "Missing PPE: " + (e.items_missing||[]).map(iname).join(", ");
-  if (e.type === "unauthorized_entry") return "Unauthorised entry — restricted zone";
-  if (e.type === "fire") return "FIRE DETECTED";
-  if (e.type === "smoke") return "SMOKE DETECTED";
-  if (e.type === "entrance_check"){ const d = e.details||{}; return d.verdict || d.message || "Entrance check"; }
-  return String(e.type || "event").replace(/_/g," ").toUpperCase();
+  if (e.type === "ppe_missing") return "PPE violation";
+  if (e.type === "unauthorized_entry") return "Unauthorised entry";
+  if (e.type === "fire") return "Fire";
+  if (e.type === "smoke") return "Smoke";
+  if (e.type === "entrance_check") return "Entrance check";
+  return String(e.type || "event").replace(/_/g," ");
 }
-const camName = id => ((CAMS.cameras||[]).find(c => c.camera_id === id) || {}).name || id || "safety station";
-function who(e){ if (!e.worker_id) return e.type === "ppe_missing" ? `person #${e.track_id ?? "?"} (not identified)` : ""; if (e.worker_id === "W-***") return "registered worker (name hidden)"; return `${e.worker_name || ""} (${e.worker_id})`.trim(); }
+const camName = id => ((CAMS.cameras||[]).find(c => c.camera_id === id) || {}).name || id || "Safety station";
 function locText(e){ const l = e.location; if (!l || !l.valid) return `Location unavailable · ${esc((l && l.zone_label) || e.zone_name || e.zone_id || "")}`;
   return `${l.lat.toFixed(5)}, ${l.lon.toFixed(5)} (${esc(l.source_label)})${l.map_url ? ` · <a href="${l.map_url}" target="_blank" rel="noopener">map</a>` : ""}`; }
-function isEmergencyPPE(e){ return (e.type === "ppe_missing" || e.type === "unauthorized_entry") && (e.status === "open" || e.status === "escalated") && (EMERG.includes(e.severity)); }
 const EMERG = ["Critical","High"];
-const fireActive = e => (e.type === "fire" || e.type === "smoke") && !DONE.has(e.status);
+function isEmergencyPPE(e){ return (e.type === "ppe_missing" || e.type === "unauthorized_entry") && (e.status === "open" || e.status === "escalated") && EMERG.includes(e.severity); }
+const fireActive = e => isFire(e) && !DONE.has(e.status);
 
 /* ---------- header ---------- */
-setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-IN", {timeZone:TZ, hour12:false}) + " IST"; }, 500);
-$("themeBtn").onclick = () => { const r = document.documentElement; r.dataset.theme = r.dataset.theme === "light" ? "dark" : "light"; try { localStorage.setItem("netrax-cr-theme", r.dataset.theme); } catch {} };
-try { const t = localStorage.getItem("netrax-cr-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-IN", {timeZone:TZ, hour12:false}); }, 500);
+function setTheme(t){ document.documentElement.dataset.theme = t; try { localStorage.setItem("netrax-cr-theme", t); localStorage.setItem("netrax-theme", t); } catch {} }
+$("themeBtn").onclick = () => setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
 $("logoutBtn").onclick = async () => { await post("/api/logout").catch(()=>{}); location.href = "/login"; };
+document.querySelectorAll(".nx-kpi[data-go]").forEach(k => k.onclick = () => { const t = $(k.dataset.go); t.scrollIntoView({behavior:"smooth", block:"start"}); bump(k.dataset.go); });
 
 function renderSystem(){
   const evs = [...EVENTS.values()];
@@ -352,62 +307,56 @@ function renderSystem(){
   const lvl = Math.max(0, ...fires.map(e => e.fire_level || 2));
   const ppe = evs.filter(isEmergencyPPE);
   const chip = $("sysChip");
-  if (lvl >= 3){ chip.className = "chip crit pulse"; chip.textContent = "⛔ EMERGENCY · EVACUATE"; }
-  else if (lvl == 2 || ppe.length){ chip.className = "chip crit"; chip.textContent = `▲ CRITICAL · ${fires.length + ppe.length} active`; }
-  else if (lvl == 1 || evs.some(e => ACTIVE.has(e.status))){ chip.className = "chip warn"; chip.textContent = "⚠ WARNING"; }
-  else { chip.className = "chip ok"; chip.textContent = "✓ NORMAL"; }
+  if (lvl >= 3){ chip.className = "crit"; chip.innerHTML = `<span class="nx-dot crit"></span>Emergency · evacuate`; }
+  else if (lvl == 2 || ppe.length){ chip.className = "crit"; chip.innerHTML = `<span class="nx-dot crit"></span>Critical · ${fires.length + ppe.length} active`; }
+  else if (lvl == 1 || evs.some(e => ACTIVE.has(e.status) && e.type !== "entrance_check")){ chip.className = "warn"; chip.innerHTML = `<span class="nx-dot warn"></span>Warning`; }
+  else { chip.className = "ok"; chip.innerHTML = `<span class="nx-dot ok"></span>All safe`; }
   document.body.classList.toggle("emergency", lvl >= 2 || ppe.length > 0);
 }
 
-/* ---------- alert zone: fire panels (L1/L2), L3 overlay, PPE emergency panel (section 2) ---------- */
+/* ---------- fire: green line when clear; big card(s) in the alerts panel during a fire; level 3 = full screen ---------- */
 function sensorsHtml(e){
   let s = e.sensors; if (typeof s === "string") try { s = JSON.parse(s); } catch { s = null; }
-  const ver = {confirmed:"✓ Safety station CONFIRMS the camera", hardware_only:"Sensor alarm (no camera)", hardware_clear:"Station CLEAR — camera only",
-    pending:"Checking with the safety station…", hardware_offline:"Station OFFLINE — camera only, not cross-checked", no_station:"No safety station in this zone — camera only, not cross-checked"}[e.verification] || "camera detection";
-  if (!s || !s.data) return `<span><b>Sensors:</b> ${esc(ver)}</span>`;
+  const ver = {confirmed:"Safety station confirms", hardware_only:"Sensor alarm (no camera)", hardware_clear:"Station clear — camera only",
+    pending:"Checking the safety station…", hardware_offline:"Station offline — camera only", no_station:"No safety station here — camera only"}[e.verification] || "Camera detection";
+  if (!s || !s.data) return esc(ver);
   const d = s.data, v = (k, dp=0, u="") => d[k] == null ? "—" : Number(d[k]).toFixed(dp) + u;
-  return `<span><b>Sensors:</b> ${esc(ver)} · temp ${v("temperature_c",1," °C")} · flame ${d.flame_detected == null ? "—" : d.flame_detected ? "YES" : "no"} · MQ-2 ${v("mq2_adc")} · PM2.5 ${v("pm2_5_ugm3",0," µg/m³")}</span>`;
+  return `${esc(ver)} · ${v("temperature_c",1," °C")} · flame ${d.flame_detected == null ? "—" : d.flame_detected ? "YES" : "no"} · MQ-2 ${v("mq2_adc")}`;
 }
-function actButtons(e, big){
-  if (!canAct()) return `<span class="small">View only (${esc(ME.role)})</span>`;
-  const b = big ? " big" : "";
+/* the two card buttons (supervisor / admin); everything else is in the details drawer */
+function cardButtons(e){
+  if (!canAct() || DONE.has(e.status)) return "";
+  return `<div class="acts">${e.status === "acknowledged" ? "" : `<button class="btn btn-primary" data-a="ack" data-id="${e.event_id}">Acknowledge</button>`}<button class="btn btn-ok" data-a="resolve" data-id="${e.event_id}">Resolve</button></div>`;
+}
+function allButtons(e){
+  if (!canAct()) return `<span class="muted">View only (${esc(ME.role)})</span>`;
   let h = "";
-  if (e.status === "open" || e.status === "escalated" || e.status === "verifying") h += `<button class="btn red${b}" data-a="ack" data-id="${e.event_id}">Acknowledge</button>`;
-  if (!DONE.has(e.status)) h += `<button class="btn${b}" data-a="resolve" data-id="${e.event_id}">Resolve</button>`;
-  if (e.status === "open") h += `<button class="btn${b}" data-a="escalate" data-id="${e.event_id}">Escalate</button>`;
-  if (!DONE.has(e.status) && e.type !== "fire") h += `<button class="btn${b}" data-a="dismiss" data-id="${e.event_id}">False alarm</button>`;
-  return h + `<button class="btn${b}" data-a="view" data-id="${e.event_id}">Details</button>`;
+  if (e.status === "open" || e.status === "escalated" || e.status === "verifying") h += `<button class="btn btn-primary" data-a="ack" data-id="${e.event_id}">Acknowledge</button>`;
+  if (!DONE.has(e.status)) h += `<button class="btn btn-ok" data-a="resolve" data-id="${e.event_id}">Resolve</button>`;
+  if (e.status === "open") h += `<button class="btn btn-danger" data-a="escalate" data-id="${e.event_id}">Escalate</button>`;
+  if (!DONE.has(e.status) && e.type !== "fire") h += `<button class="btn" data-a="dismiss" data-id="${e.event_id}">False alarm</button>`;
+  return h;
 }
 const FIRE_MSG = {1:["WARNING — Small {w} detected.","Immediate inspection required."],
   2:["CRITICAL ALERT — {W} detected.","Immediate emergency response required."],
   3:["VERY CRITICAL — MAJOR {WW} DETECTED.","EVACUATE THE AFFECTED AREA IMMEDIATELY."]};
 function fireText(e){ const l = e.fire_level || 2, w = e.type === "smoke" ? "smoke" : "fire";
   return FIRE_MSG[l].map(t => t.replace("{w}", w).replace("{W}", w[0].toUpperCase()+w.slice(1)).replace("{WW}", w.toUpperCase())); }
-function renderAlertZone(){
-  const evs = [...EVENTS.values()];
-  const fires = evs.filter(fireActive).sort((a,b) => (b.fire_level||0) - (a.fire_level||0) || b.started_at - a.started_at);
-  const ppe = evs.filter(isEmergencyPPE).sort((a,b) => b.started_at - a.started_at);
-  let h = "";
-  for (const e of fires){
-    if (e.status === "verifying"){ h += `<div class="bigpanel warn"><div><h2>⚠ ${e.type === "fire" ? "POSSIBLE FIRE" : "POSSIBLE SMOKE"} — VERIFYING</h2>
-      <div class="facts"><span><b>Camera:</b> ${esc(e.camera_id)} · ${esc(camName(e.camera_id))}</span><span><b>Zone:</b> ${esc(e.zone_name)}</span><span><b>Time:</b> ${fmtT(e.started_at)}</span></div>
-      <div class="facts">${sensorsHtml(e)}</div><div class="small">Not a confirmed fact yet: the camera saw something fire-like; the safety station is being checked.</div></div>
-      <div class="acts">${actButtons(e)}</div></div>`; continue; }
-    const l = e.fire_level || 2, [t1, t2] = fireText(e), acked = e.status === "acknowledged";
-    const cls = acked ? "ack" : l >= 2 ? "crit" : "warn";
-    const icon = l >= 3 ? "⛔" : l == 2 ? "▲" : "⚠";
-    h += `<div class="bigpanel ${cls} withfeed ${!acked && l >= 2 ? "pulse" : ""}"><div>
-      <h2>${icon} ${esc(t1)}</h2><div class="what">${esc(t2)}</div>
-      <div class="facts"><span><b>Status:</b> ${acked ? "ACKNOWLEDGED — still active until resolved" : "ACTIVE"}</span><span><b>Level:</b> ${l} of 3</span>
-        <span><b>Zone:</b> ${esc(e.zone_name || e.zone_id)}</span><span><b>Camera:</b> ${esc(e.camera_id || "safety station")}</span><span><b>Time:</b> ${fmtT(e.started_at)}</span></div>
-      <div class="facts"><span><b>Location:</b> ${locText(e)}</span></div>
-      <div class="facts">${sensorsHtml(e)}</div>
-      <div class="small">Why level ${l}: ${esc((e.fire_reasons||[]).join("; ") || "—")}. Level is a risk grade from evidence, not a measured fire size.</div></div>
-      ${e.camera_id ? `<img class="feed" data-live="${e.camera_id}" alt="Live view ${esc(e.camera_id)}">` : `<div></div>`}
-      <div class="acts">${actButtons(e, true)}${l >= 3 ? `<button class="btn amber big" data-a="evac" data-id="${e.event_id}">Full screen</button>` : ""}</div></div>`;
-  }
-  const az = $("alertzone"); const sig = h; if (az.dataset.sig !== sig){ az.innerHTML = h; az.dataset.sig = sig; }
-  // Level 3 overlay
+function renderFireStrip(){
+  const box = $("fireBox"), fires = [...EVENTS.values()].filter(e => fireActive(e)).sort((a, b) => (b.fire_level||0) - (a.fire_level||0) || b.started_at - a.started_at);
+  const sig = JSON.stringify(fires.map(e => [e.event_id, e.status, e.fire_level, e.verification, canAct()]));
+  if (box.dataset.sig === sig) return; box.dataset.sig = sig;
+  if (!fires.length){ box.innerHTML = `<div class="fireclear"><span class="nx-dot ok"></span>Fire / smoke: clear</div>`; return; }
+  box.innerHTML = fires.map(e => { const ver = e.status === "verifying", l = e.fire_level || 2, w = e.type === "smoke" ? "Smoke" : "Fire";
+    return `<div class="firebig${ver ? " verify" : ""}" data-a="view" data-id="${e.event_id}">
+      <div class="fh">${ver ? `⚠ Possible ${w.toLowerCase()} · checking` : `🔥 ${w} · Level ${l}`}</div>
+      <div class="where"><b>${esc(e.zone_name || e.zone_id || "")}</b> · ${esc(camName(e.camera_id))} · ${hhmm(e.started_at)}${e.status === "acknowledged" ? ` · Ack by ${esc(e.acked_by || "")}` : ""}</div>
+      ${e.camera_id ? `<div class="ffeed"><img data-live="${e.camera_id}" alt="Live view ${esc(e.camera_id)}"></div>` : ""}
+      <div class="where">${sensorsHtml(e)}</div>
+      ${cardButtons(e)}${l >= 3 && !ver ? `<button class="btn btn-danger" data-a="evac" data-id="${e.event_id}">⛶ Full screen</button>` : ""}</div>`; }).join("");
+}
+function renderEmergency(){
+  const fires = [...EVENTS.values()].filter(fireActive);
   const l3 = fires.find(e => (e.fire_level||0) >= 3 && e.status !== "acknowledged" && e.status !== "verifying" && !EVAC_MIN.has(e.event_id));
   if (l3){
     const [t1, t2] = fireText(l3);
@@ -415,299 +364,312 @@ function renderAlertZone(){
     $("evacImg").dataset.live = l3.camera_id || "";
     $("evacFacts").innerHTML = `<div><b>Zone</b> ${esc(l3.zone_name || l3.zone_id)}</div><div><b>Camera</b> ${esc(l3.camera_id || "safety station")} · ${esc(camName(l3.camera_id))}</div>
       <div><b>Detected</b> ${fmtT(l3.started_at)}</div><div><b>Location</b> ${locText(l3)}</div><div><b>Status</b> ACTIVE · Level 3 of 3</div>
-      <div>${sensorsHtml(l3)}</div><div><b>Action</b> Evacuate now. Call the fire brigade (101). Follow the site evacuation plan.</div>`;
+      <div><b>Sensors</b> ${sensorsHtml(l3)}</div><div><b>Action</b> Evacuate now. Call the fire brigade (101). Follow the site evacuation plan.</div>`;
     $("evacActs").innerHTML = (canAct() ? `<button class="btn" data-a="ack" data-id="${l3.event_id}">Acknowledge</button><button class="btn ghost" data-a="resolve" data-id="${l3.event_id}">Fire out — resolve</button>` : "")
-      + `<button class="btn ghost" data-a="evacmin" data-id="${l3.event_id}">Minimise (stays on top bar)</button>`;
+      + `<button class="btn ghost" data-a="evacmin" data-id="${l3.event_id}">Minimise</button>`;
     if (!$("evac").classList.contains("show")){ $("evac").classList.add("show"); alarmTone(); }
   } else $("evac").classList.remove("show");
-  renderSystem();
+  renderFireStrip(); renderSystem();
 }
 
 /* ---------- cameras ---------- */
 let VIEW = new URLSearchParams(location.search).get("view") || (() => { try { return localStorage.getItem("netrax-cam-view") || "grid"; } catch { return "grid"; } })(), LEAD = null;
 function leadCam(cams){
-  // Focus view: the camera with an active alarm leads (fire first), else the one picked, else the first live one
   const live = c => c.status === "ONLINE" || c.status === "DEGRADED";
   const alarm = cams.filter(c => c.badge && !/APPROVED/.test(c.badge)).sort((a,b) => (/FIRE|SMOKE/i.test(b.badge) - /FIRE|SMOKE/i.test(a.badge)));
   return (alarm[0] || cams.find(c => c.camera_id === LEAD) || cams.find(live) || cams[0] || {}).camera_id;
 }
 const monitors = () => (CAMS.cameras || []).filter(c => c.role !== "entrance");
 const entranceCam = () => (CAMS.cameras || []).find(c => c.role === "entrance");
-function gateTile(ent, live){
-  return `<a class="gatecell" id="gateCell" href="/entrance" title="Open the entrance dashboard"><div class="gtop">🚪 Entrance check<span class="sp"></span><span class="small">Open dashboard ›</span></div>
-    <div class="gbody"><div class="gfeed">${live ? `<img data-live="${ent.camera_id}" alt="Live entrance camera">` : `<span class="small">USB camera ${ent ? "offline" : "not set up"}</span>`}</div><div class="gres" id="gateLast"></div></div></a>`;
+const isLive = c => !!c && (c.status === "ONLINE" || c.status === "DEGRADED");
+/* camera badge from the edge ("NO HELMET / VEST", "NOT AUTHORISED: x", "FIRE ...") -> icons, no item words */
+const BADGE_ITEM = {HELMET:"helmet", VEST:"vest", GLOVES:"gloves", GOGGLES:"goggles", MASK:"mask", BOOTS:"boots", SHOES:"boots"};
+function badgeHtml(b){
+  const m = /^NO (.+)$/.exec(b || "");
+  if (m){ const items = m[1].split(/\s*\/\s*/).map(x => BADGE_ITEM[x.trim()]).filter(Boolean); if (items.length) return ppeRow(items, [], items, [], 26); }
+  if (/^NOT AUTHORISED/.test(b)) return "⛔ " + esc(b.replace("NOT AUTHORISED:", "Not authorised:"));
+  if (/APPROVED/.test(b)) return "✓ Permitted";
+  return esc(b);
 }
 function renderCams(){
-  const cams0 = monitors(), ent = entranceCam();
-  const entLive = !!ent && (ent.status === "ONLINE" || ent.status === "DEGRADED");
+  const cams0 = monitors();
   const lead = VIEW === "big" && !FOCUS ? leadCam(cams0) : null;
   const cams = lead ? [cams0.find(c => c.camera_id === lead)].concat(cams0.filter(c => c.camera_id !== lead)) : cams0;
   const shown = FOCUS ? cams.filter(c => c.camera_id === FOCUS) : cams;
   $("unfocus").hidden = !FOCUS;
   $("cams").classList.toggle("focus", !!FOCUS);
   $("cams").classList.toggle("big", !!lead);
-  document.querySelectorAll(".vbtn[data-view]").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === VIEW));
-  const on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED").length;
-  $("camSummary").textContent = `${on} of ${cams.filter(c => c.status !== "OFF").length} cameras live` + (CAMS.edge_online ? "" : " · EDGE OFFLINE");
-  const sig = JSON.stringify([FOCUS, lead, entLive, shown.map(c => [c.camera_id, c.status === "ONLINE" || c.status === "DEGRADED"])]);
+  $("cams").classList.toggle("tri", !FOCUS && !lead && shown.length === 3);
+  $("viewBtn").textContent = VIEW === "big" ? "▦ Grid view" : "▣ Focus view";
+  $("viewBtn").dataset.view = VIEW === "big" ? "grid" : "big";
+  const on = cams.filter(isLive).length, n = cams.filter(c => c.status !== "OFF").length;
+  $("camN").textContent = `${on} / ${n} live`; $("camN").className = "nx-count " + (on === n && n ? "ok" : CAMS.edge_online ? "warn" : "crit");
+  $("camN").title = CAMS.edge_online ? "zone cameras with a live picture" : "AI computer offline";
+  const sig = JSON.stringify([FOCUS, lead, canAct(), shown.map(c => [c.camera_id, isLive(c), c.power])]);
   if ($("cams").dataset.sig !== sig){
     $("cams").innerHTML = shown.map(c => {
-      const live = c.status === "ONLINE" || c.status === "DEGRADED";
+      const live = isLive(c), off = c.power === "off", pw = canAct() && c.can_power !== false;
       return `<div class="cam${c.camera_id === lead ? " lead" : ""}" id="cam_${c.camera_id}" ${lead && c.camera_id !== lead ? `data-lead="${c.camera_id}" title="Click to make this the large camera" style="cursor:pointer"` : ""}><div class="screen">
-        <div class="top"><div><div class="name">${esc(c.name)}${c.role === "entrance" ? " · PPE GATE" : ""}<span class="risk ${c.risk}">${esc(String(c.risk||"").toUpperCase())} RISK</span></div>
-          <div class="zone">${esc(c.camera_id)} · ${esc(c.zone_name)}</div></div><span class="st" id="st_${c.camera_id}"></span></div>
+        <div class="top"><span class="name" title="${esc(c.camera_id)} · ${esc(c.zone_name)} · ${esc(String(c.risk||""))} risk">${esc(c.name)}</span><span class="st" id="st_${c.camera_id}"></span></div>
         ${live ? `<img data-live="${c.camera_id}" alt="Live view ${esc(c.name)}">` : `<span id="off_${c.camera_id}"></span>`}
         <span class="badge" id="bd_${c.camera_id}" hidden></span>
-        <button class="fbtn" data-focus="${c.camera_id}">${FOCUS ? "Exit full view" : "Enlarge"}</button></div></div>`; }).join("") + (FOCUS ? "" : gateTile(ent, entLive));
+        <span class="tbtns">${pw && !off ? `<button class="pw" data-power="${c.camera_id}" data-on="0" title="Turn this camera off (no AI checks, no alarms) until you turn it on again">⏻ Off</button>` : ""}
+          ${off ? "" : `<button data-focus="${c.camera_id}">${FOCUS ? "Exit full view" : "⤢ Enlarge"}</button>`}</span></div></div>`; }).join("")
+      || `<div class="empty">No zone cameras configured (config/cameras.yaml).</div>`;
     $("cams").dataset.sig = sig;
-    renderGate();
   }
   for (const c of shown){
     const st = $("st_" + c.camera_id), bd = $("bd_" + c.camera_id), box = $("cam_" + c.camera_id), off = $("off_" + c.camera_id);
     if (!st) continue;
-    const icon = {ONLINE:"●", DEGRADED:"◐", OFFLINE:"✖", OFF:"○", STANDBY:"○"}[c.status] || "?";
-    const age = FRAME_AGE[c.camera_id];
-    const vf = NetraxVideo.fps[c.camera_id];
-    if (/^picture is black/.test(c.detail || "")){ st.textContent = "◐ BLACK PICTURE · re-plug camera"; st.title = c.detail; }
-    else st.textContent = `${icon} ${c.status === "ONLINE" ? "LIVE" : c.status}${c.status === "ONLINE" || c.status === "DEGRADED" ? `${vf ? ` · ${Math.round(vf)} fps` : ""} · AI ${c.fps}/s${age != null ? ` · ${age} ms` : ""}` : ""}`;
-    st.title = "video pictures per second · AI checks per second · picture age";
-    if (off) off.innerHTML = c.status === "OFF" ? `<div class="offmsg"><b>Camera not connected</b><span>Connect a phone with IP Webcam to the same Wi-Fi, then run tools.find_phones --write.</span></div>`
+    const age = FRAME_AGE[c.camera_id], vf = NetraxVideo.fps[c.camera_id];
+    const dot = c.status === "ONLINE" ? "ok" : c.status === "DEGRADED" ? "warn" : c.status === "OFFLINE" ? "crit" : "";
+    const word = /^picture is black/.test(c.detail || "") ? "BLACK PICTURE" : c.status === "ONLINE" ? "LIVE" : c.status;
+    const stHtml = `<span class="nx-dot ${dot}"></span>${word}${isLive(c) && vf ? ` · ${Math.round(vf)} fps` : ""}`;
+    if (st.innerHTML !== stHtml) st.innerHTML = stHtml;
+    st.title = isLive(c) ? `video ${vf ? Math.round(vf) : "–"} pictures/s · AI ${c.fps} checks/s${age != null ? ` · picture age ${age} ms` : ""}` : (c.detail || "");
+    const offHtml = c.power === "off" ? `<div class="offmsg"><b>⏻ Camera turned off</b>${canAct() ? `<button class="btn btn-ok pw-big" data-power="${c.camera_id}" data-on="1">⏻ Turn on</button>` : ""}</div>`
+      : c.status === "OFF" ? `<div class="offmsg" title="enabled: false in config/cameras.yaml"><b>Camera not connected</b></div>`
       : `<div class="offmsg"><b>No picture</b><span>${esc(c.detail || "No signal")}</span></div>`;
-    const b = c.badge || "";
-    bd.hidden = !b; bd.textContent = b ? (/APPROVED/.test(b) ? "✓ " : /MANUAL|verifying/i.test(b) ? "⚠ " : "▲ ") + b : "";
-    bd.className = "badge" + (/APPROVED/.test(b) ? " ok" : /MANUAL|verifying/i.test(b) ? " warn" : "");
-    box.className = "cam " + (c.camera_id === lead ? "lead " : "") + (c.status === "OFFLINE" ? "off" : c.status === "OFF" || c.status === "STANDBY" ? "off" : b ? (/APPROVED/.test(b) ? "ok" : /MANUAL|verifying/i.test(b) ? "warn" : "alert") : "ok");
+    if (off && off.dataset.h !== offHtml){ off.innerHTML = offHtml; off.dataset.h = offHtml; }
+    const b = c.badge || "", bh = b ? badgeHtml(b) : "";
+    bd.hidden = !b; if (bd.dataset.h !== bh){ bd.innerHTML = bh; bd.dataset.h = bh; } bd.title = b;
+    bd.className = "badge" + (/APPROVED/.test(b) ? " ok" : /MANUAL|verifying|NOT AUTHORISED/i.test(b) ? " warn" : "");
+    box.className = "cam " + (c.camera_id === lead ? "lead " : "") + (c.status === "OFFLINE" || c.status === "OFF" || c.status === "STANDBY" ? "off" : b ? (/APPROVED/.test(b) ? "ok" : /MANUAL|verifying/i.test(b) ? "warn" : "alert") : "ok");
   }
+  renderEntranceFeed();
 }
 document.addEventListener("click", ev => { const f = ev.target.closest("[data-focus]"); if (!f) return; FOCUS = FOCUS ? null : f.dataset.focus; renderCams(); });
 $("unfocus").onclick = () => { FOCUS = null; renderCams(); };
-document.querySelectorAll(".vbtn[data-view]").forEach(b => b.onclick = () => { VIEW = b.dataset.view; FOCUS = null;
-  try { localStorage.setItem("netrax-cam-view", VIEW); } catch {} renderCams(); });
+async function setPower(cam, on){
+  const c = (CAMS.cameras || []).find(x => x.camera_id === cam) || {camera_id: cam, name: cam};
+  if (!on && !confirm(`Turn OFF ${c.name} (${cam})?\n\nNo picture, no PPE / fire detection and no alarms from this camera until you turn it on again.`)) return false;
+  try { await post(`/api/cameras/${encodeURIComponent(cam)}/power`, {on}); CAMS = await api("/api/cameras"); renderCams(); renderBand();
+    toast(on ? "Camera turned on" : "Camera turned off", c.name); return true; }
+  catch (x){ toast("Camera not switched", x.message, "crit"); return false; }
+}
+document.addEventListener("click", ev => { const b = ev.target.closest("[data-power]"); if (!b) return; ev.stopPropagation(); setPower(b.dataset.power, b.dataset.on === "1"); }, true);
+$("viewBtn").onclick = () => { VIEW = $("viewBtn").dataset.view; FOCUS = null; try { localStorage.setItem("netrax-cam-view", VIEW); } catch {} renderCams(); };
 document.addEventListener("click", ev => { const l = ev.target.closest("[data-lead]"); if (!l || ev.target.closest("[data-focus]")) return; LEAD = l.dataset.lead; renderCams(); });
 $("fsBtn").onclick = () => { const p = $("camPanel"); if (document.fullscreenElement) document.exitFullscreen(); else if (p.requestFullscreen) p.requestFullscreen().catch(() => {}); };
 document.addEventListener("fullscreenchange", () => { $("fsBtn").textContent = document.fullscreenElement ? "✕ Exit full screen" : "⛶ Full screen"; });
-/* Show list / KPI click -> incidents tab */
-document.addEventListener("click", ev => { const t = ev.target.closest("[data-tab]"); if (!t) return;
-  const tab = document.querySelector(`.tab[data-f="${t.dataset.tab}"]`); if (tab){ tab.click(); $("incidents").scrollIntoView({behavior:"smooth", block:"start"}); } });
 
-/* ---------- live summary band (29 Oct) ---------- */
-let PRESENT = [], ANALYTICS = null;
+/* ---------- KPI tiles: measured numbers only ---------- */
 function setKb(id, v){ const el = $(id); const s = String(v); if (el.textContent !== s) el.textContent = s; }
 function renderBand(){
   const evs = [...EVENTS.values()];
-  const act = evs.filter(e => ACTIVE.has(e.status) && e.type !== "test" && !(e.type === "entrance_check"));
-  setKb("kbIncN", act.length); $("kbInc").classList.toggle("hot", act.length > 0);
-  $("kbIncS").textContent = act.length ? act.slice(0, 2).map(title).join(" · ") : "all clear";
+  const act = evs.filter(e => ACTIVE.has(e.status) && (e.type === "ppe_missing" || e.type === "unauthorized_entry"));
+  setKb("kbIncN", act.length); $("kbInc").className = "nx-kpi " + (act.length ? "crit" : "ok");
   const fires = evs.filter(e => fireActive(e) && e.status !== "verifying"), lvl = Math.max(0, ...fires.map(e => e.fire_level || 2));
-  setKb("kbFireN", fires.length ? `LEVEL ${lvl}` : "CLEAR");
-  $("kbFire").classList.toggle("hot", lvl >= 2); $("kbFire").classList.toggle("warm", lvl === 1);
-  $("kbFireS").textContent = fires.length ? fires.map(e => `${e.type} · ${e.zone_name || e.zone_id}`).join(" · ") : (evs.some(e => e.status === "verifying") ? "checking a possible fire…" : "no fire or smoke");
-  const cams = monitors(), on = cams.filter(c => c.status === "ONLINE" || c.status === "DEGRADED");
-  setKb("kbCamN", `${on.length} / ${cams.filter(c => c.status !== "OFF").length}`);
-  $("kbCamS").textContent = CAMS.edge_online ? (on.length ? on.map(c => `${c.camera_id} AI ${c.fps}/s`).join(" · ") : "no camera picture") : "edge computer offline";
-  const dayS = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
-  const here = PRESENT.filter(p => p.since >= dayS), bad = here.filter(p => p.access === "DENIED");
-  setKb("kbInN", here.length);
-  $("kbIn").classList.toggle("hot", bad.length > 0);
-  $("kbInS").textContent = here.length ? here.map(p => p.name + (p.access === "DENIED" ? " ⚠" : "")).join(", ") : "nobody checked in";
-  const day0 = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
-  const today = [...NOTIFS.values()].filter(n => (n.queued_at || n.at) >= day0 && n.event_id && !String(n.event_id).startsWith("test_"));
-  const ok = today.filter(n => n.status === "delivered" || n.status === "sent").length, failed = today.filter(n => n.status === "failed").length;
-  setKb("kbMsgN", ok); $("kbMsg").classList.toggle("warm", failed > 0);
-  $("kbMsgS").textContent = failed ? `${failed} failed today — see Alert delivery` : "Telegram + e-mail, provider-confirmed";
+  setKb("kbFireN", fires.length ? `Level ${lvl}` : "Clear"); $("kbFire").className = "nx-kpi " + (lvl >= 2 ? "crit" : lvl === 1 ? "warn" : "ok");
+  // people seen by the zone cameras (edge counts, live cameras only); "–" when the AI computer is offline
+  const live = monitors().filter(c => isLive(c) && c.people);
+  const inView = live.reduce((s, c) => s + c.people.in_view, 0), ok = live.reduce((s, c) => s + c.people.compliant, 0);
+  setKb("kbInN", live.length ? inView : "–"); setKb("kbOkN", live.length ? ok : "–");
+  $("kbOk").className = "nx-kpi " + (live.length && inView ? (ok === inView ? "ok" : "warn") : "");
+  $("kbIn").title = live.length ? "People the zone cameras see right now" : "No live zone camera with the AI running";
 }
 
-/* live pictures: video.js pushes every camera's newest picture over one WebSocket (4 Nov) */
 const FRAME_AGE = NetraxVideo.age;
 NetraxVideo.onAge((cam, a) => { if (PERF.preview_age_ms.length < 600) PERF.preview_age_ms.push(a); });
 
-/* ---------- incidents ---------- */
-function inFilter(e){
-  if (e.type === "entrance_check") return false;        // 5 Nov: entrance results have their own section
-  if (FILTER === "active") return ACTIVE.has(e.status);
-  if (FILTER === "ack") return e.status === "acknowledged";
-  if (FILTER === "done") return DONE.has(e.status);
-  return true;
-}
-const PRIO = e => (fireActive(e) ? -10 - (e.fire_level||0) : 0);
-const CARDS = new Map(), CARD_SIG = new Map(), FRESH = new Map();   // event id -> node / signature / {at, added}
+/* ---------- alerts list: one list, fire first, then PPE, then access; icon cards ---------- */
+let TAB = "active";
+const ALL = {cards: new Map(), sig: new Map()};
+const inTab = e => TAB === "active" ? ACTIVE.has(e.status) : TAB === "ack" ? e.status === "acknowledged" : DONE.has(e.status);
+const KIND = e => isFire(e) ? 0 : e.type === "ppe_missing" ? 1 : 2;
+const FRESH = new Map();
+function newPill(e){ const f = FRESH.get(e.event_id); return f && Date.now() - f.at < 12000 ? `<span class="newpill">${f.added && f.added.length ? "UPDATED" : "NEW"}</span>` : ""; }
 function cardHtml(e){
-  const s = sev(e), f = FRESH.get(e.event_id), isNew = f && Date.now() - f.at < 12000;
-  const ackd = (e.actions||[]).filter(a => a.action === "ack").pop(), res = (e.actions||[]).filter(a => ["resolve","dismiss","auto_resolve"].includes(a.action)).pop();
-  const ppe = e.type === "ppe_missing";
-  const chips = ppe ? `<div class="items" style="grid-column:1/-1">${(e.items_missing||[]).map(i => `<span class="item${f && (f.added||[]).includes(i) ? " fresh" : ""}">✖ NO ${iname(i)}</span>`).join("")}</div>` : "";
-  const person = ppe || e.type === "unauthorized_entry" ? (e.worker_id === "W-***" ? "Registered worker (name hidden)" : e.worker_id && String(e.worker_id).startsWith("W-") ? `${e.worker_id} · ${e.worker_name || ""}` : "Unregistered person") : "";
-  return `<div class="state">${s.label}${isNew ? `<span class="newpill">${f.added && f.added.length ? "UPDATED" : "NEW"}</span>` : ""}</div><div class="when" title="${fmtT(e.started_at)}">${fmtT(e.started_at, false)}<br><span class="ago" data-t="${e.started_at}">${ago(e.started_at)}</span></div>
-    <div class="ttl">${ppe ? "Required PPE missing" : esc(title(e))}${e.type === "fire" || e.type === "smoke" ? ` · L${e.fire_level || "?"}` : ""}</div>
-    ${chips}${person ? `<div class="who">👷 ${esc(person)}</div>` : ""}
-    <div class="meta"><b>${esc(e.zone_name || e.zone_id || "")}</b> · ${esc(e.camera_id || "safety station")} · ${esc(e.severity || "")}</div>
-    ${ackd ? `<div class="meta">Acknowledged by <b>${esc(ackd.by_user)}</b> at ${fmtT(ackd.at, false)}</div>` : ""}
-    ${res && DONE.has(e.status) ? `<div class="meta">${esc(res.action.replace("_"," "))} by <b>${esc(res.by_user)}</b> at ${fmtT(res.at, false)}${res.note ? " — " + esc(res.note) : ""}</div>` : ""}
-    <div class="row">${actButtons(e)}${e.snapshot ? `<img src="${e.snapshot}?v=${e.updated_at}" alt="Snapshot" data-a="view" data-id="${e.event_id}" loading="lazy">` : ""}</div>`;
+  const f = FRESH.get(e.event_id);
+  const head = isFire(e) ? `<span class="fireh">🔥 ${e.type === "smoke" ? "Smoke" : "Fire"} · Level ${e.fire_level || "?"}</span>` : personLabel(e);
+  const body = e.type === "ppe_missing" ? ppeRowFor(e, 30, f && f.added) : e.type === "unauthorized_entry" ? `<div class="zonebar">⛔ Not allowed in this zone</div>` : "";
+  const ackd = e.status === "acknowledged" || (DONE.has(e.status) && e.acked_by) ? `<div class="ackby">Ack by ${esc(e.acked_by || "")} ${hhmm(e.acked_at)}${DONE.has(e.status) && e.closed_by ? ` · ${esc(e.status)} by ${esc(e.closed_by)}` : ""}</div>` : "";
+  return `<div class="top">${head}${newPill(e)}<span class="t" data-t="${e.started_at}">${ago(e.started_at)}</span></div>
+    <div class="where">${esc(camName(e.camera_id))} · ${esc(e.zone_name || e.zone_id || "")} · ${hhmm(e.started_at)}</div>${body}${ackd}${cardButtons(e)}`;
 }
-function renderIncidents(){
-  const list = [...EVENTS.values()].filter(e => e.type !== "test").filter(inFilter)
-    .sort((a,b) => (ACTIVE.has(b.status) - ACTIVE.has(a.status)) || PRIO(a) - PRIO(b) || b.started_at - a.started_at).slice(0, 80);
-  const nAct = [...EVENTS.values()].filter(e => ACTIVE.has(e.status) && e.type !== "entrance_check").length;
-  $("nActive").textContent = `${nAct} active`;
-  $("alertHead").classList.toggle("hot", nAct > 0);
-  const box = $("incidents"), keep = new Set();
+function cardCls(e){
+  return "nx-card" + (isFire(e) ? " fire" : e.type === "unauthorized_entry" ? " warn" : "") + (DONE.has(e.status) ? " done" : e.status === "acknowledged" ? " acked" : " unacked");
+}
+function renderList(){
+  const all = [...EVENTS.values()].filter(e => !["entrance_check", "test"].includes(e.type));
+  // active fires are shown big in the fire strip, not again in the list
+  const list = all.filter(e => inTab(e) && !(TAB === "active" && fireActive(e))).sort((a,b) => KIND(a) - KIND(b) || b.started_at - a.started_at).slice(0, 60);
+  const nAct = all.filter(e => ACTIVE.has(e.status)).length, nAck = all.filter(e => e.status === "acknowledged").length;
+  const n = $("ppeN"); n.textContent = nAct ? `${nAct} active` : nAck ? `${nAck} acknowledged` : "All clear";
+  n.className = "nx-count " + (nAct ? "crit" : nAck ? "warn" : "ok");
+  document.querySelectorAll(".tab[data-f]").forEach(t => { const c = t.dataset.f === "active" ? nAct : t.dataset.f === "ack" ? nAck : 0;
+    const lab = {active:"Active", ack:"Acknowledged", done:"History"}[t.dataset.f] + (c ? `<i>${c}</i>` : ""); if (t.innerHTML !== lab) t.innerHTML = lab; });
+  const box = $("ppeList"), keep = new Set();
   const empty = box.querySelector(".empty"); if (empty) empty.remove();
-  let prev = null;
+  let prev = null, popped = false;
   for (const e of list){
     const id = e.event_id; keep.add(id);
-    const html = cardHtml(e), sigNow = html.replace(/<span class="ago"[^<]*<\/span>/, "");
-    let node = CARDS.get(id);
-    if (!node){ node = document.createElement("div"); CARDS.set(id, node); }
-    if (CARD_SIG.get(id) !== sigNow){
-      node.className = "inc " + sev(e).cls;
+    const html = cardHtml(e), cls = cardCls(e), sigNow = cls + html.replace(/<span class="t"[^<]*<\/span>/, "");
+    let node = ALL.cards.get(id);
+    if (!node){ node = document.createElement("div"); node.dataset.a = "view"; node.dataset.id = id; ALL.cards.set(id, node); }
+    if (ALL.sig.get(id) !== sigNow){
+      node.className = cls;
       const f = FRESH.get(id);
-      if (f && !f.shown){ f.shown = true; node.classList.add(f.added && f.added.length ? "nx-upd" : "nx-new"); }
-      node.innerHTML = html; CARD_SIG.set(id, sigNow);
+      if (f && !f.shown){ f.shown = true; node.classList.add(f.added && f.added.length ? "nx-upd" : "nx-new"); popped = true; }
+      node.innerHTML = html; ALL.sig.set(id, sigNow);
     }
     const want = prev ? prev.nextSibling : box.firstChild;
     if (want !== node) box.insertBefore(node, want);
     prev = node;
   }
-  for (const [id, node] of CARDS) if (!keep.has(id)){ node.remove(); CARDS.delete(id); CARD_SIG.delete(id); }
-  box.querySelectorAll(".ago").forEach(x => { x.textContent = ago(+x.dataset.t); });
-  if (!list.length) box.innerHTML = `<div class="empty">${FILTER === "active" ? "✓ No active alerts. New violations appear here instantly." : "Nothing in this list."}</div>`;
+  for (const [id, node] of ALL.cards) if (!keep.has(id)){ node.remove(); ALL.cards.delete(id); ALL.sig.delete(id); }
+  box.querySelectorAll(".t[data-t]").forEach(x => { x.textContent = ago(+x.dataset.t); });
+  if (!list.length) box.innerHTML = `<div class="empty">${{active: "<b>✓ No open violation</b>", ack: "No acknowledged alert", done: "No closed alert yet"}[TAB]}</div>`;
+  if (popped) bump("ppeBox");
 }
-document.querySelectorAll(".tab").forEach(t => t.onclick = () => { FILTER = t.dataset.f; document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-pressed", x === t));
-  CARDS.forEach(n => n.remove()); CARDS.clear(); CARD_SIG.clear(); renderIncidents(); });
+const renderIncidents = () => { renderFireStrip(); renderList(); };
+function setTab(f){ TAB = f; document.querySelectorAll(".tab[data-f]").forEach(x => x.setAttribute("aria-pressed", x.dataset.f === f));
+  ALL.cards.forEach(n => n.remove()); ALL.cards.clear(); ALL.sig.clear(); renderList(); }
+document.querySelectorAll(".tab[data-f]").forEach(t => t.onclick = () => setTab(t.dataset.f));
+
+/* resolve = "fixed": one optional tap for the reason (Prompt 10) */
+const REASONS = {ppe_missing: ["PPE worn now", "Worker left", "False alarm"], unauthorized_entry: ["Worker left", "Allowed this time", "False alarm"],
+                 fire: ["Fire out", "False alarm"], smoke: ["Smoke cleared", "False alarm"]};
+function askReason(e){
+  return new Promise(res => {
+    const rs = REASONS[e.type] || ["Fixed"];
+    $("mBox").innerHTML = `<h2 id="mTitle" style="margin:0;font:700 var(--fs-xl) var(--display)">Resolve — why?</h2>
+      <div class="muted">${esc(title(e))} · ${esc(camName(e.camera_id))} · ${esc(e.zone_name || "")}</div>
+      <div class="resn">${rs.map(r => `<button class="btn btn-ok" data-r="${esc(r)}">${esc(r)}</button>`).join("")}<button class="btn" data-r="">Skip</button><button class="btn btn-ghost" data-r="__cancel">Cancel</button></div>`;
+    $("modal").classList.add("show");
+    $("mBox").querySelectorAll("[data-r]").forEach(b => b.onclick = () => { closeModal(); res(b.dataset.r); });
+  });
+}
 
 document.addEventListener("click", async ev => {
   const el = ev.target.closest("[data-a]"); if (!el) return;
   const a = el.dataset.a, id = el.dataset.id;
   if (a === "view") return openEvent(id);
-  if (a === "evac"){ EVAC_MIN.delete(id); return renderAlertZone(); }
-  if (a === "evacmin"){ EVAC_MIN.add(id); return renderAlertZone(); }
+  if (a === "evac"){ EVAC_MIN.delete(id); return renderEmergency(); }
+  if (a === "evacmin"){ EVAC_MIN.add(id); return renderEmergency(); }
+  ev.stopPropagation();
+  let body = {};
+  if (a === "resolve"){ const e = EVENTS.get(id) || {type: ""}; const r = await askReason(e); if (r === "__cancel") return; if (r) body = {note: r}; }
   el.disabled = true;
-  try { upsert(await post(`/api/events/${id}/${a}`, {})); toast(`${a === "ack" ? "Acknowledged" : a[0].toUpperCase() + a.slice(1) + "d"}`, id); }
+  try { upsert(await post(`/api/events/${id}/${a}`, body)); toast({ack: "Acknowledged", resolve: "Resolved", escalate: "Escalated", dismiss: "Marked as false alarm"}[a] || a, id); }
   catch (x){ toast("Action failed", x.message, "crit"); el.disabled = false; }
 });
 
-/* ---------- details ---------- */
+/* ---------- details drawer: snapshot, clip, confidence, event id, notification log, audit trail, all actions ---------- */
 async function openEvent(id){
   let e; try { e = await api(`/api/events/${encodeURIComponent(id)}`); } catch(x){ toast("Not found", id, "crit"); return; }
   const s = sev(e), d = e.details || {};
-  const notif = (e.notifications||[]).map(n => `<tr><td>${esc(n.channel)}</td><td>${statusPill(n.status)}</td><td>${esc(n.recipient || "")}</td><td>${n.attempts || 0}</td><td>${n.latency_ms != null ? (n.latency_ms/1000).toFixed(1) + " s" : "–"}</td><td class="small">${esc(n.provider_status || n.error || "")}</td></tr>`).join("");
-  $("mBox").innerHTML = `<div style="display:flex;align-items:center;gap:10px"><h2 id="mTitle" style="margin:0;font-size:22px">${esc(title(e))}</h2><span class="pill ${s.cls === "s-crit" ? "p-crit" : s.cls === "s-warn" ? "p-warn" : s.cls === "s-ack" ? "p-info" : s.cls === "s-ok" ? "p-ok" : "p-grey"}">${esc(s.label)}</span>
+  const notif = (e.notifications||[]).map(n => `<tr><td>${esc(CH[n.channel] || n.channel)}</td><td>${statusPill(n.status)}</td><td>${n.attempts || 0}</td><td>${n.latency_ms != null ? (n.latency_ms/1000).toFixed(1) + " s" : "–"}</td><td class="muted">${esc(n.provider_status || n.error || "")}</td></tr>`).join("");
+  $("mBox").innerHTML = `<div style="display:flex;align-items:center;gap:10px"><h2 id="mTitle" style="margin:0;font:700 var(--fs-xl) var(--display)">${esc(title(e))}</h2><span class="pill ${s.cls}">${esc(s.label)}</span>
     <span style="flex:1"></span><button class="btn" id="mClose">Close</button></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-top:10px;align-items:start">
-    ${e.clip ? `<figure style="margin:0"><video src="${e.clip}" controls autoplay muted loop playsinline preload="metadata" aria-label="Incident video clip (faces blurred)" style="width:100%;border-radius:10px;background:#000;display:block"></video><figcaption class="small">▶ Video clip: ~4 s before and ~4 s after the alert (faces blurred)</figcaption></figure>` : e.camera_id && e.snapshot && Date.now()/1000 - e.started_at < 30 ? `<p class="small">Video clip is being recorded…</p>` : ""}
-    ${e.snapshot ? `<figure style="margin:0"><img src="${e.snapshot}?v=${e.updated_at}" alt="Saved snapshot (faces blurred)" style="width:100%;display:block"><figcaption class="small">Snapshot at the moment of the alert</figcaption></figure>` : `<p class="small">No saved snapshot for this record${e.camera_id ? "" : " (sensor / hardware event)"}${ME.role === "viewer" ? " or your role cannot view footage" : ""}.</p>`}</div>
-    <div class="kv"><div>Event ID</div><div>${esc(e.event_id)}</div><div>Type</div><div>${esc(e.type)}${e.fire_level ? ` · Level ${e.fire_level}` : ""}</div>
-      <div>Severity</div><div>${esc(e.severity)}</div><div>Status</div><div>${esc(e.status)}${e.acked_by ? ` · acknowledged by ${esc(e.acked_by)} ${fmtT(e.acked_at)}` : ""}${e.closed_by ? ` · closed by ${esc(e.closed_by)}` : ""}</div>
+    ${e.type === "ppe_missing" || e.type === "unauthorized_entry" ? `<div>${personLabel(e)}</div>` : ""}
+    ${e.type === "ppe_missing" ? ppeRowFor(e, 40) : ""}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${allButtons(e)}</div>
+    ${e.clip ? `<video src="${e.clip}" controls autoplay muted loop playsinline preload="metadata" aria-label="Incident video clip (faces blurred)" style="width:100%;border-radius:10px;background:#000;display:block"></video>` : ""}
+    ${e.snapshot ? `<img src="${e.snapshot}?v=${e.updated_at}" alt="Saved snapshot (faces blurred)">` : ""}
+    <div class="kv"><div>Event ID</div><div>${esc(e.event_id)}</div><div>Status</div><div>${esc(e.status)}${e.acked_by ? ` · ack by ${esc(e.acked_by)} ${fmtT(e.acked_at)}` : ""}${e.closed_by ? ` · closed by ${esc(e.closed_by)}` : ""}</div>
+      <div>Severity</div><div>${esc(e.severity)}${e.fire_level ? ` · Level ${e.fire_level}` : ""}</div>
       <div>Detected</div><div>${fmtT(e.started_at)}</div><div>Ended</div><div>${e.ended_at ? fmtT(e.ended_at) + " · " + esc(e.end_reason || "") : "still active"}</div>
       <div>Camera</div><div>${esc(e.camera_id || "—")} ${esc(camName(e.camera_id))}</div><div>Zone</div><div>${esc(e.zone_name || e.zone_id || "—")}</div>
-      <div>Location</div><div>${locText(e)}</div>${who(e) ? `<div>Worker</div><div>${esc(who(e))}</div>` : ""}
-      ${e.items_missing && e.items_missing.length ? `<div>Missing</div><div>${e.items_missing.map(iname).join(", ")}</div>` : ""}
-      ${d.result ? `<div>Entrance</div><div>${d.verdict ? `<b>${esc(d.verdict)}</b><br>` : ""}${esc(d.message)}${d.items_uncertain && d.items_uncertain.length ? " · not verified: " + d.items_uncertain.join(", ") : ""}${d.reason ? " · " + esc(d.reason) : ""} · decided in ${d.decision_ms} ms · gate ${esc(d.gate)} (${esc(d.controller)})${d.override ? ` · manual check: ${esc(d.override.decision)} by ${esc(d.override.by)}` : ""}</div>` : ""}
+      <div>Location</div><div>${locText(e)}</div>
+      ${d.result ? `<div>Entrance</div><div>${esc(d.result)}${d.reason ? " · " + esc(d.reason) : ""} · ${d.decision_ms} ms${d.override ? ` · manual: ${esc(d.override.decision)} by ${esc(d.override.by)}` : ""}</div>` : ""}
       ${e.fire_reasons ? `<div>Level evidence</div><div>${esc((e.fire_reasons||[]).join("; "))}</div>` : ""}
-      ${e.type === "fire" || e.type === "smoke" ? `<div>Sensors</div><div>${sensorsHtml(e)}</div>` : ""}
+      ${isFire(e) ? `<div>Sensors</div><div>${sensorsHtml(e)}</div>` : ""}
       <div>Confidence</div><div>${e.confidence != null ? Number(e.confidence).toFixed(2) : "—"}</div>
       <div>Timing</div><div>time to alert ${e.time_to_alert_ms != null ? (e.time_to_alert_ms/1000).toFixed(2) + " s" : "—"} · edge → server ${e.latency_ms != null ? Math.round(e.latency_ms) + " ms" : "—"}</div></div>
-    <h3 style="margin:8px 0 4px">Notifications</h3>${notif ? `<table><thead><tr><th>Channel</th><th>Status</th><th>To</th><th>Tries</th><th>Delivery</th><th>Provider</th></tr></thead><tbody>${notif}</tbody></table>` : `<p class="small">No message was sent for this record (policy: dashboard only).</p>`}
-    <h3 style="margin:12px 0 4px">Audit trail</h3><ul class="small">${(e.actions||[]).map(x => `<li>${fmtT(x.at)} · ${esc(x.action)} · ${esc(x.by_user)}${x.note ? " — " + esc(x.note) : ""}</li>`).join("")}</ul>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">${actButtons(e)}</div>`;
+    <h3 style="margin:0">Messages</h3>${notif ? `<table><thead><tr><th>Channel</th><th>Status</th><th>Tries</th><th>Delivery</th><th>Provider</th></tr></thead><tbody>${notif}</tbody></table>` : `<p class="muted" style="margin:0">No message for this record.</p>`}
+    <h3 style="margin:0">Actions</h3><ul class="muted" style="margin:0">${(e.actions||[]).map(x => `<li>${fmtT(x.at)} · ${esc(x.action)} · ${esc(x.by_user)}${x.note ? " — " + esc(x.note) : ""}</li>`).join("") || "<li>none yet</li>"}</ul>`;
   $("modal").classList.add("show"); $("mClose").onclick = closeModal; $("mClose").focus();
 }
 function closeModal(){ $("modal").classList.remove("show"); if (location.hash.startsWith("#event=")) history.replaceState(null, "", "/"); }
 $("modal").onclick = ev => { if (ev.target.id === "modal") closeModal(); };
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeModal(); });
-
-/* ---------- entrance ---------- */
-function renderGateSide(){
-  const box = $("gateSide"); if (!box) return;
-  const day0 = new Date(new Date().toLocaleString("en-US", {timeZone:TZ})).setHours(0,0,0,0) / 1000;
-  const td = ENTR.filter(g => g.at >= day0), r = g => g.override ? g.override.decision : g.result;
-  $("gateCount").textContent = td.length ? `today ✓ ${td.filter(g => r(g) === "approved").length} · ✖ ${td.filter(g => r(g) === "denied").length} · ⚠ ${td.filter(g => r(g) === "manual").length}` : "";
-  NetraxAlerts.keyed(box, ENTR.filter(g => Date.now() / 1000 - g.at < 3 * 3600).slice(0, 4), g => g.event_id, NetraxAlerts.gateCard,
-    "No entrance checks in the last 3 hours. The USB entrance camera decides when a person stands in front of it.");
-}
-setInterval(renderGateSide, 15000);
-function renderGate(){
-  renderGateSide();
-  const box = $("gateLast"), cell = $("gateCell"); if (!box) return;
-  const g = ENTR[0];
-  if (!g){ cell.className = "gatecell"; box.innerHTML = `<div class="small">No checks yet. The USB camera decides when a person stands in front of it.</div>`; return; }
-  const r = g.override ? g.override.decision : g.result, w = NetraxAlerts.who(g);
-  const age = Date.now()/1000 - g.at;
-  cell.className = "gatecell" + (age < 120 || (r === "manual" && !g.override) ? " " + r : "");
-  box.innerHTML = `<div class="nx-display gh ${r}">${{approved:"🟢 VERIFIED · PERMITTED", denied:"🔴 NOT VERIFIED · NOT PERMITTED", manual:"🟠 MANUAL CHECK"}[r]}</div>
-    <div class="gw">${esc(w.name)}</div><div class="items">${NetraxAlerts.chips(g)}</div><div class="small">${esc(g.time)}${g.decision_ms != null ? ` · ${g.decision_ms} ms` : ""}</div>`;
-}
-
-/* ---------- zones, notifications, health, perf, location ---------- */
-function renderZones(){
-  if (!$("zones")) return;
-  $("zones").innerHTML = ZONES.map(z => { const bad = z.status !== "Compliant";
-    return `<tr><td><b>${esc(z.name)}</b>${z.allowed ? `<div class="small">🔒 only ${z.allowed.map(esc).join(", ")}</div>` : ""}</td><td class="small">${z.required_ppe.map(iname).join(", ")}</td>
-      <td><span class="risk ${z.risk}">${z.risk.toUpperCase()}</span></td><td><span class="pill ${bad ? (/fire|smoke/i.test(z.status) ? "p-crit" : "p-warn") : "p-ok"}">${bad ? "⚠ " : "✓ "}${esc(z.status)}</span></td></tr>`; }).join("");
-}
 function statusPill(s){
-  const m = {delivered:["p-ok","✓ DELIVERED"], sent:["p-ok","✓ SENT (accepted)"], queued:["p-info","… QUEUED"], sending:["p-info","↻ SENDING"], retrying:["p-warn","↻ RETRYING"],
-    failed:["p-crit","✖ FAILED"], not_configured:["p-grey","○ NOT CONFIGURED"], skipped:["p-grey","– SKIPPED"]}[s] || ["p-grey", s || "–"];
+  const m = {delivered:["p-ok","Delivered"], sent:["p-ok","Sent"], queued:["p-info","Queued"], sending:["p-info","Sending"], retrying:["p-warn","Retrying"],
+    waiting:["p-warn","Waiting for internet"], expired:["p-grey","Expired"], failed:["p-crit","Failed"], not_configured:["p-grey","Not configured"], skipped:["p-grey","Skipped"]}[s] || ["p-grey", s || "–"];
   return `<span class="pill ${m[0]}">${m[1]}</span>`;
 }
-const CH = {telegram:"✈ Telegram", call:"☎ Phone call", sms:"✉ SMS", email:"@ E-mail", mock:"(mock)"};
-function renderNotifs(){
-  if (!$("notifs")) return;
-  const rows = [...NOTIFS.values()].sort((a,b) => b.id - a.id).slice(0, 10);
-  $("notifs").innerHTML = rows.length ? rows.map(n => `<tr><td>${CH[n.channel] || esc(n.channel)}</td><td>${statusPill(n.status)}${n.attempts > 1 ? ` <span class="small">try ${n.attempts}</span>` : ""}</td>
-    <td class="small"><a href="#event=${encodeURIComponent(n.event_id)}">${esc(n.event_id)}</a>${n.latency_ms != null ? ` · ${(n.latency_ms/1000).toFixed(1)} s` : ""}${n.error && n.status !== "delivered" ? `<br>${esc(String(n.error).slice(0, 80))}` : ""}</td></tr>`).join("")
-    : `<tr><td colspan="3" class="empty">No alert messages yet.</td></tr>`;
+const CH = {telegram:"Telegram", call:"Phone call", sms:"SMS", email:"E-mail", mock:"(mock)"};
+
+/* ---------- entrance: live gate camera, today's counts, latest decisions ---------- */
+function renderEntranceFeed(){
+  const ent = entranceCam(), live = isLive(ent), el = $("gateFeed");
+  const sig = live ? "L" + ent.camera_id : "X" + (ent ? ent.status : "none");
+  if (el.dataset.sig === sig) return; el.dataset.sig = sig;
+  el.innerHTML = live ? `<img data-live="${ent.camera_id}" alt="Live entrance camera">`
+    : `<div class="offmsg" title="${esc(ent ? ent.detail || "" : "add a camera with role: entrance")}"><b>Gate camera ${ent ? "offline" : "not set up"}</b></div>`;
 }
+function renderGate(){
+  const box = $("gateSide"); if (!box) return;
+  const td = ENTR.filter(g => g.at >= day0()), r = g => g.override ? g.override.decision : g.result;
+  const n = x => td.filter(g => r(g) === x).length;
+  $("gateN").textContent = `${td.length} today`;
+  $("gateCount").innerHTML = `<div class="gs ok">Permitted<b>${n("approved")}</b></div><div class="gs crit">Not permitted<b>${n("denied")}</b></div><div class="gs warn">Manual<b>${n("manual")}</b></div>`;
+  NetraxAlerts.keyed(box, ENTR.filter(g => Date.now() / 1000 - g.at < 3 * 3600).slice(0, 3), g => g.event_id, NetraxAlerts.gateCard, "No entrance check in the last 3 hours");
+}
+setInterval(renderGate, 15000);
+
+/* ---------- zones & people ---------- */
+function renderZones(){
+  const box = $("zoneBody"); if (!box) return;
+  const inside = ZONES.reduce((s, z) => s + (z.inside || []).length, 0), bad = ZONES.filter(z => z.status !== "Compliant").length;
+  $("zoneN").textContent = bad ? `${bad} alert` : `${inside} inside`; $("zoneN").className = "nx-count " + (bad ? "crit" : "ok");
+  const html = ZONES.map(z => { const fire = /fire|smoke/i.test(z.status), cls = z.status === "Compliant" ? "" : fire ? "crit" : "warn";
+    const ppl = z.inside || [];
+    return `<div class="zrow ${cls}"><div class="zh"><b>${esc(z.name)}${z.allowed ? ` <span title="Restricted: only ${esc(z.allowed.join(", "))}">🔒</span>` : ""}</b>
+      <span class="nx-dot ${cls || "ok"}" title="${esc(z.status)}"></span></div>
+      <div class="zp" title="${esc(ppl.map(p => p.name || p.worker_id).join(", "))}">👷 ${ppl.length} inside${ppl.some(p => p.allowed === false) ? ` · <span style="color:var(--warn);font-weight:700">⛔ not allowed</span>` : ""}</div>
+      ${ppeRow(z.required_ppe || [], z.required_ppe || [], [], [], 24)}</div>`; }).join("") || `<div class="empty">No zones configured</div>`;
+  if (box.dataset.h !== html){ box.innerHTML = html; box.dataset.h = html; }
+}
+
+/* ---------- safety station ---------- */
+function renderStation(){
+  const box = $("stBody"), devs = (HW && HW.devices) || [];
+  if (!devs.length){ box.innerHTML = `<div class="empty">No safety station configured</div>`; return; }
+  const html = devs.map(d => {
+    const lvl = !d.online ? "OFFLINE" : ((d.eval || {}).level || "NORMAL"), x = d.data || {}, hz = (d.eval || {}).hazards || {};
+    const v = (k, dp) => x[k] == null || !d.online ? "—" : Number(x[k]).toFixed(dp);
+    const rd = [["🌡 Temp", v("temperature_c", 1), "°C", hz.heat], ["💧 Humidity", v("humidity_pct", 0), "%", false], ["🔥 Flame", !d.online || x.flame_detected == null ? "—" : x.flame_detected ? "YES" : "No", "", hz.fire],
+                ["💨 MQ-2", v("mq2_adc", 0), "", hz.smoke], ["🌫 MQ-135", v("mq135_adc", 0), "", false], ["⛅ PM2.5", v("pm2_5_ugm3", 0), "µg/m³", (d.eval || {}).air === "warning"]];
+    const why = d.online ? ((d.eval || {}).reasons || []).join(" · ") : d.age_s != null ? `No data for ${Math.round(d.age_s)} s` : "Waiting for the ESP32";
+    return `<div class="stlvl ${lvl}" title="${esc(d.name)} · ${esc(d.zone_id || "")}${why ? " · " + esc(why) : ""}"><span class="nx-dot ${lvl === "NORMAL" ? "ok" : lvl === "CRITICAL" ? "crit" : lvl === "OFFLINE" ? "" : "warn"}"></span><b>${lvl === "NORMAL" ? "Normal" : lvl === "FAULT" ? "Sensor fault" : lvl[0] + lvl.slice(1).toLowerCase()}</b></div>
+      ${lvl === "CRITICAL" && why ? `<div style="color:var(--crit);font-weight:700">${esc(why)}</div>` : ""}
+      <div class="rd">${rd.map(r => `<div class="r ${r[3] && d.online ? "bad" : ""}"><small>${r[0]}</small><b>${esc(r[1])}${r[2] && r[1] !== "—" ? `<i>${r[2]}</i>` : ""}</b></div>`).join("")}</div>
+      <div class="outs"><span class="pill ${x.buzzer_on && d.online ? "p-crit" : "p-grey"}">Buzzer ${x.buzzer_on && d.online ? "ON" : "off"}</span><span class="pill ${x.relay_on && d.online ? "p-crit" : "p-grey"}">Siren ${x.relay_on && d.online ? "ON" : "off"}</span></div>`; }).join(`<hr style="border:0;border-top:1px solid var(--line);margin:4px 0">`);
+  if (box.dataset.h !== html){ box.innerHTML = html; box.dataset.h = html; }
+}
+
+/* ---------- system health (cameras and the station have their own panels) ---------- */
 function renderHealth(){
   if (!HEALTH) return;
-  const icon = {ok:"✓", warn:"⚠", fail:"✖", off:"○"}, cls = {ok:"p-ok", warn:"p-warn", fail:"p-crit", off:"p-grey"};
-  if ($("health")) $("health").innerHTML = HEALTH.components.map(c => `<tr><td style="width:32%"><b>${esc(c.name)}</b></td><td style="width:16%"><span class="pill ${cls[c.state]}">${icon[c.state]} ${c.state.toUpperCase()}</span></td><td class="small">${esc(c.message)}</td></tr>`).join("");
-  const bad = HEALTH.components.filter(c => c.state === "fail" || c.state === "warn");
-  const fails = bad.filter(c => c.state === "fail");
-  const hc = $("healthChip"); hc.className = "chip " + (fails.length ? "fail" : bad.length ? "warn" : "ok");
-  hc.textContent = fails.length ? `✖ ${fails.length} fault${fails.length>1?"s":""}` : bad.length ? `⚠ ${bad.length} warning${bad.length>1?"s":""}` : "✓ all systems";
-  const hb = $("healthbar"); const important = bad.filter(c => c.state === "fail" || /Edge|Camera|Database|queue|offline/i.test(c.name + c.message));
-  const open = hb.classList.contains("open");
-  hb.className = "healthbar" + (important.length ? " show " + (important.some(c => c.state === "fail") ? "fail" : "warn") : "") + (open ? " open" : "");
-  // one readable line (what is wrong), details on demand - the full list no longer pushes the cameras down
-  const short = important.slice(0, 3).map(c => `${c.state === "fail" ? "✖" : "⚠"} ${esc(c.name.replace(/^Camera /, ""))}: ${esc(c.message.split(" - ")[0])}`).join(" · ");
-  const nf = important.filter(c => c.state === "fail").length, nw = important.length - nf;
-  const cnt = [nf ? `${nf} fault${nf>1?"s":""}` : "", nw ? `${nw} warning${nw>1?"s":""}` : ""].filter(Boolean).join(" · ");
-  hb.innerHTML = important.length ? `<div class="hline"><b>${nf ? "✖" : "⚠"} ${cnt}</b><span>${short}${important.length > 3 ? ` · +${important.length - 3} more` : ""}</span>
-      <span class="sp" style="flex:1"></span><button class="btn" id="hbToggle" style="font-size:13px;padding:4px 10px">${open ? "Hide details" : "Details"}</button></div>
-    <div class="hdet">${important.map(c => `<div><b>${c.state === "fail" ? "✖" : "⚠"} ${esc(c.name)}:</b> ${esc(c.message)}</div>`).join("")}</div>` : "";
-  const tg = $("hbToggle"); if (tg) tg.onclick = () => { hb.classList.toggle("open"); tg.textContent = hb.classList.contains("open") ? "Hide details" : "Details"; };
-  const chans = HEALTH.components.filter(c => c.name.startsWith("Alerts:"));
-  if ($("chanState")) $("chanState").textContent = chans.filter(c => c.state === "ok").length + " of " + chans.length + " channels ready";
+  const comps = HEALTH.components.filter(c => !/^Camera |^Safety station /.test(c.name));
+  const bad = comps.filter(c => c.state === "fail" || c.state === "warn"), good = comps.filter(c => c.state !== "fail" && c.state !== "warn");
+  const nf = bad.filter(c => c.state === "fail").length;
+  $("hlN").textContent = nf ? `${nf} fault${nf > 1 ? "s" : ""}` : bad.length ? `${bad.length} warning${bad.length > 1 ? "s" : ""}` : "All OK";
+  $("hlN").className = "nx-count " + (nf ? "crit" : bad.length ? "warn" : "ok");
+  const word = s => ({ok: "OK", warn: "WARNING", fail: "FAULT", off: "OFF"}[s] || String(s).toUpperCase());
+  const row = c => `<div class="hrow" title="${esc(c.message)}"><span class="nx-dot ${c.state === "ok" ? "ok" : c.state}"></span><b>${esc(c.name)}</b><span class="hs ${c.state}">${word(c.state)}</span></div>`;
+  const sig = JSON.stringify(comps.map(c => [c.name, c.state, c.message]));
+  const el = $("hlBody"); if (el.dataset.sig === sig) return; el.dataset.sig = sig;
+  const open = !!el.querySelector("details[open]");
+  el.innerHTML = bad.map(row).join("") + (good.length ? `<details class="okl"${open ? " open" : ""}><summary>${good.length} working normally</summary>${good.map(row).join("")}</details>` : "");
 }
 function renderLoc(){
   const c = LOC && LOC.current, ch = $("locChip");
-  if (!c || !c.valid){ ch.className = "chip warn"; ch.innerHTML = `📍 Location unavailable <button class="btn" style="padding:2px 8px;font-size:12px" id="gpsBtn">Use this device</button>`; }
-  else { ch.className = "chip ok"; ch.innerHTML = `📍 ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)} · ${esc(c.source_label)}${c.age_s != null ? ` · ${Math.round(c.age_s/60)} min old` : ""} <button class="btn" style="padding:2px 8px;font-size:12px" id="gpsBtn">Update</button>`; }
+  if (LOC && LOC.site && $("siteName").textContent !== LOC.site) $("siteName").textContent = LOC.site;
+  if (!c || !c.valid){ ch.title = "Location unavailable - Set uses this device's GPS"; ch.innerHTML = `<span class="nx-dot warn"></span>Location unavailable <button class="btn" id="gpsBtn">Set</button>`; }
+  else { ch.title = `${c.lat.toFixed(5)}, ${c.lon.toFixed(5)} · ${c.source_label}${c.age_s != null ? ` · ${Math.round(c.age_s/60)} min old` : ""}`;
+    ch.innerHTML = `<span class="nx-dot ok"></span>📍 ${c.lat.toFixed(3)}, ${c.lon.toFixed(3)} <button class="btn" id="gpsBtn">Update</button>`; }
   const b = $("gpsBtn"); if (b) b.onclick = useGps;
 }
 function useGps(){
   if (!navigator.geolocation){ toast("Location", "This browser has no location service.", "crit"); return; }
-  if (!window.isSecureContext){ toast("Location", "The browser only allows GPS on https or on this computer (http://127.0.0.1:8000). The configured site position is used instead.", "crit"); return; }
+  if (!window.isSecureContext){ toast("Location", "The browser only allows GPS on https or on this computer (http://127.0.0.1:8000).", "crit"); return; }
   navigator.geolocation.getCurrentPosition(async p => {
     try { LOC = await post("/api/location/device", {lat: p.coords.latitude, lon: p.coords.longitude, accuracy_m: p.coords.accuracy, at: p.timestamp}); renderLoc(); toast("Location updated", `accuracy ${Math.round(p.coords.accuracy)} m`); }
     catch(x){ toast("Location not saved", x.message, "crit"); }
   }, err => toast("Location not available", err.message, "crit"), {enableHighAccuracy:true, timeout:15000, maximumAge:60000});
-}
-async function renderPerf(){
-  if (!$("perf")) return;
-  try {
-    const p = await api("/api/perf"); const m = p.metrics || {};
-    const box = (k, label) => m[k] ? `<div class="perf"><small>${label}</small><b>${m[k].p50 < 1000 ? Math.round(m[k].p50) + " ms" : (m[k].p50/1000).toFixed(1) + " s"}</b><small>95%: ${m[k].p95 < 1000 ? Math.round(m[k].p95) + " ms" : (m[k].p95/1000).toFixed(1) + " s"} · n=${m[k].n}</small></div>` : "";
-    let cams = "";
-    if (p.edge && p.edge.cameras) for (const [id, c] of Object.entries(p.edge.cameras)) if (c.frame_p50 != null)
-      cams += `<div class="perf"><small>${esc(id)} capture → processed</small><b>${Math.round(c.frame_p50)} ms</b><small>95%: ${Math.round(c.frame_p95)} ms · ${c.fps} fps</small></div>`;
-    $("perf").innerHTML = cams + box("event_e2e_ms","Detection → server") + box("dashboard_event_ms","Detection → this screen") + box("preview_age_ms","Live picture age")
-      + box("time_to_alert_ms","Hazard seen → alert (incl. confirm)") + box("notify_telegram_ms","Telegram delivered") + box("notify_call_ms","Phone call answered")
-      + box("notify_sms_ms","SMS") + box("notify_email_ms","E-mail accepted") + box("assistant_ms","AI assistant answer") || `<div class="small">No measurements yet.</div>`;
-    $("perfNote").textContent = p.edge && p.edge.engine ? `GPU engine: batch ${p.edge.engine.batch_ms_p50 ?? "–"} ms median, ${p.edge.engine.batch_size_avg ?? "–"} cameras per batch · ${p.edge.runtime || ""}` : "Edge computer not reporting.";
-  } catch {}
 }
 setInterval(() => { const b = {}; for (const k in PERF){ b[k] = PERF[k].splice(0); } if (b.preview_age_ms.length || b.dashboard_event_ms.length) post("/api/perf/client", b).catch(()=>{}); }, 10000);
 
@@ -715,7 +677,7 @@ setInterval(() => { const b = {}; for (const k in PERF){ b[k] = PERF[k].splice(0
 function toast(head, body, kind){
   const t = document.createElement("div"); t.className = "toast";
   if (kind === "crit") t.style.borderLeftColor = "var(--crit)";
-  t.innerHTML = `<b>${esc(head)}</b>${esc(body)}`; $("toasts").prepend(t); setTimeout(() => t.remove(), 8000);
+  t.innerHTML = `<b>${esc(head)}</b>${esc(body)}`; $("toasts").prepend(t); setTimeout(() => t.remove(), 6000);
 }
 function alarmTone(){
   if (MUTED) return;
@@ -724,6 +686,7 @@ function alarmTone(){
       o.connect(g); g.connect(audio.destination); g.gain.setValueAtTime(.18, audio.currentTime + t); o.start(audio.currentTime + t); o.stop(audio.currentTime + t + .25); }); } catch {}
 }
 document.addEventListener("click", () => { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {} }, {once:true});
+function setMute(v){ MUTED = v; $("muteBtn").textContent = MUTED ? "🔕" : "🔔"; $("muteBtn").setAttribute("aria-pressed", MUTED); try { localStorage.setItem("netrax-mute", MUTED ? "1" : "0"); } catch {} }
 
 /* ---------- data flow ---------- */
 function upsert(e){
@@ -740,12 +703,12 @@ function upsert(e){
     if (!before || added.length || (e.fire_level||0) > +(before.split("|")[1]||0)){
       FRESH.set(e.event_id, {at: Date.now(), added, shown: false});
       if (e.status !== "verifying") alarmTone();
-      if (FILTER !== "active" && FILTER !== "all"){ const t = document.querySelector('.tab[data-f="active"]'); if (t) t.click(); }
+      if (TAB !== "active") setTab("active");           // a new alert always shows in the Active list
     }
   }
   SEEN.add(e.event_id);
-  NetraxAlerts.offer(e);                       // fire -> red frame (alerts.js); PPE alerts stay in the panel
-  renderIncidents(); renderAlertZone(); renderBand();
+  NetraxAlerts.offer(e);
+  renderIncidents(); renderEmergency(); renderBand();
 }
 function connect(){
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`);
@@ -753,51 +716,53 @@ function connect(){
     if (kind === "event") upsert(data);
     else if (kind === "cameras"){ CAMS = data; renderCams(); renderBand(); }
     else if (kind === "health"){ HEALTH = data; renderHealth(); }
-    else if (kind === "attendance"){ toast(data.access === "DENIED" && data.event === "ENTERED" ? "⚠ NOT AUTHORISED (RFID)" : "RFID " + (data.event || ""), data.message || ""); refreshSlow(); }
+    else if (kind === "hardware"){ HW = Object.assign(HW || {}, data); renderStation(); }
+    else if (kind === "attendance"){ toast(data.access === "DENIED" && data.event === "ENTERED" ? "⚠ Not authorised (RFID)" : "RFID " + (data.event || ""), data.message || ""); refreshSlow(); bump("zoneBox"); }
     else if (kind === "location"){ LOC = data; renderLoc(); }
-    else if (kind === "notification"){ NOTIFS.set(data.id, Object.assign(NOTIFS.get(data.id) || {}, data)); renderNotifs(); renderBand();
-      if (data.status === "failed") toast(`${CH[data.channel] || data.channel} failed`, `${data.event_id}: ${data.error || ""}`, "crit"); }
-    else if (kind === "entrance"){ ENTR = [data].concat(ENTR.filter(x => x.event_id !== data.event_id)); NetraxAlerts.gate(data); renderGate(); }
+    else if (kind === "notification"){ NOTIFS.set(data.id, Object.assign(NOTIFS.get(data.id) || {}, data)); }
+    else if (kind === "entrance"){ ENTR = [data].concat(ENTR.filter(x => x.event_id !== data.event_id)); NetraxAlerts.gate(data); renderGate(); bump("gateBox"); }
     else if (kind === "ppe_ok") toast("✓ PPE complete", `${data.worker_name || data.worker_id || "Worker"} · ${data.zone_name || ""}`);
   };
-  ws.onopen = () => { $("sysChip").dataset.ws = "1"; };
-  ws.onclose = ev => { if (ev.code === 4401){ location.href = "/login?next=/"; return; } $("sysChip").className = "chip warn"; $("sysChip").textContent = "↻ RECONNECTING"; setTimeout(connect, 2000); };
+  ws.onopen = () => { $("sysChip").dataset.ws = "1"; renderSystem(); };
+  ws.onclose = ev => { if (ev.code === 4401){ location.href = "/login?next=/"; return; } $("sysChip").className = "warn"; $("sysChip").innerHTML = `<span class="nx-dot warn"></span>Reconnecting…`; setTimeout(connect, 2000); };
   setInterval(() => ws.readyState === 1 && ws.send("ping"), 20000);
 }
 async function refreshSlow(){
   try { ZONES = await api("/api/zones"); renderZones(); } catch {}
   try { HEALTH = await api("/api/health"); renderHealth(); } catch {}
-  try { PRESENT = await api("/api/attendance/present"); } catch {}
-  try { ANALYTICS = await api("/api/analytics/summary"); } catch {}
+  try { HW = await api("/api/hw/state"); renderStation(); } catch {}
+  try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
   renderBand();
 }
 async function boot(){
   try { ME = await api("/api/me"); } catch { return; }
-  $("userChip").textContent = `👤 ${ME.user || "local"} · ${String(ME.role).toUpperCase()}`;
+  $("userChip").textContent = `👤 ${ME.user || "local"} · ${String(ME.role)}`;
   $("logoutBtn").hidden = !ME.auth;
   try { CAMS = await api("/api/cameras"); renderCams(); } catch {}
   NetraxAlerts.init({canAct, onEvent: upsert, view: openEvent, tone: () => {}, rail: false, fireBanner: false});
   try { const evs = await api("/api/events?limit=300"); NetraxAlerts.seed(evs);
     evs.forEach(e => { EVENTS.set(e.event_id, e); SEEN.add(e.event_id); SIGS.set(e.event_id, (e.items_missing||[]).slice().sort().join(",") + "|" + (e.fire_level||0)); }); } catch {}
-  try { MUTED = localStorage.getItem("netrax-mute") === "1"; } catch {}
-  $("muteBtn").textContent = MUTED ? "🔕" : "🔔"; $("muteBtn").setAttribute("aria-pressed", MUTED);
-  $("muteBtn").onclick = () => { MUTED = !MUTED; $("muteBtn").textContent = MUTED ? "🔕" : "🔔"; $("muteBtn").setAttribute("aria-pressed", MUTED); try { localStorage.setItem("netrax-mute", MUTED ? "1" : "0"); } catch {} };
-  try { (await api("/api/notifications?limit=100")).forEach(n => NOTIFS.set(n.id, n)); renderNotifs(); } catch {}
+  try { setMute(localStorage.getItem("netrax-mute") === "1"); } catch {}
+  $("muteBtn").onclick = () => setMute(!MUTED);
   try { ENTR = await api("/api/entrance?limit=20"); renderGate(); } catch {}
   try { LOC = await api("/api/location"); renderLoc(); } catch {}
-  NetraxZentrix.init({handlers: {                       // 5 Nov: what Zentrix may do on this page (on command only)
+  NetraxZentrix.init({handlers: {                       // what Zentrix may do on this page (on command only)
     focus: o => { FOCUS = o.cam; renderCams(); $("camPanel").scrollIntoView({behavior: "smooth", block: "start"}); },
     unfocus: () => { FOCUS = null; VIEW = "grid"; renderCams(); $("camPanel").scrollIntoView({behavior: "smooth", block: "start"}); },
     view: o => { FOCUS = null; VIEW = o.mode; try { localStorage.setItem("netrax-cam-view", VIEW); } catch {} renderCams(); },
     fullscreen: () => { const p = $("camPanel"); if (p.requestFullscreen) p.requestFullscreen().catch(() => { FOCUS = null; VIEW = "big"; renderCams();
       toast("Full screen", "The browser allows full screen only after a click - press ⛶ Full screen. Focus view is on."); }); },
     event: o => openEvent(o.id),
-    mute: o => { MUTED = o.on; $("muteBtn").textContent = MUTED ? "🔕" : "🔔"; $("muteBtn").setAttribute("aria-pressed", MUTED); try { localStorage.setItem("netrax-mute", MUTED ? "1" : "0"); } catch {} },
-    theme: o => { document.documentElement.dataset.theme = o.mode; try { localStorage.setItem("netrax-cr-theme", o.mode); } catch {} }}});
+    mute: o => setMute(o.on),
+    theme: o => setTheme(o.mode),
+    box: o => {                                         // "show acknowledged fire alerts", "show zones and people"
+      const id = {fire: "fireBox", ppe: "ppeBox", gate: "gateBox", zone: "zoneBox", st: "stBox", hl: "hlBox"}[o.box];
+      if (o.tab && (o.box === "fire" || o.box === "ppe")) setTab(o.tab);
+      const el = $(id); if (el){ el.scrollIntoView({behavior: "smooth", block: "start"}); bump(id === "fireBox" ? "ppeBox" : id); } }}});
   SEEN.add("_boot");
-  renderIncidents(); renderAlertZone(); refreshSlow();
+  renderIncidents(); renderEmergency(); refreshSlow();
   connect();
-  setInterval(refreshSlow, 5000); setInterval(renderIncidents, 15000);
+  setInterval(refreshSlow, 5000); setInterval(renderList, 15000);
   const h = location.hash.match(/^#event=(.+)$/); if (h) openEvent(decodeURIComponent(h[1]));
   window.addEventListener("hashchange", () => { const m = location.hash.match(/^#event=(.+)$/); if (m) openEvent(decodeURIComponent(m[1])); });
 }

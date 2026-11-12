@@ -4,26 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NETRAX Sign in</title>
+<script>try { var t = new URLSearchParams(location.search).get("theme") || localStorage.getItem("netrax-cr-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
-:root{--bg:#0d1b22;--card:#13262f;--ink:#e8f1f2;--muted:#8fa6ad;--teal:#14b8a6;--line:#24414b;--red:#f87171}
+:root{--card:var(--panel);--red:var(--crit)}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:grid;place-items:center;color:var(--ink);
   font:16px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;padding:16px}
 .box{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px}
 .brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-.logo{width:44px;height:44px;border-radius:10px;background:var(--teal);color:#05201c;display:grid;place-items:center;font-weight:800;font-size:22px}
-h1{margin:0;font-size:24px;letter-spacing:.06em}
-p.tag{margin:0 0 22px;color:var(--muted);font-size:13px;letter-spacing:.12em}
-label{display:block;font-size:14px;color:var(--muted);margin:14px 0 6px}
+.logo{width:44px;height:44px;border-radius:10px;background:var(--teal);color:#05201c;display:grid;place-items:center;font-weight:800;font-size:var(--fs-xl,24px)}
+h1{margin:0;font-size:var(--fs-xl,24px);letter-spacing:.06em}
+p.tag{margin:0 0 22px;color:var(--muted);font-size:var(--fs-s,14px);letter-spacing:.12em}
+label{display:block;font-size:var(--fs-s,14px);color:var(--muted);margin:14px 0 6px}
 input{width:100%;padding:12px 14px;font:inherit;color:var(--ink);background:#0b171d;border:1px solid var(--line);border-radius:8px}
 input:focus{outline:2px solid var(--teal);outline-offset:1px}
 button{margin-top:22px;width:100%;padding:13px;border:0;border-radius:8px;background:var(--teal);color:#05201c;font:inherit;font-weight:700;cursor:pointer}
 button:disabled{opacity:.6}
-.err{color:var(--red);min-height:24px;margin-top:12px;font-size:14px}
-.note{color:var(--muted);font-size:12px;margin-top:10px}
+.err{color:var(--red);min-height:24px;margin-top:12px;font-size:var(--fs-s,14px)}
+.note{color:var(--muted);font-size:var(--fs-s,14px);margin-top:10px}
 .box{backdrop-filter:blur(16px);border-radius:22px}.logo{border-radius:14px}
 </style>
-<link rel="stylesheet" href="/static/nx.css?v=5nov2">
+<link rel="stylesheet" href="/static/nx.css?v=12nov1">
+<style>body{background:var(--bg)}.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);box-shadow:var(--lift);padding:var(--sp-5)}input{background:var(--panel2)!important;border:1px solid var(--line)!important;color:var(--ink)!important;min-height:44px}button{min-height:44px;background:var(--info)!important;color:#fff!important;border-radius:10px!important;font-size:var(--fs-m)!important}</style>
 </head>
 <body>
 <form class="box" id="f">
