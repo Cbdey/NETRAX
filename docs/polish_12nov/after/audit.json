@@ -1,0 +1,239 @@
+{
+ "/": {
+  "small": {
+   "13": 49
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 8,
+  "fonts": {
+   "13": 49,
+   "14": 65,
+   "16": 30,
+   "19": 24,
+   "24": 3,
+   "26": 4,
+   "34": 4
+  },
+  "title": "NETRAX Control Room",
+  "h": 1390,
+  "sw": 1920
+ },
+ "/entrance": {
+  "small": {
+   "13": 190
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 8,
+  "fonts": {
+   "13": 190,
+   "14": 320,
+   "16": 32,
+   "19": 23,
+   "24": 1,
+   "34": 6,
+   "40": 1
+  },
+  "title": "NETRAX Entrance",
+  "h": 2158,
+  "sw": 1920
+ },
+ "/hardware": {
+  "small": {
+   "13": 113
+  },
+  "hints": [
+   "LAST KNOWN \u00b7 8 h ago"
+  ],
+  "violText": [],
+  "panels": 8,
+  "fonts": {
+   "13": 113,
+   "14": 309,
+   "16": 20,
+   "18": 8,
+   "19": 20,
+   "24": 1,
+   "34": 7
+  },
+  "title": "NETRAX Hardware",
+  "h": 2269,
+  "sw": 1920
+ },
+ "/intelligence#overview": {
+  "small": {
+   "13": 16
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 11,
+  "fonts": {
+   "13": 16,
+   "14": 28,
+   "16": 18,
+   "18": 9,
+   "19": 10,
+   "24": 8,
+   "34": 2
+  },
+  "title": "\ud83d\udfe0 NETRAX \u2014 Safety Intelligence",
+  "h": 1103,
+  "sw": 1920
+ },
+ "/intelligence#alerts": {
+  "small": {
+   "13": 37
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 14,
+  "fonts": {
+   "13": 37,
+   "14": 72,
+   "16": 17,
+   "18": 9,
+   "19": 5,
+   "24": 2
+  },
+  "title": "\ud83d\udfe0 NETRAX \u2014 Safety Intelligence",
+  "h": 1080,
+  "sw": 1920
+ },
+ "/admin#overview": {
+  "small": {
+   "13": 130
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 35,
+  "fonts": {
+   "13": 130,
+   "14": 134,
+   "16": 60,
+   "19": 9,
+   "34": 6
+  },
+  "title": "NETRAX Admin \u00b7 Overview",
+  "h": 1480,
+  "sw": 1920
+ },
+ "/admin#incidents": {
+  "small": {
+   "13": 419
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 35,
+  "fonts": {
+   "13": 419,
+   "14": 3354,
+   "16": 19,
+   "19": 5
+  },
+  "title": "NETRAX Admin \u00b7 Incidents & reports",
+  "h": 1509,
+  "sw": 1920
+ },
+ "/admin#workers": {
+  "small": {
+   "13": 37
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 35,
+  "fonts": {
+   "13": 37,
+   "14": 71,
+   "16": 25,
+   "19": 4
+  },
+  "title": "NETRAX Admin \u00b7 Workers",
+  "h": 1080,
+  "sw": 1920
+ },
+ "/admin#alerts": {
+  "small": {
+   "13": 37
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 35,
+  "fonts": {
+   "13": 37,
+   "14": 1265,
+   "16": 19,
+   "19": 4,
+   "24": 4
+  },
+  "title": "NETRAX Admin \u00b7 Alerts & delivery",
+  "h": 1303,
+  "sw": 1920
+ },
+ "/admin#site": {
+  "small": {
+   "13": 52
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 35,
+  "fonts": {
+   "13": 52,
+   "14": 86,
+   "16": 28,
+   "19": 6
+  },
+  "title": "NETRAX Admin \u00b7 Site setup",
+  "h": 1080,
+  "sw": 1920
+ },
+ "/admin#system": {
+  "small": {
+   "13": 38
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 35,
+  "fonts": {
+   "13": 38,
+   "14": 1425,
+   "16": 33,
+   "19": 7,
+   "24": 14
+  },
+  "title": "NETRAX Admin \u00b7 System",
+  "h": 4685,
+  "sw": 1920
+ },
+ "/static/roi.html": {
+  "small": {
+   "13": 4
+  },
+  "hints": [],
+  "violText": [],
+  "panels": 2,
+  "fonts": {
+   "13": 4,
+   "14": 26,
+   "16": 11,
+   "19": 9
+  },
+  "title": "NETRAX ROI calculator",
+  "h": 1080,
+  "sw": 1920
+ },
+ "/login": {
+  "small": {},
+  "hints": [],
+  "violText": [],
+  "panels": 1,
+  "fonts": {
+   "14": 4,
+   "16": 1,
+   "24": 2
+  },
+  "title": "NETRAX Sign in",
+  "h": 1080,
+  "sw": 1920
+ }
+}
