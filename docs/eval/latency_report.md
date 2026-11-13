@@ -83,3 +83,18 @@ Server stream (/ws/video client, 30 s, all four cameras at once):
 Control room in a headless browser (before the USB fix): 19 / 14.8 / 14.5 / 7.5 pictures/s on screen, no gap over 250 ms,
 picture age 21-36 ms. AI 4-7 checks/s per camera. Picture age = capture at the edge -> shown; the phones' own encode delay
 before the edge is not included. The headless test browser renders without a GPU and occasionally pauses itself (0.7 s).
+
+## 13 Nov Axis via relay + laptop webcam (2 live cameras) - 13 Nov 2026 03:18 (60 s)
+
+Runtime: PyTorch (ultralytics) + shared batched engine; GPU engine: {'batch_ms_p50': 26.2, 'batch_ms_p95': 83.2, 'wait_ms_p50': 10.5, 'wait_ms_p95': 55.4, 'batch_size_avg': 1.21, 'gpu_busy_share': 0.51, 'process': True}
+
+| Camera | status | processed fps (median) | capture -> processed p50 | p95 | model p50 | wait for GPU p50 | stale frames skipped |
+|---|---|---|---|---|---|---|---|
+| cam_01 | ONLINE | 9.1 | 84 ms | 170 ms | 26 ms | 12 ms | 0 |
+| cam_02 | ONLINE | 4.0 | 152 ms | 474 ms | 74 ms | 12 ms | 0 |
+| cam_03 | OFFLINE | 0 | - | - | - | - | 0 |
+| cam_04 | OFFLINE | 0 | - | - | - | - | 0 |
+
+| Measurement | n | median | 95th percentile | max |
+|---|---|---|---|---|
+| live frame edge -> backend | 1515 | 53 ms | 136 ms | 286 ms |

@@ -1,6 +1,6 @@
 # NETRAX final acceptance self-test
 
-Run: 13 Nov 2026, 00:38:12 IST - `python -m tools.final_selftest`
+Run: 13 Nov 2026, 11:35:05 IST - `python -m tools.final_selftest`
 
 Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the real services; the live-provider and camera tests are in docs/NETRAX_Final_Test_Guide.pdf.
 
@@ -34,7 +34,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 09 | SMS: first try fails (HTTP 503) -> retried -> delivered, attempts logged | PASS | attempts 2 |
 | 09 | SMS text has type, severity, location, time and recommended action | PASS |  |
 | 09 | e-mail: SMTP drop -> retried -> accepted by the mail server ('sent', never claimed 'delivered') | PASS |  |
-| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 30 ms |
+| 13 | internet down: the alert is stored + shown at once (sending never blocks detection) | PASS | ingest 19 ms |
 | 13 | internet down: Telegram message kept and WAITING for the internet (reason shown, not a failed try) - never 'delivered' | PASS | ('waiting', 0, 'network: ConnectionError') |
 | 13 | system health shows the channel waiting for the internet | PASS |  |
 | 13 | no credentials -> NOT CONFIGURED (clearly labelled), nothing claimed as sent | PASS | [('telegram', 'not_configured')] |
@@ -45,7 +45,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 10 | type filter (smoke) + whole day | PASS |  |
 | 10 | viewer role: worker names hidden in the answer | PASS |  |
 | 10 | every question logged | PASS |  |
-| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 4, "p50": 0.0, "p95": 0.0, "max": 0.0, "mean": 0.0} |
+| 12 | latency measured as median + 95th percentile (event e2e, time to alert, notification delivery) | PASS | {"n": 5, "p50": 0.0, "p95": 0.0, "max": 0.0, "mean": 0.0} |
 | 14 | no GPS + no configured site -> 'Location unavailable' + zone label (never invented) | PASS |  |
 | 14 | valid device GPS -> shown with source, accuracy and map link | PASS |  |
 | 14 | 1-hour-old reading -> marked STALE and not used | PASS |  |
@@ -87,8 +87,8 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | CLIP | viewer role: clip hidden (no link, file 403) | PASS |  |
 | CLIP | supervisor: dashboard record has the clip and it downloads (video/mp4) | PASS |  |
 | CLIP | retention: clips older than snapshot_retention_days are deleted like snapshots | PASS |  |
-| 12 | live video: pictures are pushed over one WebSocket with camera + capture time; a viewer gets only its cameras | PASS | ['cam_02/1794510452.814/1794510453.028', 'cam_02/1794510452.988/1794510453.028'] |
-| REP | report generator: time range -> summary (totals, most missed PPE, by zone / camera / worker) + records | PASS | ['Period: 06 Nov 2026 00:38 to 13 Nov 2026 00:38 (IST) - 20 record(s).', 'By type: Entrance check 12, PPE violation 6, Smoke 1, Fire 1.'] |
+| 12 | live video: pictures are pushed over one WebSocket with camera + capture time; a viewer gets only its cameras | PASS | ['cam_02/1794549860.139/1794549860.332', 'cam_02/1794549860.292/1794549860.333'] |
+| REP | report generator: time range -> summary (totals, most missed PPE, by zone / camera / worker) + records | PASS | ['Period: 06 Nov 2026 11:35 to 13 Nov 2026 11:35 (IST) - 20 record(s).', 'By type: Entrance check 12, PPE violation 6, Smoke 1, Fire 1.'] |
 | REP | filters work (PPE violations in the welding bay only) | PASS |  |
 | REP | PDF and CSV downloads (named by the time range); end before start refused | PASS |  |
 | ZX | commands open pages and sections (wake word + misspellings: 'hey zentrix open the admin pannel') | PASS | [{'op': 'navigate', 'url': '/admin'}, None] |
@@ -99,7 +99,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | ZX | bulk resolve asks for confirmation first; 'cancel' changes nothing; 'confirm' resolves them all | PASS | Please confirm: Resolve 7 alerts: Missing safety vest - Chinmaya; Missing helmet - Chinmay / Done: 7 resolved. |
 | ZX | 'analyse ... and acknowledge them' = analysis + the commanded action on exactly those alerts | PASS | I checked 1 active alert. 1 still need attention. Acknowledged: Missing helmet - Chinmaya. |
 | ZX | 'analyse the recent alerts and acknowledge OR resolve' (user's words, misspelt) -> each alert gets the verified choice: still on camera = acknowledged, no longer seen = resolved | PASS | I checked 3 active alerts. 2 still need attention, 1 look finished and can be resolved. 1 alert left for you to decide (cannot be verified). Done as verified: a |
-| ZX | questions about the past are answered from the records (grounded history assistant) | PASS | Between 13 Nov 2026, 00:00:00 IST to 00:37:34 IST: 1 incident - 1 fire (level 3). |
+| ZX | questions about the past are answered from the records (grounded history assistant) | PASS | Between 13 Nov 2026, 00:00:00 IST to 11:34:21 IST: 1 incident - 1 fire (level 3). |
 | ZX | a viewer can ask and move around but cannot change records | PASS | Your role (viewer) cannot resolve alerts - ask a supervisor or admin. |
 | ZX | entrance commands: allow / refuse the person at the entrance | PASS | ['approved', 'denied', None] |
 | 12 | camera health: a black picture (covered lens / stuck USB camera, seen live 5 Nov) is reported as such | PASS |  |
@@ -114,14 +114,14 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | CAM | only a supervisor / admin may switch cameras (viewer refused by the role check) | PASS |  |
 | CALL | EVERY fire / smoke rings the supervisor (Level 2 camera fire, Level 1 smoke, station-only fire); never PPE, never a fire still being checked with the station; Telegram + e-mail unchanged | PASS | [['telegram', 'call', 'email'], ['telegram', 'sms', 'email']] |
 | CALL | normal SIM call (Android) is tried first; phone missing -> CallMeBot Telegram call, and the record says why | PASS | CallMeBot call placed / before: android: no Android phone connected |
-| CALL | the spoken call text fits CallMeBot (<= 256 characters) and says what, where and that it came from the station | PASS | NETRAX fire alarm. Fire detected in Warehouse by safety station sensors at 13 Nov 2026, 00:37:34 IST. Open the dashboard and acknowledge. |
+| CALL | the spoken call text fits CallMeBot (<= 256 characters) and says what, where and that it came from the station | PASS | NETRAX fire alarm. Fire detected in Warehouse by safety station sensors at 13 Nov 2026, 11:34:21 IST. Open the dashboard and acknowledge. |
 | CALL | CallMeBot: accepted -> 'sent' (never claimed 'delivered'); not authorised -> FAILED with the /start hint; server down -> retried | PASS | ['sent', 'CallMeBot refused: You need to authorize CallMeBot to contact you - the person must send /start to @CallMeBot_txtbot once', 'failed', 'en-IN-Standard-A'] |
 | CALL | Android phone: dials tel:+91... over adb and hangs up after ring_s; a Telegram name is refused for a SIM call | PASS | ['Android phone dialling +919800000000 (hangs up after 40 s)', [['get-state'], ['shell', 'am', 'start', '-a', 'android.intent.action.CALL', '-d', 'tel:+919800000000']]] |
 | CALL | one call per fire: a quick level change does not ring again; Level 3 (evacuate) calls again | PASS | [1, 1, 2] |
-| CALL | fire detected -> the phone call is queued within 5 s (no waiting for a level or an escalation timer) | PASS | ['open', [('not_configured', 0.09)]] |
+| CALL | fire detected -> the phone call is queued within 5 s (no waiting for a level or an escalation timer) | PASS | ['open', [('not_configured', 0.04)]] |
 | CALL | not acknowledged -> called again every 60 s; busy / no answer / failed -> next try after 20 s (own log row) | PASS | [1, 1, 2, 2, 3] |
 | CALL | Acknowledge stops the calls at once (no new call, a call still in the queue is not placed) | PASS | [3, False] |
-| CALL | call text: 'NETRAX fire alarm. Fire detected in <zone> by <camera> at <time>. Open the dashboard and acknowledge.' | PASS | NETRAX fire alarm. Fire detected in Warehouse by camera cam_02 at 13 Nov 2026, 00:37:34 IST. Open the dashboard and acknowledge. |
+| CALL | call text: 'NETRAX fire alarm. Fire detected in <zone> by <camera> at <time>. Open the dashboard and acknowledge.' | PASS | NETRAX fire alarm. Fire detected in Warehouse by camera cam_02 at 13 Nov 2026, 11:34:21 IST. Open the dashboard and acknowledge. |
 | NOTIFY | Wi-Fi off: Telegram + e-mail WAIT for the internet (not counted as failed tries) | PASS | [('telegram', 'waiting', 0), ('email', 'waiting', 0)] |
 | NOTIFY | Wi-Fi back: every message arrives exactly once (no loss, no duplicate) | PASS | [('telegram', 'delivered'), ('email', 'sent')] |
 | NOTIFY | Telegram caption: person + PPE icons (Helmet ❌ · Vest ✅ · Gloves ❔); an update is a REPLY to the first message | PASS | [['NETRAX · 🦺 PPE VIOLATION', '👷 Net test · W-096', 'Helmet ❌ · Vest ✅ · Gloves ❔'], 42] |
@@ -138,6 +138,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | PPE | merged alert stays open until every merged camera track has ended | PASS | ['open', 'resolved'] |
 | PPE | edge restarted -> its old alerts that can no longer be tracked are closed (no orphan 'open' alerts) | PASS | ['resolved', 'edge_restarted'] |
 | CAM | phone camera changed its address -> found on the Wi-Fi (not the other phone's), switched + saved in cameras.yaml | PASS | ['http://10.0.0.173:8080/video', None] |
+| CAM | phone follow never overwrites the Axis CCTV (cam_01) or the laptop webcam (cam_02) | PASS | [False, False] |
 | HW | Sharp dust sensor voltage -> PM2.5 shown (estimated, self-zeroed), clean air ~0, dust high | PASS | [0, 316, 0.62] |
 | HW | an uncalibrated PM estimate NEVER raises a warning or counts as smoke (station stays NORMAL) | PASS | ['NORMAL', []] |
 | HW | a real PM sensor (pm2_5_ugm3 sent) still alarms as before | PASS | ['PM2.5 200 >= 150 ug/m3'] |
@@ -145,7 +146,7 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | PPE | eyewear check: safety goggles OK, unclear -> no alarm, NORMAL GLASSES (face seen) -> NO GOGGLES, no check -> old behaviour | PASS | ['compliant', 'unverifiable', 'missing', 'compliant'] |
 | PPE | a box rejected as normal glasses is labelled so (snapshot / live picture say WHY) | PASS | (False, 'normal glasses') |
 | PPE | eyewear model: team's safety goggles -> goggles; sunglasses the detector called 'goggles' -> not goggles | PASS | [[0.97, 0.97, 0.97, 0.96], [0.02, 0.01, 0.04, 0.06, 0.01, 0.01, 0.01, 0.01, 0.01, 0.04, 0.02]] |
-| PPE | an alert payload carries items_ok / items_uncertain / items_required (icons), decision unchanged | PASS | [{'action': 'open', 'event_id': 'evt_4a0dc939c0', 'type': 'ppe_missing', 'items_missing': ['helmet'], 'items_ok': ['vest'], 'items_uncertain': ['gloves'], 'items_required': ['gloves', 'helmet', 'vest'], 'severity': 'High', 'camera_id': 'cam_t', 'zone_id': 'welding_bay', 'track_id': 5, 'worker_id': None, 'worker_name': None, 'confidence': 0.9, 'bbox': [400, 100, 700, 700], 'started_at': 1002.625, 'onset_at': 1000.0, 'at': 1002.625, 'reason': None}] |
+| PPE | an alert payload carries items_ok / items_uncertain / items_required (icons), decision unchanged | PASS | [{'action': 'open', 'event_id': 'evt_cb3d366aed', 'type': 'ppe_missing', 'items_missing': ['helmet'], 'items_ok': ['vest'], 'items_uncertain': ['gloves'], 'items_required': ['gloves', 'helmet', 'vest'], 'severity': 'High', 'camera_id': 'cam_t', 'zone_id': 'welding_bay', 'track_id': 5, 'worker_id': None, 'worker_name': None, 'confidence': 0.9, 'bbox': [400, 100, 700, 700], 'started_at': 1003.125, 'onset_at': 1000.0, 'at': 1003.125, 'reason': None}] |
 | PPE | backend stores + returns the 3 lists; an event without them still opens (lists = unknown) | PASS | [['vest'], ['gloves'], None] |
 | PPE | a registered worker ID always comes with the name (filled from the worker list) | PASS | Ritika |
 | PPE | messages: same identity rule + PPE line with icons (Helmet ❌ · Vest ✅ · Gloves ❔) | PASS | [['Ritika · W-091', 'Unregistered person', 'Sourav · W-002 · UNAUTHORISED'], 'Helmet ❌ · Vest ✅ · Gloves ❔'] |
@@ -158,14 +159,14 @@ Providers (Telegram / Twilio / SMTP) are replaced by fakes that answer like the 
 | 12 | live view: prediction never runs ahead more than 0.5 s, and none for the AI's own frame | PASS | [200.0, 100.0, 300.0, 400.0] |
 | 12 | USB camera: MJPG is requested AFTER size + frame rate (else the C270 stays uncompressed at 7.5 fps) | PASS | [3, 4, 5, 6, 38] |
 | 12 | camera health: a fresh 30 fps camera is ONLINE although the shared AI checks it only 3.5x/s (live video is separate) | PASS |  |
-| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 57 ms for 3 cameras |
-| 12 | AI process: every camera gets ITS OWN frame's result back (portrait + landscape + a resized camera) | PASS | stats {'batch_ms_p50': 11.1, 'batch_ms_p95': 11.1, 'wait_ms_p50': 10.5, 'wait_ms_p95': 19.7, 'batch_size_avg': 1.5, 'gpu_busy_share': 0.01, 'process': True} |
+| 12 | 3 cameras at once -> ONE batched GPU call, each camera gets its own result back | PASS | batches [3], 44 ms for 3 cameras |
+| 12 | AI process: every camera gets ITS OWN frame's result back (portrait + landscape + a resized camera) | PASS | stats {'batch_ms_p50': 11.6, 'batch_ms_p95': 11.6, 'wait_ms_p50': 10.7, 'wait_ms_p95': 21.7, 'batch_size_avg': 1.5, 'gpu_busy_share': 0.01, 'process': True} |
 | 12 | AI process: a camera whose request timed out waits for it - no pile-up of stale frames, next frame correct | PASS | queued 0, timeouts 3 |
 | 12 | edge: a second copy is refused (two copies took the cameras from each other) | PASS | first True, second False |
-| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1105 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
+| 01 | edge pipeline: entrance camera -> ONE 'approved' decision with full PPE (frame size attached) | PASS | approved 1067 ms, 10 frames, ok ['helmet', 'vest', 'boots'] missing [] unclear [] {'helmet': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'vest': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}, 'boots': {'compliant': 10, 'missing': 0, 'unverifiable': 0, 'frames': 10}} |
 | 04 | edge pipeline: monitored zone, helmet off -> one PPE alert naming the helmet | PASS | items ['goggles', 'helmet'] after ? |
 | 12 | edge pipeline: per-camera latency samples recorded (capture -> processed) | PASS |  |
-| LIVE | profiler: every AI stage of a camera is timed (engine, tracker, face ID, PPE match, decisions, drawing) | PASS | ai_engine 16.5 ms, tracker 1.4 ms, face_id 0.0 ms, ppe_match 0.5 ms, decisions_fire 1.6 ms, draw_emit 0.1 ms |
-| LIVE | AI at ~1 fps, live picture still ~12 fps (video no longer hangs at the AI rate) | PASS | 15.0 pictures/s at [640] px, draw 1.3 ms |
+| LIVE | profiler: every AI stage of a camera is timed (engine, tracker, face ID, PPE match, decisions, drawing) | PASS | ai_engine 16.9 ms, tracker 1.8 ms, face_id 0.0 ms, ppe_match 0.7 ms, decisions_fire 3.0 ms, draw_emit 0.1 ms |
+| LIVE | AI at ~1 fps, live picture still ~12 fps (video no longer hangs at the AI rate) | PASS | 14.5 pictures/s at [640] px, draw 2.2 ms |
 | LIVE | incident clips are fed from the smooth live picture | PASS |  |
 | LIVE | face detection runs on a <= 960 px copy (phone frames are 1920 px) and boxes map back exactly | PASS | detector input (540, 960), face x=540 y=480 |

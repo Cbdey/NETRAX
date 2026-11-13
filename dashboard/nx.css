@@ -350,3 +350,41 @@ time,.ts,.t[data-t]{font-size:var(--fs-xs)}
 .nx-tabs button[aria-selected="true"]{background:var(--info);color:#fff}
 .nx-tabs button:hover{color:var(--ink)}
 [data-nxtab-hidden]{display:none!important}
+
+/* ===== 13 Nov: FIRE POP-UP on every page (alerts.js renderPop) - full screen red while a fire / smoke alert is active ===== */
+.nxfirepop{display:none}
+.nxfirepop.show{display:flex;position:fixed;inset:0;z-index:9000;align-items:center;justify-content:center;padding:var(--sp-5,24px);
+  background:radial-gradient(circle at 50% 40%,rgba(220,38,38,.88),rgba(127,29,29,.96));animation:nxfpbg 1.2s ease-in-out infinite alternate}
+@keyframes nxfpbg{from{background-color:rgba(127,29,29,.9)}to{background-color:rgba(239,68,68,.95)}}
+.nxfirepop .fpbox{width:min(1100px,100%);max-height:100%;overflow:auto;background:#1b0606;color:#fff;border:4px solid #fecaca;border-radius:18px;
+  box-shadow:0 0 0 6px rgba(239,68,68,.55),0 30px 80px rgba(0,0,0,.6);padding:var(--sp-5,24px);display:flex;flex-direction:column;gap:var(--sp-4,16px)}
+.nxfirepop .fphead{text-align:center}
+.nxfirepop .fphead h1{margin:6px 0 4px;font-family:var(--display);font-size:clamp(34px,6vw,64px);letter-spacing:.05em;line-height:1.05;color:#fff;
+  text-shadow:0 0 24px rgba(255,80,80,.9);animation:nxfpblink 1s steps(2,start) infinite}
+@keyframes nxfpblink{50%{opacity:.55}}
+.nxfirepop .fphead p{margin:0;font-size:var(--fs-xl,24px);font-weight:700;color:#fecaca}
+.nxfirepop .fplv{display:inline-block;background:#fff;color:#b91c1c;font-weight:800;font-size:var(--fs-l,19px);border-radius:10px;padding:4px 14px;letter-spacing:.06em}
+.nxfirepop .fpgrid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--sp-4,16px);align-items:stretch}
+.nxfirepop .fpgrid img,.nxfirepop .fpnocam{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;border:3px solid #ef4444;background:#000}
+.nxfirepop .fpnocam{display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:72px}
+.nxfirepop .fpnocam small{font-size:var(--fs-m,16px);color:#fecaca}
+.nxfirepop .fpfacts{display:flex;flex-direction:column;gap:10px;font-size:var(--fs-m,16px)}
+.nxfirepop .fpfacts div{display:flex;flex-direction:column;background:rgba(255,255,255,.07);border-radius:10px;padding:8px 12px}
+.nxfirepop .fpfacts span{font-size:var(--fs-xs,13px);color:#fca5a5;text-transform:uppercase;letter-spacing:.06em}
+.nxfirepop .fpfacts b{font-size:var(--fs-l,19px)}
+.nxfirepop .fpacts{display:flex;gap:var(--sp-3,12px);justify-content:center;flex-wrap:wrap}
+.nxfirepop .fpacts .btn{min-height:48px;font-size:var(--fs-l,19px);padding:0 22px}
+.nxfirepop .btn{background:#fff;color:#7f1d1d;border:0;font-weight:700}
+.nxfirepop .btn-primary{background:#facc15;color:#1b0606}
+.nxfirepop .btn-ok{background:#22c55e;color:#04210f}
+/* minimised: thick red bar at the top + the red frame stays */
+.nxfirepop.show.min{inset:0 0 auto 0;padding:0;background:none;animation:none;align-items:stretch}
+.nxfirepop.min .fpbar{flex:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-height:64px;padding:10px 18px;color:#fff;
+  background:linear-gradient(90deg,#991b1b,#ef4444);font-size:var(--fs-m,16px);box-shadow:0 8px 24px -8px rgba(239,68,68,.9);animation:nxfpbar 1s ease-in-out infinite alternate}
+@keyframes nxfpbar{to{background:linear-gradient(90deg,#b91c1c,#f87171)}}
+.nxfirepop.min .fpbar b{font-family:var(--display);font-size:var(--fs-xl,24px);letter-spacing:.04em}
+.nxfirepop.min .sp{flex:1}
+body.nx-fire{background-color:#3b0a0a}
+@media (max-width:760px){.nxfirepop .fpgrid{grid-template-columns:1fr}.nxfirepop .fphead h1{font-size:34px}}
+@media (prefers-reduced-motion:reduce){.nxfirepop.show,.nxfirepop .fphead h1,.nxfirepop.min .fpbar{animation:none}}
+body.nx-fpmin{padding-top:72px}

@@ -620,12 +620,18 @@ def send_email(sec, subject, body, photo=None):
 
 # ------------------------------------------------------------------ dispatcher
 class Dispatcher:
-    """Background delivery queue: fire first, then by severity; retries never block new alerts."""
+    """Background delivery: ONE LANE PER CHANNEL (13 Nov), fire / smoke first inside every lane, retries never block.
+
+    13 Nov (user: "the call failed during the fire check"): MEASURED 09:44-09:49 - one shared queue, Telegram 4-15 s and
+    e-mail 3-8 s per message on this internet, a burst of PPE messages = a ~2 min queue; the queue was ordered by TIME
+    first (priority only broke ties), so the fire's Telegram AND its phone call waited 90 s behind PPE messages. Now each
+    channel has its own worker (a call never waits for Telegram / e-mail) and a ready job is taken by (priority, order)."""
     PRIO = {"fire": 0, "smoke": 0}
+    LANES = ("call", "telegram", "email", "sms")
 
     def __init__(self):
         self.cv = threading.Condition()
-        self.heap = []                       # [not_before, prio, seq, job]
+        self.lanes = {ch: [] for ch in self.LANES}     # ch -> [[not_before, prio, seq, job], ...]
         self.seq = itertools.count()
         self.watch = []                      # twilio sids being followed
         self.on_update = None                # callback(row dict) -> dashboard broadcast
@@ -633,21 +639,37 @@ class Dispatcher:
         self.stats = {"sent": 0, "failed": 0, "retries": 0, "last_ok": {}, "last_error": {}}
         self.offline = bool(os.environ.get("SENTINELEYE_NO_NOTIFY"))   # tests: never touch the network
 
+    @property
+    def heap(self):                          # older callers / tests: everything still waiting, all lanes
+        return [j for lane in self.lanes.values() for j in lane]
+
     def start(self):
         if not self.started:
             self.started = True
-            threading.Thread(target=self._loop, daemon=True, name="notify").start()
+            for ch in self.LANES:
+                threading.Thread(target=self._loop, args=(ch,), daemon=True, name=f"notify-{ch}").start()
             threading.Thread(target=self._follow, daemon=True, name="notify-status").start()
 
     def pending(self):
         with self.cv:
-            return len(self.heap) + len(self.watch)
+            return sum(len(v) for v in self.lanes.values()) + len(self.watch)
 
     def put(self, job, delay=0.0):
         prio = self.PRIO.get(job["event"].get("type"), {"Critical": 1, "High": 2}.get(job["event"].get("severity"), 3))
+        ch = job.get("channel") if job.get("channel") in self.lanes else "telegram"
         with self.cv:
-            heapq.heappush(self.heap, [time.time() + delay, prio, next(self.seq), job])
-            self.cv.notify()
+            self.lanes[ch].append([time.time() + delay, prio, next(self.seq), job])
+            self.cv.notify_all()
+
+    def _next(self, ch):
+        """Ready job of this lane with the best (priority, order), or (None, seconds to wait)."""
+        lane, now = self.lanes[ch], time.time()
+        ready = [j for j in lane if j[0] <= now]
+        if ready:
+            best = min(ready, key=lambda j: (j[1], j[2]))
+            lane.remove(best)
+            return best[3], None
+        return None, (min(j[0] for j in lane) - now) if lane else None
 
     def _update(self, row_id, **kw):
         if not kw:
@@ -660,13 +682,14 @@ class Dispatcher:
             except Exception:              # noqa: BLE001
                 pass
 
-    def _loop(self):
+    def _loop(self, ch="telegram"):
         while True:
             with self.cv:
-                while not self.heap or self.heap[0][0] > time.time():
-                    wait = (self.heap[0][0] - time.time()) if self.heap else None
+                while True:
+                    job, wait = self._next(ch)
+                    if job is not None:
+                        break
                     self.cv.wait(timeout=wait if wait is None or wait > 0 else 0.01)
-                job = heapq.heappop(self.heap)[3]
             try:
                 self._deliver(job)
             except Exception as ex:          # noqa: BLE001 - a provider bug must not stop the queue
@@ -715,9 +738,18 @@ class Dispatcher:
         a Level 3 (evacuate) raise still rings."""
         if job.get("kind") == "test" or not e.get("event_id"):
             return True
-        r = db.q("SELECT status FROM events WHERE event_id=?", (e["event_id"],))
-        st = r[0]["status"] if r else None
-        return st in (None, "open", "escalated", "verifying") or "|L3|" in str(job.get("kind"))
+        r = db.q("SELECT status, closed_by, acked_by, type FROM events WHERE event_id=?", (e["event_id"],))
+        if not r:
+            return True
+        st = r[0]["status"]
+        if st in ("open", "escalated", "verifying") or "|L3|" in str(job.get("kind")):
+            return True
+        # 13 Nov: a short real fire that ENDED BY ITSELF before the call (station back to normal after 15 s) was skipped -
+        # the supervisor never heard of it. The FIRST fire / smoke call is placed unless a PERSON acted (acknowledged,
+        # resolved, false alarm) or the station proved it false (suppressed). Repeat calls stop when it ended.
+        first = str(job.get("kind") or "").startswith(("new alert", "LEVEL RAISED"))
+        human = bool(r[0]["closed_by"] or r[0]["acked_by"]) or st in ("acknowledged", "dismissed", "suppressed")
+        return first and r[0]["type"] in ("fire", "smoke") and st in ("resolved", "closed") and not human
 
     def _finish(self, job, res, now):
         retry = job["policy"].get("retry") or {}

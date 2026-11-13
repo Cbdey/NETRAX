@@ -268,7 +268,7 @@ tr:last-child td{border-bottom:0}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
-<link rel="stylesheet" href="/static/nx.css?v=12nov1">
+<link rel="stylesheet" href="/static/nx.css?v=13nov3">
 <style>
 /* 12 Nov polish: same header / tabs / panels / colours as every page; sections are tabs at the top */
 .app{display:flex!important;flex-direction:column;gap:var(--sp-4);max-width:1920px;margin:0 auto;padding:var(--sp-3) var(--sp-4) var(--sp-5)}
@@ -317,9 +317,10 @@ main{padding:0!important}
   </div>
 </div>
 <div id="tip"></div>
-<script src="/static/ppe_icons.js?v=12nov1"></script>
+<script src="/static/ppe_icons.js?v=13nov2"></script>
 <script src="/static/people.js?v=12nov1"></script>
 <script src="/static/video.js?v=12nov1"></script>
+<script src="/static/alerts.js?v=13nov3"></script>
 <script src="/static/zentrix.js?v=12nov1"></script>
 <script>
 "use strict";
@@ -1013,7 +1014,12 @@ function pushHist(){
     while (h.length && at - h[0].at > 600) h.shift();
   }
 }
-const loadEvents = async () => { (await api("/api/events?limit=500")).forEach(e => EV.set(e.event_id, e)); };
+const loadEvents = async () => { const evs = await api("/api/events?limit=500"); evs.forEach(e => EV.set(e.event_id, e));
+  fireInit(); NetraxAlerts.seed(evs); };
+// 13 Nov: the shared full-screen FIRE pop-up (alerts.js) on this page too - no side rail, no slim banner here
+let FIRE_ON = false;
+function fireInit(){ if (FIRE_ON || !window.NetraxAlerts) return; FIRE_ON = true;
+  NetraxAlerts.init({canAct, rail: false, fireBanner: false, onEvent: e => { EV.set(e.event_id, e); render(); }}); }
 const jobs = {
   hw: async () => { const first = !HW.server_time; HW = await api("/api/hw/state"); SCANS = HW.scans || SCANS;
     if (first) for (const d of HW.devices || []) HIST[d.device_id] = await api(`/api/hw/history/${encodeURIComponent(d.device_id)}?seconds=600`).catch(() => []); pushHist(); },
@@ -1034,7 +1040,7 @@ function connect(){
     if (kind === "hardware"){ HW = Object.assign(HW, data); pushHist(); }
     else if (kind === "event" && data && data.event_id){ const old = EV.get(data.event_id);
       if (isActive(data) && (!old || !isActive(old) || (old.items_missing || []).join() !== (data.items_missing || []).join() || (old.fire_level || 0) < (data.fire_level || 0))) FRESH.set(data.event_id, Date.now());
-      EV.set(data.event_id, data); run("zones").then(render); render(); }
+      EV.set(data.event_id, data); fireInit(); if (window.NetraxAlerts) NetraxAlerts.offer(data); run("zones").then(render); render(); }
     else if (kind === "attendance"){ Promise.all([run("scans"), run("hw"), run("zones")]).then(render); }
     else if (kind === "health"){ HEALTH = data; }
     else if (kind === "cameras"){ CAMS = data; }

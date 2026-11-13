@@ -99,6 +99,7 @@ class IdentityService:
         self.unknown_votes = c.get("unknown_votes", 5)
         self.every_n = c.get("every_n_frames", 3)
         self.min_face = c.get("min_face_px", 32)
+        self.min_unknown_face = c.get("min_unknown_face_px", 56)   # 13 Nov: smaller unmatched faces never vote "unregistered"
         self.max_faces = c.get("max_faces_per_frame", 3)   # face embeddings per frame (many people in view)
         self.visitor_match = c.get("visitor_match", 0.42)
         self.learn_above = c.get("learn_above", 0.65)    # adapt to today's light only on very sure matches
@@ -324,6 +325,10 @@ class IdentityService:
         for _, _, f, p in cand[:self.max_faces]:
             emb = self.engine.embed(frame, f)
             wid, score, margin = self.classify_full(emb)
+            # 13 Nov: a SMALL face (far away, overhead CCTV) that matches nobody proves nothing - its embedding is too poor.
+            # It may still confirm a name, but it never counts as an 'unregistered' vote.
+            if wid is None and float(f[2]) < self.min_unknown_face:
+                continue
             with self.tlock:
                 st = self.tracks.get((cam, p["tid"]))
                 if st is None:
@@ -358,7 +363,11 @@ class IdentityService:
                 need, need_share = (self.switch_votes, self.switch_share) if named else (self.votes_needed, self.min_share)
                 if cnt >= need and share >= need_share:
                     st.update(id=top, name=self.gallery.get(top, {}).get("name"), kind="worker", score=score)
-        if st["kind"] is None and sum(1 for v in st["votes"] if v is None) >= self.unknown_votes:
+        # 13 Nov (user: "registered people called unregistered"; log: votes ['W-004', None x5] -> V-014): a person who
+        # matched a registered worker at least once needs 3x the unmatched faces before being called unregistered.
+        n_unknown = sum(1 for v in st["votes"] if v is None)
+        need = self.unknown_votes * (3 if any(st["votes"]) else 1)
+        if st["kind"] is None and n_unknown >= need:
             st.update(id=self._visitor(list(st["embs"])), name=None, kind="visitor")
         if (st["kind"] == "worker" and wid == st["id"] and score >= self.learn_above
                 and margin >= self.learn_margin):

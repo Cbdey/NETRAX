@@ -39,7 +39,7 @@ class _Item:
 class _Worker:
     __slots__ = ("tid", "last_seen", "bbox", "conf", "zone", "event_id", "open_items",
                  "opened_at", "severity", "seen_tick", "onset", "worker_id", "worker_name",
-                 "first_seen", "change_since", "looked", "id_pending", "reopen_of", "req")
+                 "first_seen", "change_since", "looked", "id_pending", "reopen_of", "req", "view", "view_at")
 
     def __init__(self, tid):
         self.tid = tid
@@ -59,6 +59,7 @@ class _Worker:
         self.change_since = None    # confirmed-missing set differs from what was announced since then
         self.looked = False         # first decision for this person made
         self.id_pending = False     # face seen, name not decided yet
+        self.view, self.view_at = None, 0.0   # 13 Nov: worn / cannot-see lists last sent with an action
         self.reopen_of = None       # supervisor resolved this person's alert while still in view
         self.req = ()               # 12 Nov: items required in this person's zone (for the alert icons)
 
@@ -83,6 +84,7 @@ class PPEStateMachine:
         self.resolved_at = {}  # ((cam, tid), item) -> when that worker last put the item back on
         self.rearm = cfg.get("rearm_s", 5.0)
         self.first_look = cfg.get("first_look_s", 2.5)   # watch a new person this long, then decide once
+        self.view_every = cfg.get("item_view_every_s", 1.0)   # 13 Nov: at most one quiet card refresh per second
         self.settle = cfg.get("settle_s", 1.0)           # after a change, watch this long, then decide once
         self.id_wait = cfg.get("id_wait_s", 1.5)         # extra wait for the name while the face is matched
         self.evidence_wait = cfg.get("evidence_wait_s", 1.5)   # first alarm: wait for unseen hands / face / feet
@@ -178,7 +180,15 @@ class PPEStateMachine:
                                 self.resolved_at[(wkey, item)] = now
                             st.state, st.ok_since = "OK", None
                             st.hist.clear()
+            n_before = len(actions)
             self._decide(cam, w, wkey, statuses.get(tid, {}), rcfg, risk_of, now, actions)
+            # 13 Nov (user: "whatever is missing or worn must show properly in the alert"): the worn / cannot-see lists
+            # were sent only with open / changed alerts - a helmet seen clearly a second later stayed '?' on the card.
+            # Open alert + those lists changed -> a quiet update (same missing items: no voice, no message).
+            if w.event_id and len(actions) == n_before and now - w.view_at >= self.view_every:
+                ok, unk = self._item_view(cam, w)
+                if w.view is not None and (tuple(ok), tuple(unk)) != w.view:
+                    actions.append(self._action("update", cam, w, now, reason="items_seen"))
         actions += self._expire(cam, now)
         return actions
 
@@ -365,6 +375,7 @@ class PPEStateMachine:
 
     def _action(self, kind, cam, w, now, reason=None, type_="ppe_missing"):
         ok, unk = self._item_view(cam, w)
+        w.view, w.view_at = (tuple(ok), tuple(unk)), now
         return {
             "action": kind,
             "event_id": w.event_id or f"info_{cam}_{w.tid}_{int(now * 1000)}",

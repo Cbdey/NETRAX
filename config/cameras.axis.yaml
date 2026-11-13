@@ -1,0 +1,49 @@
+# Camera registry. 13 Nov: AXIS SETUP (switch: use_cameras.bat axis | old; old file = config/cameras.before_axis.yaml).
+# Camera IDs never change, so zones, history, map and reports keep working.
+# source can be:
+#   0, 1 ...                 -> laptop / USB webcam index (fallback; see device:)
+#   demo/clips/xxx.mp4       -> recorded video (looped)
+#   http://IP:8080/video     -> phone (IP Webcam app); its address is followed automatically (edge/phones.py)
+#   rtsp://{axis}@IP/...     -> IP CCTV camera over RTSP (TCP). {axis} = "user:password" from config/secrets.local.yaml
+#                               (cameras: axis: {user, password}) - NEVER write the password here. Test: python -m tools.rtsp_test cam_01
+# device: <name part>        -> webcam chosen by its Windows name (python -m edge.webcams lists them); "!name" = the camera
+#                               that is NOT this one. Windows swaps the index numbers when a USB camera is plugged in or out.
+# Phone addresses change when a phone reconnects to Wi-Fi:
+#   python -m tools.find_phones           -> lists phones running IP Webcam on this Wi-Fi
+#   python -m tools.find_phones --write   -> puts the phone into cam_03 (the only phone camera)
+# rotate: 90 | 180 | 270     -> turn the picture clockwise (phone mounted upright gives a sideways picture)
+# enabled: false             -> camera not started; its tile shows "switched off"
+# share: <name>              -> camera PAIR used one at a time (not used in this setup)
+# zones: polygons in NORMALISED coordinates (0..1), checked at the worker's feet.
+# A worker outside every polygon falls back to default_zone.
+cameras:
+  cam_01:
+    name: Welding bay
+    kind: cctv                              # 13 Nov: AXIS P1447-LE, wired to the laptop's Ethernet (laptop 192.168.0.x/24, no gateway)
+    source: "rtsp://{axis}@192.168.0.90/axis-media/media.amp?videocodec=h264&resolution=1280x720&fps=15"
+    relay: 8554                             # camera plugged into ANOTHER laptop: it runs tools/axis_relay/AXIS_RELAY_FRIEND.bat and
+                                            # NETRAX finds it on the Wi-Fi (port 8554) when 192.168.0.90 is not reachable from here
+    default_zone: welding_bay
+    zones: []
+  cam_02:
+    name: Warehouse
+    source: 0                               # 13 Nov: LAPTOP built-in webcam (was a phone)
+    device: HP Wide Vision                  # picked by name; index 0 only if the names cannot be read
+    default_zone: warehouse
+    zones: []
+  cam_03:
+    name: Assembly line
+    source: http://10.248.34.114:8080/video     # 13 Nov: the PHONE (IP Webcam app), last known address on Wi-Fi NOTHING - followed automatically
+    rotate: 90
+    default_zone: assembly_line
+    zones: []
+  cam_04:
+    name: Main entrance
+    role: entrance                          # 29 Oct: automatic PPE check at the door (edge/entrance.py)
+    source: 1                               # USB webcam
+    device: "!HP Wide Vision"               # 13 Nov: the webcam that is NOT the laptop camera, whatever index Windows gives it
+    default_zone: main_entrance             # required PPE = zones.yaml main_entrance
+    capture: {width: 1280, height: 720, fps: 30, mjpg: true}
+    zones: []
+    # Mount it 2-3 m in front of the door at chest height so the WHOLE body (head to shoes) is in the picture.
+    # One person at a time; a person farther away is asked to step closer.

@@ -1,0 +1,80 @@
+NETRAX - AXIS P1447-LE setup: Claude Code prompts (paste one at a time, in order)
+
+
+===== PROMPT 0 - Read, back up, report (no changes) (10 min) =====
+Read CLAUDE.md first. We are changing ONLY the camera setup of NETRAX. Do not touch models/, weights, training, detection thresholds, the dashboard design or notifications.
+
+New camera plan (camera IDs stay the same, so zones, history, map and reports keep working):
+  cam_01  Welding bay    -> AXIS P1447-LE IP CCTV camera, RTSP, IP 192.168.0.90 (wired, laptop Ethernet)
+  cam_02  Warehouse      -> LAPTOP built-in webcam (today it is a phone)
+  cam_03  Assembly line  -> PHONE with the IP Webcam app (today switched off)
+  cam_04  Main entrance  -> USB webcam, unchanged (role: entrance)
+
+Rules for the whole job:
+- Before changing any file copy it to _to_delete/before_axis_13nov/<same path>. Also copy config/cameras.yaml to config/cameras.before_axis.yaml (this is our one-step fallback).
+- The Axis user name and password must NEVER be written in cameras.yaml, code, logs, screenshots or git. They go only in config/secrets.local.yaml (git-ignored). Mask them as *** whenever a URL is printed.
+- Keep every existing feature working. After each step run:  python -m edge.selftest   (all checks must pass).
+- Never commit config/secrets.local.yaml, config/users.local.yaml, firmware/*/secrets.h or data/. Do not push.
+
+Now do only this (no code changes yet):
+1. Make the backups above.
+2. Read edge/stream.py, edge/phones.py, tools/find_phones.py, tools/camdiag.py, edge/run_edge.py (or wherever cameras.yaml is loaded), config/cameras.yaml, config/secrets.example.yaml.
+3. Tell me in a short list: how an rtsp:// source is opened today, whether OpenCV here was built with FFmpeg (print cv2.getBuildInformation() Video I/O part), how the phone auto-follow (find_phones --write, phones.register) decides which camera is a phone, and anything that would break if cam_02 becomes a webcam index.
+
+
+===== PROMPT 1 - RTSP support: secret login, TCP, low delay, test tool (35 min) =====
+Step 1 - make RTSP cameras safe and fast in edge/stream.py (no camera change yet).
+
+1. Credentials from secrets: support a source written as  rtsp://{axis}@192.168.0.90/axis-media/media.amp?...  where {axis} is replaced at start-up by "user:password" from config/secrets.local.yaml:
+     cameras:
+       axis: {user: netrax, password: "..."}
+   URL-encode user and password (special characters!). Add the same block with empty values to config/secrets.example.yaml. If the secret is missing, the tile shows "Axis password not set in secrets.local.yaml" instead of crashing.
+2. Mask the password (***) in every print, status line, log and API response (/api/cameras or health) that shows a source.
+3. RTSP over TCP and short timeouts: before cv2 is imported, if OPENCV_FFMPEG_CAPTURE_OPTIONS is not already set, set it to "rtsp_transport;tcp|stimeout;5000000" (TCP = no grey / broken frames on a busy network). Open rtsp sources with cv2.VideoCapture(url, cv2.CAP_FFMPEG).
+4. Low latency: for network sources keep only the newest frame (the reader thread must grab continuously and overwrite; BUFFERSIZE does not work for FFmpeg). Measure and print once per minute: camera fps and frame age in ms.
+5. The quick reachable() check already uses port 554 for rtsp - keep it, and make the OFFLINE message for rtsp say: "Axis camera not reachable at 192.168.0.90:554 - Ethernet cable / laptop IP 192.168.0.x?".
+6. Add a tool:  python -m tools.rtsp_test cam_01   (or a URL) that opens the stream for 10 s and prints: opened yes/no, resolution, fps, average frame age, first error in plain words, and saves one picture to _to_delete/axis_test.jpg.
+Add selftest checks: {axis} placeholder is filled; password never appears in the masked text; missing secret gives the friendly message.
+
+
+===== PROMPT 2 - New camera plan + phone tool + switch script (25 min) =====
+Step 2 - the new camera plan in config/cameras.yaml (keep the IDs and the comments style).
+
+  cam_01:  name Welding bay,  source "rtsp://{axis}@192.168.0.90/axis-media/media.amp?videocodec=h264&resolution=1280x720&fps=15",
+           default_zone welding_bay, kind: cctv, no rotate.
+  cam_02:  name Warehouse,    source 0 (laptop built-in webcam), default_zone warehouse, no rotate, no phone follow.
+  cam_03:  name Assembly line, enabled true, source http://<phone IP>:8080/video (I will give the IP, or find it with python -m tools.find_phones), rotate 90 if the picture is sideways, default_zone assembly_line.
+  cam_04:  Main entrance, USB webcam, role entrance - unchanged except the index if step 3 shows it moved.
+
+Also:
+1. tools/find_phones.py and edge/phones.py: the phone cameras are now ONLY cam_03 (CAMS dict, --write, --cam02/--cam03 options). find_phones --write must never overwrite cam_01 (Axis) or cam_02 (webcam). Keep --cam03; make --cam02 print "cam_02 is now the laptop webcam".
+2. Webcam indices: run python -m tools.camdiag (or a 2-second test of indices 0,1,2 with CAP_DSHOW) and save one picture per index into _to_delete/ so I can see which index is the laptop camera and which is the USB camera. Ask me before writing the indices if it is not clear.
+3. Make a small switch script  use_cameras.bat  with two choices:
+     use_cameras.bat axis   -> config/cameras.yaml = the new plan (keep a copy as config/cameras.axis.yaml)
+     use_cameras.bat old    -> copies config/cameras.before_axis.yaml back
+   It only copies files; then the user restarts run_all.bat.
+4. Update the header comments of cameras.yaml: source can also be an RTSP CCTV camera with {axis} credentials from secrets.local.yaml.
+Do not start the system yet; show me the final cameras.yaml (password-free) and the camdiag pictures.
+
+
+===== PROMPT 3 - Test all 4 cameras and the AI (30 min) =====
+Step 3 - test with all 4 cameras (the Axis camera is connected by cable and the phone has IP Webcam running).
+
+1. python -m tools.rtsp_test cam_01  -> must open, 1280x720 (or the size the camera gives), about 15 fps, frame age under 300 ms. If the camera refuses 1280x720, try resolution=1280x960, then 1920x1080 with fps=10, and keep the first that works; tell me which.
+2. Start the system (run_all.bat). Check every tile on the control room: name, LIVE, fps. Read the edge window status lines for all 4 cameras for 2 minutes.
+3. AI check on the Axis camera: one person in the welding bay without helmet -> PPE alert on cam_01 / Welding bay with the right worker; with all PPE -> no alert. Restricted zone rule (allowed_workers in zones.yaml) still works.
+4. Measure: per-camera fps (camera and AI), AI time per frame, frame -> dashboard delay (we measured 0.28 s before). Write the numbers in a table. Only measured numbers.
+5. If anything is wrong, use the troubleshooting list from the PDF, fix only the camera part, and tell me what you changed.
+6. Run python -m edge.selftest - all pass.
+Stop here and show me the results before Step 4.
+
+
+===== PROMPT 4 - Record the work and commit locally (15 min) =====
+Step 4 - only after Step 3 worked: record the new work.
+
+1. CLAUDE.md: add a short "13 Nov - Axis P1447-LE CCTV" section: camera plan table, how the RTSP URL and {axis} secret work, laptop Ethernet IP 192.168.0.20/24 without gateway, use_cameras.bat axis/old, the measured numbers from Step 3.
+2. docs/: add docs/AXIS_CAMERA_SETUP.md (same content, written for a new team member) and one screenshot of the control room with all 4 tiles live (no passwords visible).
+3. Check git status: no secrets, no data/, no _to_delete/. Then a LOCAL commit:
+   "Axis P1447-LE IP CCTV on Welding bay over RTSP (TCP, secrets-based login), laptop webcam -> Warehouse, phone -> Assembly line, USB entrance unchanged; rtsp_test tool, use_cameras switch"
+   Do not push.
+4. Tell me how to go back to the old setup in one line (use_cameras.bat old + restart).

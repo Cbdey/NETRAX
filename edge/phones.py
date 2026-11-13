@@ -87,7 +87,8 @@ def save(cam_id, url, file=None):
     p = file or path("config", "cameras.yaml")
     with _LOCK:
         txt = open(p, encoding="utf-8").read()
-        new = re.sub(rf"(^  {cam_id}:\n(?:    .*\n)*?    source:\s*)\S+", lambda mm: mm.group(1) + url, txt,
+        # 13 Nov: only a camera that IS a phone (http://...:8080) may be rewritten - never the Axis CCTV or a webcam index
+        new = re.sub(rf"(^  {cam_id}:\n(?:    .*\n)*?    source:\s*)http://[^\s/]+:8080\S*", lambda mm: mm.group(1) + url, txt,
                      count=1, flags=re.M)
         if new != txt:
             with open(p, "w", encoding="utf-8") as f:

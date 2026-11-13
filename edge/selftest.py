@@ -61,8 +61,12 @@ check("feet cut by frame edge -> boots unverifiable", st["boots"][0] == "unverif
 # 2. grace period + exactly one alert over 5 minutes of non-compliance
 acts, _, _ = simulate([VEST, GLOVES, BOOTS], "welding_bay", 1.0)
 check("no alert inside the first 1 s in a HIGH-risk zone (N-of-M + grace)", not acts)
-acts, _, _ = simulate([GLOVES, BOOTS], "warehouse", 2.0)
-check("no alert inside the first 2 s in a MEDIUM-risk zone (N-of-M + grace)", not acts)
+acts, _, _ = simulate([GLOVES, BOOTS], "warehouse", 1.2)
+check("no alert inside the first 1.2 s in a MEDIUM-risk zone (N-of-M + grace; 13 Nov first look 2.0 -> 1.4 s)", not acts)
+acts, _, _ = simulate([GLOVES, BOOTS], "welding_bay", 3.0)
+_o = [a for a in acts if a["action"] == "open"]
+check(f"13 Nov quick alert: clearly seen person, helmet + vest missing -> alarm in {(_o[0]['at'] - 1000) if _o else -1:.1f} s (<= 1.5 s)",
+      len(_o) == 1 and _o[0]["at"] - 1000 <= 1.5)
 
 
 def first_open(items, zone):
@@ -340,6 +344,65 @@ _t = _time.time()
 check("unreachable network camera is detected quickly (no minute-long hang)",
       not reachable("http://192.0.2.1:8080/video", timeout=1.0) and _time.time() - _t < 3)
 
+#   13 Nov: Axis RTSP camera - login only from secrets, never shown
+from .stream import fill_source, mask, StreamReader as _SR
+_tpl = "rtsp://{axis}@192.168.0.90/axis-media/media.amp?videocodec=h264&resolution=1280x720&fps=15"
+_url, _err = fill_source(_tpl, {"axis": {"user": "netrax", "password": "p@ss:w/rd#9"}})
+check("RTSP {axis} placeholder is filled from secrets (user:password URL-encoded)",
+      _err is None and _url.startswith("rtsp://netrax:p%40ss%3Aw%2Frd%239@192.168.0.90/axis-media/"))
+_shown = mask(_url) + " " + mask("cannot open " + _url) + " " + mask("p@ss:w/rd#9")
+check("the camera password never appears in masked text (URL, error line, raw password)",
+      "p%40ss" not in _shown and "p@ss" not in _shown and "netrax:" not in _shown and "rtsp://***@192.168.0.90" in _shown)
+_url, _err = fill_source(_tpl, {})
+check("missing Axis secret -> friendly message, no crash", _url is None and _err.startswith("Axis password not set in secrets.local.yaml"))
+_r = _SR("cam_t", _tpl, 15)
+_old = _os.environ.get("SENTINELEYE_SECRETS")
+_os.environ["SENTINELEYE_SECRETS"] = _os.path.join(_tf.mkdtemp(), "none.yaml")      # no file = no secrets
+check("tile shows the missing-secret text (reader does not open or crash)", _r._open() is None and _r.detail.startswith("Axis password not set"))
+if _old is None:
+    _os.environ.pop("SENTINELEYE_SECRETS")
+else:
+    _os.environ["SENTINELEYE_SECRETS"] = _old
+from . import webcams as _wc
+_real_names = _wc.names
+_wc.names = lambda: ["Logi C270 HD WebCam", "HP Wide Vision HD Camera"]          # Windows order with the USB camera in
+_a = (_wc.index_of("HP Wide Vision", 0), _wc.index_of("!HP Wide Vision", 1))
+_wc.names = lambda: ["HP Wide Vision HD Camera"]                                 # USB camera unplugged
+_b = (_wc.index_of("HP Wide Vision", 0), _wc.index_of("!HP Wide Vision", 1))
+_wc.names = _real_names
+check("webcam picked by NAME: laptop / USB keep their camera when Windows swaps the index; unplugged USB never opens the laptop camera",
+      _a == (1, 0) and _b == (0, None))
+#   13 Nov: Axis camera on ANOTHER laptop -> its Wi-Fi relay (port forward) is found and used; direct address kept in yaml
+import socket as _so, threading as _thr
+from .relay import Relay as _Relay, probe_rtsp as _probe, with_host as _wh
+from .stream import resolve_rtsp as _resolve
+_srv = _so.socket(); _srv.bind(("127.0.0.1", 0)); _srv.listen(4); _rp = _srv.getsockname()[1]
+
+
+def _fake_rtsp():
+    while True:
+        try:
+            c, _ = _srv.accept()
+        except OSError:
+            return
+        c.recv(200); c.sendall(b"RTSP/1.0 200 OK\r\nCSeq: 1\r\nPublic: OPTIONS, DESCRIBE\r\n\r\n"); c.close()
+
+
+_thr.Thread(target=_fake_rtsp, daemon=True).start()
+_direct = "rtsp://u:p%40w@192.0.2.90/axis-media/media.amp?resolution=1280x720"
+_rl = _Relay(_rp, scan_fn=lambda: [h for h in ("127.0.0.2", "127.0.0.1") if _probe(h, _rp)])
+_u1, _e1 = _resolve("rtsp://{axis}@192.0.2.90/axis-media/media.amp", _direct, _rl)
+_u2, _e2 = _resolve("rtsp://{axis}@192.0.2.90/axis-media/media.amp", _direct, _Relay(_rp, scan_fn=lambda: []))
+_u3, _e3 = _resolve("rtsp://{axis}@192.0.2.90/axis-media/media.amp", _direct, None)
+_srv.close()
+check("Axis on another laptop: direct address unreachable -> relay found on the Wi-Fi and used (login, path, query kept)",
+      _e1 is None and _u1 == f"rtsp://u:p%40w@127.0.0.1:{_rp}/axis-media/media.amp?resolution=1280x720")
+check("no relay running -> plain-word message names the relay script; without relay: the cable / laptop-IP message",
+      _u2 is None and "AXIS_RELAY_FRIEND.bat" in _e2 and _u3 is None and "Ethernet cable" in _e3)
+check("relay URL rewrite keeps the login only in memory (masked when shown)", mask(_wh(_direct, "10.0.0.5", 8554)) ==
+      "rtsp://***@10.0.0.5:8554/axis-media/media.amp?resolution=1280x720")
+check("RTSP over TCP is the default FFmpeg capture option", "rtsp_transport;tcp" in _os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS", ""))
+
 # 16. load-aware processing (plan 7.5): overloaded GPU -> low-risk zone slowed first, restored later
 from .load import LoadManager
 
@@ -436,10 +499,30 @@ _zm = _ZM({"default_zone": "welding_bay"}, ZONES, ["helmet", "vest", "gloves", "
 _req = _zm.required("welding_bay")
 check(f"goggles / safety shoes not judged by the v2 model -> skipped, never 'missing' ({_req})",
       "goggles" not in _req and "boots" not in _req and "helmet" in _req)
-_img = _draw(np.zeros((240, 320, 3), np.uint8), [], {}, [{"cls": "helmet", "conf": 0.9, "bbox": [10, 10, 60, 40]}],
-             [("Smoke", [100, 100, 200, 200], "confirmed", 0.6)], [], parts=[{"cls": "hand", "conf": 0.5, "bbox": [5, 100, 30, 130]}])
-check("helmet box drawn in yellow, smoke in white", tuple(_img[10, 30]) == CLASS_COLOURS["helmet"]
-      and tuple(_img[150, 100]) == CLASS_COLOURS["Smoke"])
+#   13 Nov (jury: "too crowded"): no boxes / no writing in the picture - name tag + colour PPE icons per person
+from .annotate import person_label as _pl
+_bg = np.full((480, 800, 3), 90, np.uint8)
+_per = [{"tid": 1, "bbox": [300, 120, 420, 470], "conf": 0.9, "worker_id": "W-004", "worker_name": "Ritika", "identity": "worker"}]
+_st = {1: {"helmet": ("compliant", 0.9), "vest": ("missing", 0.0), "goggles": ("unverifiable", 0.0)}}
+_img = _draw(_bg, _per, _st, [{"cls": "helmet", "conf": 0.9, "bbox": [320, 120, 400, 170]}], [], [],
+             parts=[{"cls": "hand", "conf": 0.5, "bbox": [300, 300, 330, 330]}])
+_diff = np.abs(_img.astype(int) - _bg.astype(int)).sum(2) > 0
+_ys, _xs = np.nonzero(_diff)
+check("camera picture: no person / item / body-part boxes - only the tag + icon block above the head",
+      _diff.any() and _ys.max() < 175 and not _diff[200:, :].any() and not _diff[:, :250].any())
+_hsv = _img[_ys.min():_ys.max() + 1, _xs.min():_xs.max() + 1]
+check("PPE shown as colour icons: green (worn) and red (missing) present in the icon row",
+      ((_hsv[:, :, 1] > 120) & (_hsv[:, :, 0] < 100) & (_hsv[:, :, 2] < 100)).any() and
+      ((_hsv[:, :, 2] > 180) & (_hsv[:, :, 1] < 80) & (_hsv[:, :, 0] < 80)).any())
+_img2 = _draw(_bg, _per, _st, [], [], [], unauth={1})
+check("UNAUTHORISED tag added next to the name for a person not allowed in the zone",
+      (np.abs(_img2.astype(int) - _bg.astype(int)).sum(2) > 0).sum() > _diff.sum())
+check("name tag text: 'Name · W-004' / unregistered / visitor",
+      _pl(_per[0]) == "Ritika · W-004" and _pl({"worker_id": None}) == "Unregistered person"
+      and _pl({"worker_id": "V-003", "identity": "visitor"}) == "Unregistered person")
+_imgf = _draw(_bg, [], {}, [], [("Fire", [100, 100, 200, 200], "confirmed", 0.8)], [])
+check("fire shown as a flame icon on the spot (no box outline at the box edge)",
+      (np.abs(_imgf.astype(int) - _bg.astype(int)).sum(2) > 0)[120:180, 120:180].any() and (_imgf[100, 100] == _bg[100, 100]).all())
 
 # --- v3 hybrid: evidence rule (bare hand / face seen) + dark-scene smoke gate
 _req = {7: ["helmet", "vest", "gloves", "goggles"]}
@@ -688,6 +771,41 @@ check(f"async face ID: AI loop never waits, the name arrives a moment later ({ti
       first is None and name == "W-001")
 fb = ida.face_boxes("cam_01", [31])
 check("async face ID keeps the last face box per person (snapshot blur without a 2nd face detection)", 31 in fb and fb[31][2] == 60)
+
+#   13 Nov: worn items seen AFTER the alert opened reach the alert card (quiet update, same missing items)
+_sm, _acts = PPEStateMachine(S["state_machine"]), []
+for _i in range(60):
+    _st = {7: {"helmet": ("missing", 0.9), "vest": ("compliant", 0.9),
+               "gloves": ("unverifiable", 0.0) if _i < 35 else ("compliant", 0.8)}}
+    _acts += _sm.update("cam_01", [PERSON], _st, {7: "welding_bay"}, risk, W, H, now=1000 + _i / 10)
+_op = [a for a in _acts if a["action"] == "open"]
+_up = [a for a in _acts if a["action"] == "update"]
+check(f"13 Nov: gloves seen worn after the alert opened -> quiet update: missing still {(_up or [{}])[-1].get('items_missing')}, "
+      f"worn {(_up or [{}])[-1].get('items_ok')}",
+      len(_op) == 1 and "gloves" in _op[0]["items_uncertain"] and _up and "gloves" in _up[-1]["items_ok"]
+      and _up[-1]["items_missing"] == ["helmet"] and len(_up) <= 3)
+
+#   13 Nov: run_all.bat windows are copied to data/*_live.log with the time on every line (camera glitches can be read later)
+import io as _io
+from .livelog import _Tee
+_buf, _f = _io.StringIO(), _io.StringIO()
+_t = _Tee(_buf, _f)
+_t.write("cam_01 OFFLINE\n"); _t.write("part"); _t.write(" two\n")
+_lines = _f.getvalue().splitlines()
+check("live log: window text kept + copied with a time on each line",
+      _buf.getvalue() == "cam_01 OFFLINE\npart two\n" and len(_lines) == 2 and _lines[1].endswith(" part two")
+      and _lines[0][2] == ":" and _lines[0][8] == " ")
+
+#   13 Nov: registered people were called 'unregistered' (log: votes ['W-004', None x5] -> V-014)
+from collections import deque as _dq
+_e = np.ones(128, np.float32) / np.sqrt(128)
+_st = {"votes": _dq(["W-004", None, None, None, None, None], maxlen=8), "embs": _dq([_e], maxlen=6),
+       "id": None, "name": None, "kind": None, "score": 0.0}
+ida._decide(_st, None, 0.30, _e)
+_st2 = {"votes": _dq([None] * 5, maxlen=8), "embs": _dq([_e], maxlen=6), "id": None, "name": None, "kind": None, "score": 0.0}
+ida._decide(_st2, None, 0.30, _e)
+check("13 Nov: a face that matched a registered worker once is NOT called unregistered after 5 poor frames; "
+      "5 clear non-matches with no match -> visitor", _st["kind"] is None and _st2["kind"] == "visitor")
 
 
 print("\nALL TESTS PASSED" if ok_all else "\nSOME TESTS FAILED")

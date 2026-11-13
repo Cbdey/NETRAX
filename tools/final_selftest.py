@@ -546,11 +546,20 @@ def phone_follow_test():
     again = phones.find_moved("cam_02", new, scan=lambda: ["10.0.0.7"])          # within rescan_s: no second scan
     f = os.path.join(TMP, "cams.yaml")
     shutil.copy(m.path("config", "cameras.yaml") if hasattr(m, "path") else os.path.join("config", "cameras.yaml"), f)
-    phones.save("cam_02", "http://10.0.0.173:8080/video", file=f)
+    # 13 Nov: cam_03 is the only phone; cam_01 = Axis RTSP, cam_02 = laptop webcam -> save() must never rewrite those
+    with open(f, "w", encoding="utf-8") as fh:
+        fh.write("cameras:\n  cam_01:\n    name: Welding bay\n    source: \"rtsp://{axis}@192.168.0.90/axis-media/media.amp\"\n"
+                 "  cam_02:\n    name: Warehouse\n    source: 0\n"
+                 "  cam_03:\n    name: Assembly line\n    source: http://10.0.0.99:8080/video\n    rotate: 90\n")
+    saved = phones.save("cam_03", "http://10.0.0.173:8080/video", file=f)
     txt = open(f, encoding="utf-8").read()
     check("CAM", "phone camera changed its address -> found on the Wi-Fi (not the other phone's), switched + saved in cameras.yaml",
-          new == "http://10.0.0.173:8080/video" and again is None and "source: http://10.0.0.173:8080/video" in txt
+          new == "http://10.0.0.173:8080/video" and again is None and saved and "source: http://10.0.0.173:8080/video" in txt
           and txt.count("10.0.0.173") == 1, [new, again])
+    refused = [phones.save(c, "http://10.0.0.5:8080/video", file=f) for c in ("cam_01", "cam_02")]
+    txt2 = open(f, encoding="utf-8").read()
+    check("CAM", "phone follow never overwrites the Axis CCTV (cam_01) or the laptop webcam (cam_02)",
+          refused == [False, False] and txt2 == txt, refused)
     phones._IN_USE.clear()
     phones._LAST_SCAN.clear()
 

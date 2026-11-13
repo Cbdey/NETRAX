@@ -58,6 +58,7 @@ EMERGENCY_SEV = set((SETTINGS.get("incidents") or {}).get("emergency_severities"
 # Autonomous response on this laptop: speaker calls the worker, siren for fire / smoke
 SPEAKER = actuators.Speaker(SPK)
 ALARM = actuators.Alarm(ALM)
+ALARM.say = lambda t: SPEAKER.say(t, priority="urgent")       # 13 Nov: voice between siren cycles
 ACCESS_ALIAS = {}    # camera 'unauthorized_entry' id -> the RFID alert for the same person (merged)
 PPE_ALIAS = {}       # 11 Nov: edge ppe alert id -> the active alert of the same person on that camera (merged)
 PPE_SOURCES = {}     # alert id -> edge alert ids still live for it (resolve only when all have ended)
@@ -202,6 +203,8 @@ async def health_loop():
 
 @asynccontextmanager
 async def lifespan(app):
+    from edge.livelog import start as _livelog
+    _livelog("backend_live.log")         # 13 Nov: copy of this window in data/backend_live.log (run_all.bat only)
     LOOP["loop"] = asyncio.get_running_loop()
     if auth.enabled():
         auth.ensure_users()
@@ -311,8 +314,13 @@ def _same_violation(p, now, typ="ppe_missing"):
     resolve) - that one is RE-OPENED instead of creating a new alert. Returns (event row, 'active' | 'ended')."""
     wid, zone, cam = p.get("worker_id"), p.get("zone_id"), p.get("camera_id")
     since = now - _regrace()
+    # 13 Nov: an 'active' alert counts only if the CURRENT edge run still tracks it (touched since the edge started).
+    # A camera alert left open / acknowledged / escalated by an earlier run (W-006 access alert open since the evening
+    # before) swallowed every new violation of that person - no new card, no voice.
+    live_since = EDGE.get("started") or 0
     base = ("SELECT event_id, status, started_at, ended_at, end_reason, closed_by, bbox, worker_id, camera_id, updated_at "
-            "FROM events WHERE type=? AND zone_id=? AND (status IN ('open','acknowledged','escalated') OR ended_at >= ?) ")
+            "FROM events WHERE type=? AND zone_id=? AND ((status IN ('open','acknowledged','escalated') "
+            f"AND (camera_id IS NULL OR COALESCE(updated_at, started_at) >= {float(live_since)})) OR ended_at >= ?) ")
     if wid and str(wid).startswith(("W-", "V-")):
         rows = db.q(base + "AND worker_id=? ORDER BY started_at DESC LIMIT 1", (typ, zone, since, wid))
         if rows and str(wid).startswith("V-") and rows[0]["started_at"] < EDGE.get("started", 0):
@@ -343,6 +351,18 @@ def _reopen(r, eid, p, now):
     return why
 
 
+def _back_to_active(r, why):
+    """13 Nov (user: "violations missed in the PPE panel"): an ACKNOWLEDGED alert stays acknowledged until resolved, so a
+    NEW violation of the same person merged into it stayed under 'Acknowledged' - nothing new under Active. A new
+    violation (person back after leaving / more items missing) puts it back to Active (blinks, spoken again)."""
+    db.x("UPDATE events SET status='open', updated_at=? WHERE event_id=?", (time.time(), r["event_id"]))
+    db.add_action(r["event_id"], "back_to_active", "system", why)
+    CALLS.pop(r["event_id"], None)                 # the voice calls it again (full list)
+    ev = db.get_event(r["event_id"])
+    if ev:
+        SPOKEN.pop(_speech_key(ev), None)
+
+
 def _ppe_person_open(p, now):
     """Kept for older callers: the ACTIVE alert of the same person (see _same_violation)."""
     r, kind = _same_violation(p, now)
@@ -369,6 +389,8 @@ def _ppe_merge(eid, action, p, now):
                 p["_reopened"] = _reopen(r, eid, p, now)
                 PPE_SOURCES[target] = {eid}
             else:
+                if r["status"] == "acknowledged" and not PPE_SOURCES.get(target):
+                    _back_to_active(r, "violation seen again after Acknowledge")     # 13 Nov: never hidden
                 PPE_SOURCES.setdefault(target, set()).add(eid)
                 db.add_action(target, "seen", "edge", "same person seen again - merged into this alert (no duplicate)")
             PPE_ALIAS[eid] = target
@@ -396,7 +418,9 @@ async def close_orphaned_ppe(started, cams, now):
     if not cams:
         return 0
     marks = ",".join("?" * len(cams))
-    rows = db.q(f"SELECT event_id FROM events WHERE type='ppe_missing' AND status IN ('open','acknowledged','escalated') "
+    # 13 Nov: camera unauthorised-entry alerts too (one stayed escalated overnight and hid every new entry)
+    rows = db.q(f"SELECT event_id FROM events WHERE type IN ('ppe_missing','unauthorized_entry') "
+                f"AND status IN ('open','acknowledged','escalated') "
                 f"AND ended_at IS NULL AND updated_at < ? AND camera_id IN ({marks})", (started, *cams))
     for r in rows:
         db.x("UPDATE events SET status='resolved', ended_at=?, end_reason=?, updated_at=? WHERE event_id=?",
@@ -453,11 +477,20 @@ async def ingest_event(p: dict = Body(...)):
         eid = ACCESS_REOPEN[eid]
         action = "update" if action == "open" else action
     elif p.get("type") == "unauthorized_entry" and action == "open" and not db.get_event(eid):
-        same = db.q("SELECT event_id FROM events WHERE type='unauthorized_entry' AND worker_id=? AND zone_id=? "
-                    "AND status IN ('open','acknowledged','escalated') LIMIT 1", (p.get("worker_id"), p.get("zone_id")))
+        # 13 Nov: only a LIVE alert (RFID one = no camera, or touched by the current edge run) - an old open / escalated
+        # one swallowed the new entry silently (no card, no voice)
+        same = db.q("SELECT event_id, status FROM events WHERE type='unauthorized_entry' AND worker_id=? AND zone_id=? "
+                    "AND status IN ('open','acknowledged','escalated') "
+                    "AND (camera_id IS NULL OR COALESCE(updated_at, started_at) >= ?) LIMIT 1",
+                    (p.get("worker_id"), p.get("zone_id"), EDGE.get("started") or 0))
         if same:
             ACCESS_ALIAS[eid] = same[0]["event_id"]
             db.add_action(same[0]["event_id"], "seen", "edge", f"also seen on {p.get('camera_id')} (face ID)")
+            if same[0]["status"] == "acknowledged":
+                _back_to_active(same[0], "seen in the zone again after Acknowledge")
+                ev = db.get_event(same[0]["event_id"])
+                await broadcast("event", ev)
+                await respond(ev, "update", now)
             return {"ok": True, "merged_into": same[0]["event_id"]}
         r, kind = _same_violation(p, now, "unauthorized_entry")
         if r and kind == "ended" and r["status"] != "dismissed":    # back in the zone within regrace_s: same alert
@@ -527,6 +560,8 @@ async def ingest_event(p: dict = Body(...)):
         db.x("UPDATE events SET frame_w=COALESCE(?, frame_w), frame_h=COALESCE(?, frame_h) WHERE event_id=?",
              (p.get("frame_w"), p.get("frame_h"), eid))
         _store_items(eid, p)
+        if added and existing["type"] == "ppe_missing" and existing["status"] == "acknowledged":
+            _back_to_active(existing, "more PPE missing after Acknowledge: " + ", ".join(added))     # 13 Nov
         e = db.get_event(eid)
         if e["type"] in ("fire", "smoke"):
             await regrade_fire(e, now, broadcast_always=False)
@@ -814,25 +849,19 @@ def _who_spoken(e):
 
 
 def ppe_text(e):
-    """12 Nov (prompt pack step 7): ONE fixed sentence, name first, ALL missing items in icon order.
-    registered:   'Attention Ritika, worker W 0 0 4. Helmet and gloves missing. Please wear them now.'
-    unregistered: 'Attention, unregistered person in the Welding bay. Helmet missing. Please wear it now. Report to the supervisor.'
-    item added:   'Ritika, gloves also missing.'"""
-    zone = e.get("zone_name") or e.get("zone_id")
+    """ONE short sentence, name first, the missing items in icon order (13 Nov: shortened)."""
     items = _in_order(e.get("items_missing") or [])
     if not items:
         return ""
+    # 13 Nov (user: "the PPE announcement says too much - just the name and the PPE gear violation"):
+    #   'Ritika. Helmet and gloves violation.'  /  'Unregistered person. Helmet violation.'
+    #   item added to an open alert -> only the new item: 'Ritika. Safety goggles violation.'
+    #   13 Nov later (user): name WITH the worker ID: 'Ritika, worker W 0 0 4. Helmet and gloves violation.'
     added = _in_order([i for i in (e.get("_added") or []) if i in items])
     who = _who_spoken(e)
-    if added:                                     # an item was ADDED to an open alert: say only what is new
-        lead = (e.get("worker_name") or f"Worker {spoken_id(e['worker_id'])}") if who else f"Unregistered person in the {zone}"
-        return f"{lead}, {_words(added)} also missing."
-    what = _words(items)
-    what = what[0].upper() + what[1:]
-    them = "them" if len(items) > 1 else "it"
-    if who:
-        return f"Attention {who}. {what} missing. Please wear {them} now."
-    return f"Attention, unregistered person in the {zone}. {what} missing. Please wear {them} now. Report to the supervisor."
+    lead = (who[0].upper() + who[1:]) if who else "Unregistered person"
+    what = _words(added or items)
+    return f"{lead}. {what[0].upper() + what[1:]} violation."
 
 
 def ok_text(e):
@@ -882,15 +911,15 @@ def announce(text, zone, event_id, kind, priority="normal"):
     return entry
 
 
+def fire_words(e):
+    return "Smoke detected." if e.get("type") == "smoke" else "Fire detected."
+
+
 async def start_alarm(e, why):
-    zone = e.get("zone_name") or e.get("zone_id")
-    if ALARM.start(e["event_id"], e.get("zone_id"), why):
-        lvl = int(e.get("fire_level") or 2)
-        text = (f"Very critical. Major {e['type']} in the {zone}. Evacuate the {zone} immediately." if lvl >= 3 else
-                f"Critical alert. {e['type'].title()} detected in the {zone}. Emergency response required. "
-                f"Evacuate the {zone} now.")
-        announce(text,
-                 e.get("zone_id"), e["event_id"], "alarm", priority="urgent")
+    if ALARM.start(e["event_id"], e.get("zone_id"), why, words=fire_words(e)):
+        # 13 Nov (user): just "Fire detected" + an industrial fire siren (actuators.Alarm wails, pauses and repeats the
+        # same words every few cycles until Acknowledge / Resolve / silence).
+        announce(fire_words(e), e.get("zone_id"), e["event_id"], "alarm", priority="urgent")
         db.add_action(e["event_id"], "alarm_on", "system", why)
         await broadcast("response", response_payload())
 
@@ -913,9 +942,7 @@ async def respond(e, action, now):
             if lvl >= SIREN_FROM or not e.get("camera_id"):        # station-only hazards keep the siren
                 await start_alarm(e, f"{e['type']} Level {lvl} on {e.get('camera_id') or 'safety station'}")
             elif eid not in CALLS:
-                zone = e.get("zone_name") or e.get("zone_id")
-                announce(f"Warning. Small {e['type']} detected in the {zone}. Immediate inspection required.",
-                         e.get("zone_id"), eid, "alarm", priority="urgent")
+                announce(fire_words(e), e.get("zone_id"), eid, "alarm", priority="urgent")     # Level 1: voice only
                 CALLS[eid] = {"n": 1, "last": now, "items": ("fire_warning",)}
         return
     if e["type"] in ("ppe_missing", "unauthorized_entry"):
@@ -926,8 +953,28 @@ async def respond(e, action, now):
         # handover or a new snapshot is not a new alarm (12 Oct: "one alarm, not continuous")
         key = tuple(e["items_missing"])
         c = CALLS.get(eid)
-        if e["status"] in ("open", "escalated", "acknowledged") and (c is None or c["items"] != key):
-            kind = "access" if e["type"] == "unauthorized_entry" else "ppe"
+        kind = "access" if e["type"] == "unauthorized_entry" else "ppe"
+        named = str(e.get("worker_id") or "").startswith("W-") and e.get("worker_id") != "W-***"
+        live = e["status"] in ("open", "escalated", "acknowledged")
+        # 13 Nov (user: "it said 'unregistered person' to registered people" - MEASURED 36 of 61 such lines today were
+        # people recognised moments later): (a) an alert without a registered name waits up to unregistered_wait_s for
+        # face ID before it is spoken; (b) if it was already spoken as 'Unregistered person' and the name arrives later,
+        # the full line is said ONCE more with the name and worker ID.
+        if c is not None and c.get("pending"):
+            c["items"] = key
+            if named and live:
+                _speak_now(e, kind, now)
+            return
+        if c is not None and c.get("anon") and named and live:
+            db.add_action(eid, "voice_named", "system", "face recognised after the first call - said again with the name")
+            _speak_now(e, kind, now)
+            return
+        wait = float(SPK.get("unregistered_wait_s", 3.0))
+        if c is None and live and not named and wait > 0:
+            CALLS[eid] = {"n": 1, "last": now, "items": key, "pending": True}
+            asyncio.get_event_loop().create_task(_speak_later(eid, kind, wait))
+            return
+        if live and (c is None or c["items"] != key):
             sk = _speech_key(e)
             last_t, last_items = SPOKEN.get(sk, (-1e9, ()))
             heard = set(c["items"]) if c else set(last_items)
@@ -944,7 +991,36 @@ async def respond(e, action, now):
             else:
                 announce(alert_text(dict(e, _added=added if c is not None else [])), e.get("zone_id"), eid, kind)
                 SPOKEN[sk] = (now, key)
-                CALLS[eid] = {"n": 1, "last": now, "items": key}
+                CALLS[eid] = {"n": 1, "last": now, "items": key, "anon": not named}
+
+
+def _speak_now(e, kind, now):
+    """Say the full alert line (name + worker ID when known) and remember whether it was said without a name."""
+    named = str(e.get("worker_id") or "").startswith("W-") and e.get("worker_id") != "W-***"
+    key = tuple(e["items_missing"])
+    announce(alert_text(e), e.get("zone_id"), e["event_id"], kind)
+    SPOKEN[_speech_key(e)] = (now, key)
+    CALLS[e["event_id"]] = {"n": 1, "last": now, "items": key, "anon": not named}
+
+
+async def _speak_later(eid, kind, wait):
+    """Unnamed alert: give face ID `wait` seconds, then speak with whatever name is known (13 Nov)."""
+    await asyncio.sleep(wait)
+    c = CALLS.get(eid)
+    if not c or not c.get("pending"):
+        return                                    # already spoken (the name arrived) or resolved
+    e = db.get_event(eid)
+    if e is None or e["status"] not in ("open", "escalated", "acknowledged"):
+        CALLS.pop(eid, None)
+        return
+    now = time.time()
+    last_t, last_items = SPOKEN.get(_speech_key(e), (-1e9, ()))
+    if now - last_t < SPK.get("same_person_quiet_s", 20) and set(e["items_missing"]) <= set(last_items):
+        db.add_action(eid, "voice_merged", "system", "same person was called moments ago - dashboard updated, no extra call")
+        CALLS[eid] = {"n": 1, "last": now, "items": tuple(e["items_missing"]),
+                      "anon": not str(e.get("worker_id") or "").startswith("W-")}
+        return
+    _speak_now(e, kind, now)
 
 
 def _speech_key(e):

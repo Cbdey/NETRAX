@@ -612,3 +612,71 @@ Not started: slides deck + backup demo video (sec 16), F20 real LLM (optional).
   repeats, stops on Acknowledge) and the real Wi-Fi-off test - simulated in the tests above, still to be done live.
 - REMINDER: headless Edge left running from a test keeps its port and its page cache -> later checks see OLD files. Kill test browsers
   (taskkill /T) before measuring.
+
+## 13 Nov 2026: Axis P1447-LE CCTV + icon-only camera overlay
+- CAMERAS (config/cameras.yaml; switch: use_cameras.bat axis | old; old plan = config/cameras.before_axis.yaml): cam_01 Welding bay =
+  AXIS P1447-LE over RTSP `rtsp://{axis}@192.168.0.90/axis-media/media.amp?videocodec=h264&resolution=1280x720&fps=15`, `relay: 8554`;
+  cam_02 Warehouse = laptop webcam (`device: HP Wide Vision`); cam_03 Assembly line = phone (IP Webcam, the ONLY phone camera - find_phones /
+  phones.save never touch other cameras); cam_04 entrance = USB webcam (`device: "!HP Wide Vision"` = the webcam that is not the laptop's).
+  edge/webcams.py picks webcams by Windows NAME (DirectShow order = OpenCV index; a missing named camera is reported, never swapped).
+- RTSP (edge/stream.py): login ONLY in secrets.local.yaml `cameras: axis: {user, password}` (python -m tools.axis_login, hidden input),
+  filled into {axis} in memory, URL-encoded, masked as *** everywhere (stream.mask: edge prints, health detail, camdiag). FFmpeg backend,
+  OPENCV_FFMPEG_CAPTURE_OPTIONS rtsp_transport tcp + 5 s timeout, reconnect after 3 failed reads, once a minute "[cam_01] camera x fps,
+  frame waiting in the stream buffer p50 .. ms". Test: python -m tools.rtsp_test cam_01 (10 s, picture -> _to_delete/axis_test.jpg).
+- CAMERA ON A TEAM MEMBER'S LAPTOP (edge/relay.py): that laptop runs tools/axis_relay/AXIS_RELAY_FRIEND.bat (admin; Windows netsh portproxy
+  <its Wi-Fi IP>:8554 -> 192.168.0.90:554, :8090 -> :80 web page, firewall rule; `remove` undoes it). NETRAX tries 192.168.0.90 directly,
+  otherwise scans the Wi-Fi for RTSP on 8554 and uses it (rescan every 20 s if it stops; nothing written to yaml). Cable in THIS laptop:
+  Ethernet 192.168.0.20/24, no gateway -> direct. MEASURED 13 Nov via relay 10.248.34.98: 1280x720, 15.1-15.3 fps, buffer wait p50 42 ms,
+  AI 9.1 checks/s, capture -> AI result p50 84 / p95 170 ms, live frame edge -> backend p50 53 ms (docs/eval/latency_report.md).
+- CAMERA OVERLAY (jury: "too crowded, boxes on every person"): edge/annotate.draw draws NO boxes and NO text except a name tag per person
+  ("Name · W-004" / "Unregistered person", + amber UNAUTHORISED when face ID says a visitor or a not-allowed worker is in a restricted zone -
+  display only, worker.unauth) and a row of colour PPE icons (zone's required items: green tick worn / red prohibition missing / grey ? unseen).
+  Fire / smoke = flame / smoke icon. No "AI x fps" label, no zone lines, no item / body-part / rejected boxes, no "NORMAL GLASSES" text
+  (goggles icon turns red). Snapshots: red corner marks on the alerted person. Entrance: coloured strip + tick / cross / ? (no words).
+  Icons: tools/make_ppe_icons.py (original drawings) -> dashboard/icons/ppe/<item>_<ok|miss|unk>.png + fire.png / smoke.png; the dashboards
+  use the same PNGs (ppe_icons.js ppeIcon -> <img>, ?v=13nov1). Backups: _to_delete/before_axis_13nov/, _to_delete/before_icons_13nov/.
+- 13 Nov later: ICONS v2 "realistic" (tools/make_ppe_icons.py: gradients, 3D bevel, gloss, drop shadow, details - glossy hard hat,
+  hi-vis vest with silver tape + mesh, leather work gloves + stitching, glass-lens goggles, N95 respirator with valve, leather safety
+  boot with tread; flame / smoke). Same PNGs in camera overlay + every dashboard (?v=13nov2). VOICE shortened: PPE =
+  "Ritika. Helmet and gloves violation." / "Unregistered person. Helmet violation." (added item: only the new one); access unchanged.
+  FIRE: voice "Fire detected." / "Smoke detected." (also Level 1) + industrial WAIL siren (actuators.make_siren_wav -> data/fire_siren_wail.wav,
+  520-1180 Hz rise/fall 4.4 s cycle, harmonics), every 3 cycles a pause + the words again (settings response.alarm.voice_every), until
+  Acknowledge / Resolve / silence / max_duration_s. Backups: _to_delete/before_voice_13nov/.
+- 13 Nov night (user: "say the worker ID with the name; the PPE panel misses violations; quick alerts"):
+  * Voice: "Ritika, worker W 0 0 4. Helmet and gloves violation." (unregistered: "Unregistered person. Helmet violation.").
+  * MISSED VIOLATIONS - causes found in the DB: (1) an alert left open / acknowledged / escalated by an EARLIER edge run matched as
+    'active' forever and swallowed every new violation of that person (W-006 access alert open since the evening before; access merge
+    returned silently = no card, no voice); (2) a new violation merged into an ACKNOWLEDGED alert stayed under 'Acknowledged' (nothing
+    under Active). Fixes in backend/main.py: _same_violation + access merge only match active alerts touched by the CURRENT edge run
+    (camera_id NULL = RFID exempt); close_orphaned_ppe also closes camera unauthorized_entry alerts at edge start; _back_to_active():
+    acknowledged alert + new episode (no live edge source) or more items missing -> status open again, spoken again. Tests access_selftest x3.
+  * QUICK ALERTS (measured before: median 3.8 s onset -> alert, 43 alerts): first_look_s high 1.6 -> 1.0, medium 2.0 -> 1.4, low 2.5 -> 1.8;
+    id_wait_s 1.0 -> 1.6 and evidence_wait_s 1.0 -> 1.6 so the SLOW path (face still being matched / hands not seen yet) keeps the same
+    total as before (one complete alarm with the right name). Simulated at 10 AI checks/s: clearly seen person -> alarm 1.4 s.
+- 13 Nov late (user: "registered people called unregistered; complete PPE in the alert with the name; red full pop-up for fire until it
+  ends; the call failed in the fire check"). Backups: _to_delete/before_fire_13nov/.
+  * CALL FAILED - MEASURED 09:44-09:49: ONE delivery queue ordered by TIME first; Telegram 4-15 s + e-mail 3-8 s per message -> ~2 min
+    queue; the fire's call (queued 09:47:31) ran at 09:49:02, by then the station said normal (09:47:47) -> 'skipped'. notify.Dispatcher
+    now has ONE LANE PER CHANNEL (call / telegram / email / sms threads), ready jobs by (priority, order) -> fire first; _call_still_wanted:
+    the FIRST fire / smoke call is placed even if the fire ended by itself, skipped only if a PERSON acked / resolved / dismissed or the
+    station suppressed it. Earlier 'Twilio busy' = the phone rejected / busy (retry after 20 s already). Tests access_selftest call_lanes x2.
+  * "UNREGISTERED" FOR REGISTERED PEOPLE - MEASURED today: 36 of 61 "Unregistered person" lines were people recognised moments later.
+    backend: an alert without a W- name waits speaker.unregistered_wait_s 3 s for face ID before the voice (dashboard card at once);
+    spoken as unregistered + name found later -> the full line once more with name + ID (CALLS anon/pending, _speak_now/_speak_later,
+    same-person 20 s rule kept). edge/identity: unmatched faces < min_unknown_face_px 56 never vote 'unregistered'; a track with any
+    worker vote needs 3x unknown_votes before becoming a visitor (log: ['W-004', None x5] -> V-014). Tests access x3, edge x1.
+  * ALERT CARD ITEMS: worn / cannot-see lists were sent only with open / changed alerts -> a helmet seen a second later stayed '?'.
+    state_machine: open alert + _item_view changed -> quiet 'update' (same missing items, no voice / message), max 1/s (item_view_every_s).
+  * FIRE POP-UP: alerts.js renderPop = full-screen red pop-up on EVERY page (control room, admin, entrance, hardware, intelligence - now
+    loads alerts.js) for every level while a fire / smoke alert is open / escalated / acknowledged: level, zone, source, time, "burning
+    for", status (Acknowledged by .. - fire still active), live camera, Acknowledge / Fire out - Resolve / Minimise (thick red bar; a new
+    fire or level raise opens it again); gone only when resolved / closed. Index's old Level-3-only overlay is off. nx.css .nxfirepop.
+    Checked in headless Edge on a scratch backend: shown on all 5 pages, 0 JS errors; ack keeps it, minimise -> bar, resolve -> gone.
+- 13 Nov late ("camera glitches / cam off while running"): MEASURED with run_all-style run: CPU 97 % - 5 headless Edge test browsers left
+  by my own page checks (the probe crashed printing an emoji BEFORE closing its browser; 2 still showed dashboards with live video) used
+  ~37 % CPU -> AI 2-3 checks/s, batch 230 ms, face detect 135 ms, load manager slowing cameras, tiles DEGRADED. Closed them (only
+  --headless / --remote-debugging-port browsers): CPU 68 %, AI ~4/s per camera with 3 cameras (= the earlier 3-camera measurement),
+  batch 115 ms, face 47 ms. Probe script now always closes its browser. Webcam fps 30 -> 15 tried: DirectShow ignored it (still 30) -> reverted.
+  Axis via the friend's Wi-Fi relay: 10-23 fps, buffer wait up to ~1 s at times = Wi-Fi, not NETRAX (cable it to this laptop for a demo).
+  edge/livelog.py: run_all.bat windows are now copied to data/edge_live.log + data/backend_live.log (time per line, only for a real
+  console; NETRAX_NO_LIVELOG=1 off; > 20 MB -> .old). READ THESE FIRST when the user reports a glitch. Test edge.selftest live log.

@@ -92,8 +92,8 @@ state_machine:                    # plan section 7.2
   # camera watches settle_s again and sends ONE new decision. No alarm per item.
   first_look_s: 2.5
   settle_s: 1.0
-  id_wait_s: 1.0        # 4 Nov: 1.5 -> 1.0 ("sudden alert"); face being matched: wait up to this much longer so the alarm says the right name
-  evidence_wait_s: 1.0  # 4 Nov: 1.5 -> 1.0 ("sudden alert"); 29 Oct: first alarm waits up to this long for body parts not seen yet (hands for gloves,
+  id_wait_s: 1.6        # 13 Nov: first_look 1.6 -> 1.0 (fast when the name is known), so the wait FOR a name 1.0 -> 1.6 keeps the same total (~2.6 s); 4 Nov: 1.5 -> 1.0 ("sudden alert"); face being matched: wait up to this much longer so the alarm says the right name
+  evidence_wait_s: 1.6  # 13 Nov 1.0 -> 1.6 (same total as before with the shorter first look); 4 Nov: 1.5 -> 1.0 ("sudden alert"); 29 Oct: first alarm waits up to this long for body parts not seen yet (hands for gloves,
                         # face for goggles) so it lists everything at once; found later -> "also missing" alarm
   announce_compliant: true   # "PPE complete" once, only when every required item was SEEN worn
   ok_repeat_s: 600           # ... at most once per person per 10 minutes
@@ -102,9 +102,9 @@ state_machine:                    # plan section 7.2
     # confirm). first_look_s high 2.0 -> 1.2, medium 2.5 -> 1.6, low 3.0 -> 2.0 (the 6-of-10 confirm itself needs ~1.2 s).
     # 29 Oct: PPE taken off is caught faster - 6 of the last 10 frames (a majority, so one missed frame never
     # alarms) + short grace + short settle: high ~1.4 s, medium ~1.9 s after the item comes off.
-    high:   {confirm_n: 6, grace_s: 0.4, first_look_s: 1.6, settle_s: 0.4}
-    medium: {confirm_n: 6, grace_s: 0.7, first_look_s: 2.0, settle_s: 0.6}
-    low:    {confirm_n: 7, grace_s: 1.0, first_look_s: 2.5, settle_s: 0.8}
+    high:   {confirm_n: 6, grace_s: 0.4, first_look_s: 1.0, settle_s: 0.4}     # 13 Nov "quick alert": 1.6 -> 1.0
+    medium: {confirm_n: 6, grace_s: 0.7, first_look_s: 1.4, settle_s: 0.6}     # 2.0 -> 1.4
+    low:    {confirm_n: 7, grace_s: 1.0, first_look_s: 1.8, settle_s: 0.8}     # 2.5 -> 1.8
   location_grid: 4
 
 fire:                             # plan section 7.4
@@ -166,6 +166,7 @@ identity:                         # one person = one ID (edge/identity.py); regi
   debug_log: data/identity_debug.log   # one line each time a person gets / changes a name (with scores)
   every_n_frames: 3      # face check rate once everyone is identified (every 2nd frame until then)
   min_face_px: 32        # smaller faces are ignored (too far away)
+  min_unknown_face_px: 56  # 13 Nov: an unmatched face smaller than this never counts as "unregistered" (too poor to tell)
   max_faces_per_frame: 3 # many people in view: match at most 3 faces per frame, unidentified people first
 
 response:                         # autonomous response on this laptop (backend/actuators.py)

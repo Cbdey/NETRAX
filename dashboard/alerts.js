@@ -4,7 +4,8 @@
      slides into it with a coloured, glowing border; an alert that gets worse ("also missing: gloves") glows again.
      Entrance decisions appear there as a container: GREEN = verified, RED = do not enter, AMBER = manual check.
      The control room has the same cards in its own "Live alerts" and "Entrance" panels (index.html uses card() / keyed()).
-   - FIRE / SMOKE: red frame around every page + a slim red banner with the fire level until the fire is resolved.
+   - FIRE / SMOKE: full-screen red pop-up on every page (13 Nov, every level) + red frame until the fire is resolved;
+     Minimise -> thick red bar, a new fire / level raise opens it again. opt.firePopup: false turns the pop-up off.
    - The full green / red / amber entrance screen is shown only on the entrance display (/entrance). */
 window.NetraxAlerts = (function () {
   const ITEM = {helmet:"HELMET", vest:"SAFETY VEST", gloves:"GLOVES", boots:"SAFETY SHOES", goggles:"GOGGLES", mask:"MASK"};
@@ -147,10 +148,67 @@ window.NetraxAlerts = (function () {
     if (["open", "escalated", "acknowledged"].includes(e.status)) fires.set(e.event_id, e);   // red until the fire is resolved
     else fires.delete(e.event_id);
   }
+  /* 13 Nov (user: "the system should turn red and pop up completely when a fire alert comes, and stay until the fire
+     is over"): full-screen red FIRE pop-up on every page for EVERY level (was: only Level 3 on the control room).
+     Stays while any fire / smoke alert is open, escalated or acknowledged; goes away only when it is resolved / closed.
+     Minimise = a thick red bar + red frame (still on screen); a NEW fire or a level raise opens it fully again. */
+  let popEl = null, popMin = "", popTick = null;
+  const popKey = list => list.map(e => e.event_id + ":" + (e.fire_level || 0)).sort().join(",");
+  const elapsed = t => { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; };
+  function renderPop(list) {
+    if (opt.firePopup === false) return;
+    if (!popEl) {
+      popEl = document.createElement("div"); popEl.className = "nxfirepop"; popEl.setAttribute("role", "alertdialog");
+      popEl.setAttribute("aria-live", "assertive"); document.body.append(popEl);
+      popEl.addEventListener("click", ev => {
+        const m = ev.target.closest("[data-firepop]");
+        if (!m) return;
+        if (m.dataset.firepop === "min") popMin = popKey([...fires.values()]);
+        if (m.dataset.firepop === "max") popMin = "";
+        renderFire();
+      });
+    }
+    const on = list.length > 0;
+    if (!on) { document.body.classList.remove("nx-fpmin"); popEl.className = "nxfirepop"; popEl.innerHTML = ""; popEl.__sig = ""; clearInterval(popTick); popTick = null; popMin = ""; return; }
+    const key = popKey(list), min = popMin && popMin === key;
+    if (popMin && popMin !== key) popMin = "";                    // new fire / level raise -> open fully again
+    const e = list[0], l = e.fire_level || 2, w = e.type === "smoke" ? "SMOKE" : "FIRE";
+    const msg = {1: `Small ${w.toLowerCase()} - inspect the area now`, 2: "Emergency - respond immediately",
+                 3: "EVACUATE THE AREA IMMEDIATELY - call the fire brigade (101)"}[l] || "Respond immediately";
+    const acked = e.status === "acknowledged";
+    const acts = opt.canAct() ? `${acked ? "" : `<button class="btn btn-primary" data-nxact="ack" data-id="${e.event_id}">Acknowledge</button>`}
+        <button class="btn btn-ok" data-nxact="resolve" data-id="${e.event_id}">Fire out - Resolve</button>` : "";
+    const psig = [key, min, e.status, e.acked_by, list.length, opt.canAct()].join("|");
+    if (popEl.__sig === psig) return;                             // nothing changed: keep the live picture playing
+    popEl.__sig = psig;
+    popEl.className = "nxfirepop show" + (min ? " min" : "");
+    document.body.classList.toggle("nx-fpmin", !!min);
+    if (min) {
+      popEl.innerHTML = `<div class="fpbar"><b>🔥 ${w} DETECTED · LEVEL ${l}</b><span>${esc(e.zone_name || e.zone_id || "")} · ${esc(e.camera_id || "safety station")}</span>
+        <span class="fpt" data-since="${e.started_at}">${elapsed(e.started_at)}</span>${list.length > 1 ? `<span>+${list.length - 1} more</span>` : ""}
+        <span class="sp"></span>${acts}<button class="btn" data-firepop="max">Open</button></div>`;
+    } else {
+      const pic = e.camera_id ? `<img data-live="${esc(e.camera_id)}" ${e.snapshot ? `src="${esc(e.snapshot)}"` : ""} alt="Live camera">`
+                              : `<div class="fpnocam">🔥<small>Safety station sensors</small></div>`;
+      popEl.innerHTML = `<div class="fpbox">
+        <div class="fphead"><span class="fplv">LEVEL ${l}</span><h1>🔥 ${w} DETECTED</h1><p>${esc(msg)}</p></div>
+        <div class="fpgrid">${pic}<div class="fpfacts">
+          <div><span>Zone</span><b>${esc(e.zone_name || e.zone_id || "-")}</b></div>
+          <div><span>Source</span><b>${esc(e.camera_id || "Safety station")}</b></div>
+          <div><span>Detected</span><b>${fmt(e.started_at)}</b></div>
+          <div><span>Burning for</span><b class="fpt" data-since="${e.started_at}">${elapsed(e.started_at)}</b></div>
+          <div><span>Status</span><b>${acked ? `Acknowledged by ${esc(e.acked_by || "supervisor")} - fire still active` : "ACTIVE - not acknowledged"}</b></div>
+          ${list.length > 1 ? `<div><span>Also</span><b>${list.length - 1} more fire / smoke alert(s)</b></div>` : ""}
+        </div></div>
+        <div class="fpacts">${acts}<button class="btn" data-firepop="min">Minimise</button></div></div>`;
+    }
+    if (!popTick) popTick = setInterval(() => popEl && popEl.querySelectorAll(".fpt[data-since]").forEach(x => { x.textContent = elapsed(+x.dataset.since); }), 1000);
+  }
   function renderFire() {
     if (!fireEl) return;
-    const list = [...fires.values()].sort((a, b) => (b.fire_level || 0) - (a.fire_level || 0));
+    const list = [...fires.values()].sort((a, b) => (b.fire_level || 0) - (a.fire_level || 0) || a.started_at - b.started_at);
     const on = list.length > 0;
+    renderPop(list);
     document.body.classList.toggle("nx-fire", on);
     fireEl.classList.toggle("show", on && opt.fireBanner);
     document.body.classList.toggle("nx-firebar", on && opt.fireBanner);

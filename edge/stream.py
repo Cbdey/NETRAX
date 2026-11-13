@@ -1,12 +1,102 @@
 """Stream reader (F08): one thread per camera, keeps only the newest frame,
 reconnects with backoff, and reports health ONLINE / DEGRADED / OFFLINE."""
 import os
+import re
 import threading
 import time
+from urllib.parse import quote, urlparse
 
-import cv2
+# 13 Nov (Axis P1447-LE): RTSP over TCP (UDP loses packets on a busy network -> grey / broken pictures) and a 5 s socket
+# timeout. OpenCV reads this variable when a stream is OPENED. 'stimeout' = FFmpeg <= 4, 'timeout' = FFmpeg 5+ (this
+# OpenCV ships avformat 61 = FFmpeg 7); an option the library does not know is ignored.
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;5000000|timeout;5000000")
 
-from .config import path
+import cv2                       # noqa: E402
+
+from .config import path         # noqa: E402
+
+# ---------------------------------------------------------------- CCTV login from secrets (13 Nov)
+# cameras.yaml:   source: "rtsp://{axis}@192.168.0.90/axis-media/media.amp?..."
+# secrets.local.yaml (git-ignored):   cameras: {axis: {user: netrax, password: "..."}}
+# {axis} is replaced by the URL-encoded "user:password" only in memory, when the stream is opened.
+_PLACE = re.compile(r"\{(\w+)\}@")
+_KNOWN = set()                   # passwords / encoded logins seen -> masked in any text
+
+
+def camera_secrets():
+    """cameras: block of config/secrets.local.yaml (tests: SENTINELEYE_SECRETS = own file, never the real one)."""
+    import yaml
+    alt = os.environ.get("SENTINELEYE_SECRETS")
+    p = alt if alt else path("config", "secrets.local.yaml")
+    try:
+        with open(p, encoding="utf-8") as f:
+            return (yaml.safe_load(f) or {}).get("cameras") or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def fill_source(src, creds=None):
+    """(real url, None) or (None, friendly error). Sources without a {name}@ placeholder are returned unchanged."""
+    if not isinstance(src, str):
+        return src, None
+    m = _PLACE.search(src)
+    if not m:
+        return src, None
+    name = m.group(1)
+    c = (camera_secrets() if creds is None else creds).get(name) or {}
+    user, pw = str(c.get("user") or ""), str(c.get("password") or "")
+    if not user or not pw:
+        return None, f"{name.capitalize()} password not set in secrets.local.yaml (cameras: {name}: user / password)"
+    enc = quote(user, safe="") + ":" + quote(pw, safe="")
+    _KNOWN.update({pw, quote(pw, safe=""), enc})
+    return src.replace(m.group(0), enc + "@", 1), None
+
+
+def mask(text):
+    """Any login inside a URL -> ***, and every known camera password -> ***."""
+    if text is None:
+        return text
+    s = re.sub(r"(\w+://)[^/@\s]+@", r"\1***@", str(text))
+    for k in sorted(_KNOWN, key=len, reverse=True):
+        if k:
+            s = s.replace(k, "***")
+    return s
+
+
+def cctv_label(src):
+    return "Axis camera" if isinstance(src, str) and "axis" in src.lower() else "IP camera"
+
+
+def rtsp_unreachable_text(src, url):
+    u = urlparse(url)
+    port = u.port or 554
+    net = ".".join((u.hostname or "?").split(".")[:3])
+    return f"{cctv_label(src)} not reachable at {u.hostname}:{port} - Ethernet cable / laptop IP {net}.x?"
+
+
+def resolve_rtsp(src, url, relay=None):
+    """(url to open, None) or (None, plain-word error). Direct address first; if it does not answer and the camera has
+    `relay:` in cameras.yaml, the relay laptop on the Wi-Fi (edge/relay.py)."""
+    if reachable(url):
+        return url, None
+    if relay is not None:
+        from .relay import with_host
+        host = relay.find()
+        if host:
+            return with_host(url, host, relay.port), None
+        u = urlparse(url)
+        return None, (f"{cctv_label(src)} not reachable at {u.hostname}:{u.port or 554} and no relay found on the Wi-Fi "
+                      f"(port {relay.port}) - run AXIS_RELAY_FRIEND.bat on the laptop the camera is plugged into")
+    return None, rtsp_unreachable_text(src, url)
+
+
+def open_rtsp(url, open_ms=8000, read_ms=5000):
+    """FFmpeg backend explicitly (CAP_ANY could fall through to other backends that print the URL)."""
+    try:
+        return cv2.VideoCapture(url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, open_ms,
+                                                      cv2.CAP_PROP_READ_TIMEOUT_MSEC, read_ms])
+    except (cv2.error, TypeError):           # older OpenCV without the params form
+        return cv2.VideoCapture(url, cv2.CAP_FFMPEG)
 
 
 def reachable(url, timeout=1.5):
@@ -25,8 +115,14 @@ def reachable(url, timeout=1.5):
 class StreamReader(threading.Thread):
     ROTATE = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
 
-    def __init__(self, cam_id, source, target_fps, rotate=0, capture=None):
+    def __init__(self, cam_id, source, target_fps, rotate=0, capture=None, device=None, relay=None):
         super().__init__(daemon=True, name=f"reader-{cam_id}")
+        self.relay = None                  # 13 Nov: CCTV plugged into another laptop -> its Wi-Fi relay (edge/relay.py)
+        if relay:
+            from .relay import Relay
+            self.relay = Relay(relay)
+        self.via = None                    # "relay 10.248.34.50:8554" while the stream goes through the relay
+        self.device = device               # 13 Nov: webcam chosen by NAME (edge/webcams.py); source index = fallback
         # USB / laptop webcams: MJPG at a fixed size and frame rate, 1-frame driver buffer (no built-up lag).
         # cameras.yaml  capture: {width: 1280, height: 720, fps: 30, mjpg: true, exposure: null}
         self.capture = dict({"width": 1280, "height": 720, "fps": 30, "mjpg": True}, **(capture or {}))
@@ -48,6 +144,11 @@ class StreamReader(threading.Thread):
         self.state = "OFFLINE"
         self.detail = "starting"
         self.is_file = isinstance(source, str) and not source.startswith(("http", "rtsp"))
+        self.is_rtsp = isinstance(source, str) and source.lower().startswith("rtsp")
+        self.size = None
+        self.lag_ms = []                   # 13 Nov: RTSP delay above the best seen (frames waiting in the stream buffer)
+        self._lag_base = None
+        self._last_report = time.time()
         self.allowed = lambda: True        # camera pairs (edge/share.py): False = release the device, STANDBY
         self.standby = False
         self.active_since = 0.0            # when this camera last got its slot back (pair switch)
@@ -56,6 +157,15 @@ class StreamReader(threading.Thread):
         src = self.source
         if isinstance(src, int) or (isinstance(src, str) and src.isdigit()):
             idx = int(src)
+            if self.device and os.name == "nt":
+                from .webcams import index_of
+                idx = index_of(self.device, idx)
+                if idx is None:
+                    d = str(self.device)
+                    self.detail = (f"USB webcam not connected (only '{d[1:].strip()}' found) - plug it in" if d.startswith("!")
+                                   else f"webcam '{d}' not connected - plug it in (Device Manager > Cameras)")
+                    return None
+                self.index = idx
             cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW) if os.name == "nt" else cv2.VideoCapture(idx)
             if cap is not None and cap.isOpened():
                 c = self.capture
@@ -83,6 +193,29 @@ class StreamReader(threading.Thread):
                 self.detail = f"file not found: {src}"
                 return None
             cap = cv2.VideoCapture(full)
+        elif self.is_rtsp:
+            url, err = fill_source(src)
+            if err:
+                self.detail = err
+                return None
+            url, err = resolve_rtsp(src, url, self.relay)
+            if err:
+                self.detail = err
+                return None
+            via = None
+            if self.relay is not None and self.relay.host and f"@{self.relay.host}:{self.relay.port}/" in url:
+                via = f"relay {self.relay.host}:{self.relay.port}"
+            if via != self.via:
+                print(f"[{self.cam_id}] {cctv_label(src)} " + (f"through the {via} (camera on another laptop)" if via
+                                                               else "connected directly"), flush=True)
+                self.via = via
+            cap = open_rtsp(url)
+            if not cap or not cap.isOpened():
+                self.detail = (f"{cctv_label(src)} answered but the video did not open - user / password in "
+                               "secrets.local.yaml or the URL path / resolution")
+                return None
+            self._lag_base = None
+            return cap
         else:
             if not reachable(src):
                 # an unreachable phone / IP camera made cv2.VideoCapture hang for over a minute
@@ -149,18 +282,26 @@ class StreamReader(threading.Thread):
                             break
                         continue
                     fails += 1
-                    if fails > 30:
+                    # an RTSP read already waits up to 5 s (read timeout): reconnect after 3 failed reads, not 30
+                    if fails > (3 if self.is_rtsp else 30):
                         self.detail = "stream lost - reconnecting"
                         break
                     time.sleep(0.05)
                     continue
                 fails = 0
+                now = time.time()
+                if self.is_rtsp:
+                    self._note_lag(cap, now)
                 with self.lock:
                     if self.rotate is not None:
                         frame = cv2.rotate(frame, self.rotate)
-                    self.frame, self.frame_ts = frame, time.time()
+                    self.frame, self.frame_ts = frame, now
                     self.frame_no += 1
+                    self.size = (frame.shape[1], frame.shape[0])
                 n_count += 1
+                if self.is_rtsp and now - self._last_report >= 60:
+                    self._last_report = now
+                    print(f"[{self.cam_id}] {self.report()}", flush=True)
                 if time.time() - t_count >= 2.0:
                     self.fps = n_count / (time.time() - t_count)
                     t_count, n_count = time.time(), 0
@@ -199,6 +340,24 @@ class StreamReader(threading.Thread):
         except OSError as e:
             print(f"[{self.cam_id}] could not save the new address: {e}", flush=True)
         return True
+
+    def _note_lag(self, cap, now):
+        """Stream time (PTS) vs wall clock. The lowest difference seen = the camera's own delay; anything above it =
+        frames that waited in the buffer (the reader fell behind). Reading continuously keeps this near 0."""
+        pts = cap.get(cv2.CAP_PROP_POS_MSEC)
+        if not pts or pts <= 0:
+            return
+        d = now * 1000.0 - pts
+        self._lag_base = d if self._lag_base is None else min(self._lag_base, d)
+        self.lag_ms.append(d - self._lag_base)
+        del self.lag_ms[:-600]
+
+    def report(self):
+        lag = sorted(self.lag_ms)
+        p50 = lag[len(lag) // 2] if lag else None
+        size = f"{self.size[0]}x{self.size[1]}" if self.size else "-"
+        return (f"camera {self.fps:.1f} fps, {size}, frame waiting in the stream buffer "
+                + (f"p50 {p50:.0f} ms, max {lag[-1]:.0f} ms" if lag else "not measured"))
 
     def latest(self):
         with self.lock:

@@ -206,6 +206,12 @@ class CameraWorker(threading.Thread):
         tp = self._t("decisions_fire", tp)
 
         shown = self._smooth(statuses)                       # steady on-screen PPE list (no frame flicker)
+        # 13 Nov: amber UNAUTHORISED tag on the picture for anyone in a restricted zone who is not on its allowed list
+        # (registered workers not allowed AND unregistered people). Display only - alerts unchanged (edge/access.py).
+        # Only once face ID has decided (visitor = unregistered, or a named worker) - never while the name is pending.
+        unauth = {p["tid"] for p in persons if self.access.restricted(zone_of.get(p["tid"]))
+                  and (p.get("identity") == "visitor" or (p.get("identity") == "worker"
+                                                          and p.get("worker_id") not in self.access.allowed[zone_of[p["tid"]]]))}
         # 12 Nov KPI tiles: people in view + people with EVERY required item seen worn (same steady list as the overlay)
         self.people = {"in_view": len(persons), "at": time.time(),
                        "compliant": sum(1 for p in persons if shown.get(p["tid"])
@@ -214,7 +220,7 @@ class CameraWorker(threading.Thread):
             self.overlay = {"at": time.time(), "ts": frame_ts, "persons": [dict(p) for p in persons], "shown": shown,
                             "items": list(items), "parts": list(parts or []), "fire": list(self.fv.boxes(self.cam_id)),
                             "rejected": list(self.fv.rejected.get(self.cam_id, [])) + list(bad_items),
-                            "polys": self.zonemap.polys, "entrance": self.entrance}
+                            "polys": self.zonemap.polys, "entrance": self.entrance, "unauth": unauth}
             publish = False
         else:
             publish = self.publisher.due(self.cam_id)
@@ -223,7 +229,7 @@ class CameraWorker(threading.Thread):
             annotated = annotate.draw(frame, persons, shown, items, self.fv.boxes(self.cam_id),
                                       self.zonemap.polys,
                                       self.fv.rejected.get(self.cam_id, []) + bad_items,
-                                      parts=parts)
+                                      parts=parts, unauth=unauth)
             if self.entrance is not None:
                 annotate.entrance_banner(annotated, self.entrance)
         if not self.tile_badge and self.entrance is not None and self.entrance.s and \

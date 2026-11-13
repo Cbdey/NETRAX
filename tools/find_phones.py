@@ -1,11 +1,13 @@
 """Find phones running the IP Webcam app on this laptop's Wi-Fi and put them into config/cameras.yaml.
 
     python -m tools.find_phones                          # list phones (+ one picture each in data/phones/)
-    python -m tools.find_phones --write                  # cam_02 = phone 1 (Warehouse), cam_03 = phone 2 (Assembly)
-    python -m tools.find_phones --cam02 172.20.163.40 --cam03 172.20.163.77   # set by hand
+    python -m tools.find_phones --write                  # cam_03 = the phone (Assembly line), switched on
+    python -m tools.find_phones --cam03 10.248.34.173    # set by hand
 
+13 Nov (Axis setup): the ONLY phone camera is cam_03. cam_01 = Axis CCTV (RTSP), cam_02 = laptop webcam,
+cam_04 = USB webcam - this tool never writes those.
 A phone counts only if http://<ip>:8080/shot.jpg returns a JPEG (other devices on port 8080, e.g. a router,
-are ignored). With --write, a phone already set on cam_02 or cam_03 keeps its camera.
+are ignored). With --write, a phone already set on cam_03 keeps it.
 Restart run_all.bat afterwards so the edge picks up the new addresses."""
 import argparse
 import concurrent.futures as cf
@@ -17,7 +19,7 @@ import requests
 
 from edge.config import path
 
-CAMS = {"cam_02": "Warehouse (phone 1)", "cam_03": "Assembly line (phone 2)"}
+CAMS = {"cam_03": "Assembly line (phone)"}      # 13 Nov: cam_02 is the laptop webcam now
 
 
 def local_ip():
@@ -67,15 +69,17 @@ def set_source(txt, cam, ip):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--write", action="store_true")
-    ap.add_argument("--cam02")
+    ap.add_argument("--cam02", help="obsolete: cam_02 is the laptop webcam since 13 Nov")
     ap.add_argument("--cam03")
     a = ap.parse_args()
     txt, cur = current_sources()
-    if a.cam02 or a.cam03:
-        for cam, ip in (("cam_02", a.cam02), ("cam_03", a.cam03)):
-            if ip:
-                txt = set_source(txt, cam, ip)
-                print(f"{cam} {CAMS[cam]} -> http://{ip}:8080/video")
+    if a.cam02:
+        print("cam_02 is now the laptop webcam (not a phone) - nothing written for it. Phone = --cam03")
+        if not a.cam03:
+            return
+    if a.cam03:
+        txt = set_source(txt, "cam_03", a.cam03)
+        print(f"cam_03 {CAMS['cam_03']} -> http://{a.cam03}:8080/video")
         open(path("config", "cameras.yaml"), "w", encoding="utf-8").write(txt)
         print("saved config/cameras.yaml - restart run_all.bat")
         return
@@ -111,7 +115,7 @@ def main():
         print(f"{cam} {CAMS[cam]} -> http://{ip}:8080/video")
     for cam in CAMS:
         if cam not in assign:
-            print(f"{cam} {CAMS[cam]} -> no phone left for it (start IP Webcam on the second phone)")
+            print(f"{cam} {CAMS[cam]} -> no phone left for it (start IP Webcam on the phone)")
     open(path("config", "cameras.yaml"), "w", encoding="utf-8").write(txt)
     print("saved config/cameras.yaml - restart run_all.bat")
 

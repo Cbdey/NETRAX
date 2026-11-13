@@ -103,17 +103,26 @@ def ppe_evt(eid, action, items, wid=None, **kw):
 
 
 def voice_sentences():
-    """12 Nov (prompt pack step 7): the three fixed sentences, name first, all items in icon order."""
+    """Fixed sentences, name first, items in icon order (13 Nov: PPE = '<name>. <items> violation.')."""
     reg = m.ppe_text({"type": "ppe_missing", "worker_id": "W-004", "worker_name": "Ritika", "zone_name": "Welding bay",
                       "items_missing": ["gloves", "helmet"]})
     unreg = m.ppe_text({"type": "ppe_missing", "worker_id": "V-003", "zone_name": "Welding bay", "items_missing": ["helmet"]})
     acc = m.access_text({"type": "unauthorized_entry", "worker_id": "W-002", "worker_name": "Sourav", "zone_name": "Control room"})
     nobody = m.ppe_text({"type": "ppe_missing", "worker_id": None, "worker_name": "Guess", "zone_name": "Store", "items_missing": ["vest"]})
-    check(f"voice, registered: '{reg}'", reg == "Attention Ritika, worker W 0 0 4. Helmet and gloves missing. Please wear them now.")
-    check(f"voice, unregistered: '{unreg}'",
-          unreg == "Attention, unregistered person in the Welding bay. Helmet missing. Please wear it now. Report to the supervisor.")
+    # 13 Nov (user): short - name + PPE gear violation only
+    check(f"voice, registered: '{reg}'", reg == "Ritika, worker W 0 0 4. Helmet and gloves violation.")
+    check(f"voice, unregistered: '{unreg}'", unreg == "Unregistered person. Helmet violation.")
     check(f"voice, unauthorised: '{acc}'", acc == "Attention Sourav, worker W 0 0 2. You are not authorised in the Control room. Please leave now.")
     check("voice never speaks a name we do not know (no worker ID = unregistered person)", "Guess" not in nobody)
+    from backend.actuators import make_siren_wav
+    import wave, tempfile as _tf2
+    _w = os.path.join(_tf2.mkdtemp(), "siren.wav")
+    _d = make_siren_wav(_w)
+    with wave.open(_w) as _wf:
+        _n = _wf.getnframes() / _wf.getframerate()
+    check(f"fire: voice 'Fire detected.' / 'Smoke detected.' + a {_d:.1f} s industrial wail siren cycle",
+          m.fire_words({"type": "fire"}) == "Fire detected." and m.fire_words({"type": "smoke"}) == "Smoke detected."
+          and abs(_n - _d) < 0.05)
 
 
 voice_sentences()
@@ -127,7 +136,7 @@ async def run_voice():
     await m.ingest_event(ppe_evt("evt_voice1", "update", ["helmet", "vest", "goggles"], "W-001"))
     last = db.q("SELECT text FROM announcements WHERE event_id='evt_voice1' ORDER BY id DESC LIMIT 1")[0]["text"]
     check(f"29 Oct / 12 Nov: goggles found missing later on the same person -> NEW call '{last}'",
-          said("evt_voice1", "ppe") == 2 and last == "Allowed, safety goggles also missing."
+          said("evt_voice1", "ppe") == 2 and last == "Allowed, worker W 0 0 1. Safety goggles violation."
           and db.get_event("evt_voice1")["items_missing"] == ["helmet", "vest", "goggles"])
     kinds_ = [r["kind"] for r in db.q("SELECT kind FROM notifications WHERE event_id='evt_voice1'")]
     check("29 Oct: ... and ONE Telegram/e-mail 'more PPE missing: GOGGLES' per channel",
@@ -135,10 +144,36 @@ async def run_voice():
     await m.ingest_event(ppe_evt("evt_voice1", "update", ["helmet", "vest", "goggles"], "W-001", track_id=9))
     check("same list again (tracker handover) -> no extra call, no extra message",
           said("evt_voice1", "ppe") == 2 and len(db.q("SELECT kind FROM notifications WHERE event_id='evt_voice1'")) == len(kinds_))
+    m.SPK["unregistered_wait_s"] = 0.3                 # 13 Nov: unnamed alerts wait for face ID before the voice
     await m.ingest_event(ppe_evt("evt_voice2", "open", ["helmet"], "V-002", worker_name=None))
     await m.ingest_event(ppe_evt("evt_voice3", "open", ["helmet"], "V-003", worker_name=None))
-    check("tracker slip: same unregistered face opens 2 records (V-002, V-003) -> called once, not twice",
-          said("evt_voice2", "ppe") + said("evt_voice3", "ppe") == 1)
+    early = said("evt_voice2", "ppe") + said("evt_voice3", "ppe")
+    await asyncio.sleep(0.6)
+    check(f"tracker slip: same unregistered face opens 2 records (V-002, V-003) -> called once, not twice "
+          f"(and not before the {m.SPK['unregistered_wait_s']} s wait for a name: {early})",
+          early == 0 and said("evt_voice2", "ppe") + said("evt_voice3", "ppe") == 1)
+    # 13 Nov: name arrives DURING the wait -> spoken once, with the name (never 'unregistered')
+    m.SPOKEN.clear()
+    await m.ingest_event(ppe_evt("evt_nm1", "open", ["helmet"], None, worker_name=None, camera_id="cam_02",
+                                 zone_id="warehouse", zone_name="Warehouse"))
+    await m.ingest_event(ppe_evt("evt_nm1", "update", ["helmet"], "W-003", worker_name="Bibhu", camera_id="cam_02",
+                                 zone_id="warehouse", zone_name="Warehouse"))
+    await asyncio.sleep(0.6)
+    t = [r["text"] for r in db.q("SELECT text FROM announcements WHERE event_id='evt_nm1'")]
+    check(f"13 Nov: face recognised during the wait -> ONE call with the name: {t}",
+          t == ["Bibhu, worker W 0 0 3. Helmet violation."])
+    # 13 Nov: spoken as 'Unregistered person' (no name in time), recognised later -> said again ONCE with the name
+    m.SPOKEN.clear()
+    await m.ingest_event(ppe_evt("evt_nm2", "open", ["vest"], None, worker_name=None, camera_id="cam_03",
+                                 zone_id="assembly_line", zone_name="Assembly line"))
+    await asyncio.sleep(0.6)
+    await m.ingest_event(ppe_evt("evt_nm2", "update", ["vest"], "W-004", worker_name="Ritika", camera_id="cam_03",
+                                 zone_id="assembly_line", zone_name="Assembly line"))
+    await m.ingest_event(ppe_evt("evt_nm2", "update", ["vest"], "W-004", worker_name="Ritika", camera_id="cam_03",
+                                 zone_id="assembly_line", zone_name="Assembly line", track_id=8))
+    t = [r["text"] for r in db.q("SELECT text FROM announcements WHERE event_id='evt_nm2' ORDER BY id")]
+    check(f"13 Nov: said 'Unregistered person', name found later -> corrected once with name + ID: {t}",
+          t == ["Unregistered person. Safety vest violation.", "Ritika, worker W 0 0 4. Safety vest violation."])
     m.SPOKEN.clear()                                   # 20 s later
     await m.ingest_event(ppe_evt("evt_voice1", "update", ["helmet"], "W-001"))
     check("vest + goggles put back on (helmet still off) -> dashboard updated, no new alarm (nothing NEW missing)",
@@ -193,8 +228,60 @@ async def run_voice():
           and db.get_event("evt_rs3")["status"] == "open")
 
 
+async def run_missed():
+    """13 Nov (user: "violations missed in the PPE violation panel"): two ways a real violation never showed as Active."""
+    m.EDGE["started"] = time.time() - 30
+    # 1. an alert left escalated by an EARLIER edge run swallowed every new violation of that person
+    await m.ingest_event(ppe_evt("evt_old1", "open", ["helmet"], "W-097"))
+    db.x("UPDATE events SET status='escalated', updated_at=?, started_at=? WHERE event_id='evt_old1'",
+         (time.time() - 3600, time.time() - 3600))
+    await m.ingest_event(ppe_evt("evt_new1", "open", ["helmet"], "W-097"))
+    check("13 Nov: alert left open by an earlier AI run does NOT swallow the new violation -> new Active alert",
+          db.get_event("evt_new1") is not None and db.get_event("evt_new1")["status"] == "open")
+    # 2. acknowledged alert: the person left and came back (new edge alert) -> back to Active, spoken again
+    await m.ingest_event(ppe_evt("evt_ack1", "open", ["vest"], "W-098"))
+    await m._act("evt_ack1", "ack", "acknowledged", {})
+    m.PPE_SOURCES.pop("evt_ack1", None)                   # the edge alert behind it has ended (person left)
+    n0 = said("evt_ack1", "ppe")
+    await m.ingest_event(ppe_evt("evt_ack2", "open", ["vest"], "W-098"))
+    check(f"13 Nov: violation again after Acknowledge -> the card is back under Active and spoken "
+          f"({db.get_event('evt_ack1')['status']}, calls {n0}->{said('evt_ack1', 'ppe')})",
+          db.get_event("evt_ack1")["status"] == "open" and said("evt_ack1", "ppe") == n0 + 1)
+    # 3. acknowledged alert, more PPE missing -> back under Active
+    await m._act("evt_ack1", "ack", "acknowledged", {})
+    await m.ingest_event(ppe_evt("evt_ack1", "update", ["vest", "helmet"], "W-098"))
+    check("13 Nov: more PPE missing after Acknowledge -> back under Active",
+          db.get_event("evt_ack1")["status"] == "open")
+
+
+def call_lanes():
+    """13 Nov (user: "calling failed during the fire check"): MEASURED - the fire's call waited 90 s behind PPE Telegram /
+    e-mail messages in ONE queue, then was skipped because the short fire had already ended by itself."""
+    from backend import notify
+    d = notify.Dispatcher()
+    for k in range(5):
+        d.put({"event": {"type": "ppe_missing", "severity": "High"}, "channel": "telegram", "row": k})
+    d.put({"event": {"type": "fire", "severity": "Critical"}, "channel": "telegram", "row": "F"})
+    d.put({"event": {"type": "fire", "severity": "Critical"}, "channel": "call", "row": "C"})
+    first_tg, _ = d._next("telegram")
+    first_call, _ = d._next("call")
+    check("13 Nov: fire Telegram jumps 5 waiting PPE messages; the phone call has its own lane (never waits for Telegram / e-mail)",
+          first_tg["row"] == "F" and first_call["row"] == "C" and len(d.lanes["telegram"]) == 5)
+    now = time.time()
+    for eid, st, by in (("evt_fc1", "resolved", None), ("evt_fc2", "acknowledged", "sup"), ("evt_fc3", "resolved", "sup")):
+        db.x("INSERT INTO events (event_id, type, severity, status, zone_id, received_at, started_at, closed_by, acked_by) "
+             "VALUES (?,?,?,?,?,?,?,?,?)", (eid, "fire", "Critical", st, "welding_bay", now, now, by if st == "resolved" else None,
+                                            by if st == "acknowledged" else None))
+    want = [notify.Dispatcher._call_still_wanted({"event_id": e}, {"kind": "new alert|L0|Critical"})
+            for e in ("evt_fc1", "evt_fc2", "evt_fc3")]
+    check(f"13 Nov: short fire that ended BY ITSELF still gets its first call; acknowledged / resolved by a person -> no call {want}",
+          want == [True, False, False])
+
+
+call_lanes()
 m.SPK.update(repeat_after_s=60, max_repeats=1)
 asyncio.get_event_loop().run_until_complete(run_voice())
+asyncio.get_event_loop().run_until_complete(run_missed())
 check("voice rank: 'PPE complete' (5) after every alarm, before welcome (6)",
       m.voice_rank("welding_bay", "ppe_repeat") < m.voice_rank("welding_bay", "ppe_ok") < m.voice_rank("x", "attendance"))
 check("voice rank: high-risk alert 1 < medium 2 < repeat 4 < welcome 6; fire 0",

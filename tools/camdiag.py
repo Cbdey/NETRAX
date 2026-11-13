@@ -19,7 +19,7 @@ from datetime import datetime
 import cv2
 
 from edge.config import load_all, path
-from edge.stream import StreamReader
+from edge.stream import StreamReader, mask
 
 
 def main():
@@ -33,7 +33,7 @@ def main():
         cams = {c: v for c, v in cams.items() if c in a.only.split(",")}
     readers, stats = {}, {}
     for cid, cam in cams.items():
-        r = StreamReader(cid, cam["source"], 30, cam.get("rotate", 0), cam.get("capture"))
+        r = StreamReader(cid, cam["source"], 30, cam.get("rotate", 0), cam.get("capture"), cam.get("device"), cam.get("relay"))
         r.start()
         readers[cid] = r
         stats[cid] = {"frames": 0, "gaps": [], "last": None, "size": None, "no": 0}
@@ -69,8 +69,8 @@ def main():
             verdict = "slow source -> lower the phone resolution / check light (webcams drop fps in the dark)"
         else:
             verdict = "smooth"
-        lines.append(f"| {cid} | {str(cams[cid]['source'])[:40]} | {s['size'] or '-'} | {fps:.1f} | "
-                     f"{'%.2f s' % worst if worst else '-'} | {long_} | {r.state if hasattr(r, 'state') else ''} {r.detail} | {verdict} |")
+        lines.append(f"| {cid} | {mask(cams[cid]['source'])[:60]} | {s['size'] or '-'} | {fps:.1f} | "
+                     f"{'%.2f s' % worst if worst else '-'} | {long_} | {r.state if hasattr(r, 'state') else ''} {mask(r.detail)} | {verdict} |")
     for r in readers.values():
         r.stop()
     text = "\n".join(lines) + "\n"

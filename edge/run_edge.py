@@ -7,10 +7,13 @@ import time
 
 for _k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
     os.environ.setdefault(_k, "4")      # 4 Nov: measured AI 2 fps -> 6.7 fps with this cap (laptop, 2 cameras)
+# 13 Nov: RTSP CCTV over TCP + 5 s timeout (same default as edge/stream.py; set before OpenCV loads)
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp|stimeout;5000000|timeout;5000000")
 
 import cv2                              # noqa: E402
 
 from .config import load_all, path
+from .stream import mask
 from .detector import Detector
 from .engine import InferenceEngine
 from .identity import IdentityService
@@ -66,6 +69,8 @@ def _single_instance(port=48765):
 
 
 def main():
+    from .livelog import start as _livelog
+    _livelog("edge_live.log")            # 13 Nov: copy of this window in data/edge_live.log (run_all.bat only)
     if not _single_instance():
         print("[edge] NETRAX edge is ALREADY RUNNING (another window). Close that one first - two copies take the "
               "cameras from each other.", flush=True)
@@ -119,14 +124,14 @@ def main():
     for c in sorted(power.off & set(cameras)):
         print(f"[edge] {c} '{cameras[c].get('name')}' is switched OFF from the dashboard - turn it on there")
     for cam_id, cam in cameras.items():
-        r = StreamReader(cam_id, cam["source"], fps, cam.get("rotate", 0), cam.get("capture"))
+        r = StreamReader(cam_id, cam["source"], fps, cam.get("rotate", 0), cam.get("capture"), cam.get("device"), cam.get("relay"))
         r.allowed = (lambda c=cam_id: power.is_on(c) and share.allowed(c))
         r.start()
         wkr = CameraWorker(cam_id, cam, zones, settings, r, outbox, publisher, identity, engine=engine,
                            clips=clips)
         wkr.start()
         readers[cam_id], workers[cam_id] = r, wkr
-        print(f"[edge] {cam_id} '{cam.get('name')}' source={cam['source']} "
+        print(f"[edge] {cam_id} '{cam.get('name')}' source={mask(cam['source'])}{' (' + cam['device'] + ')' if cam.get('device') else ''} "
               f"zone={cam['default_zone']} tracker={wkr.tracker.kind} device={wkr.detector.device}")
 
     live = None
@@ -163,7 +168,7 @@ def main():
                     "risk": zones[cam["default_zone"]]["risk"],
                     "status": r.health(pf),
                     "detail": ("switched off from the dashboard" if not power.is_on(cam_id) else share.standby_detail(cam_id))
-                              if r.health(pf) == "STANDBY" else r.detail,
+                              if r.health(pf) == "STANDBY" else mask(r.detail),
                     "share": cam.get("share"),
                     "fps": round(pf, 1),
                     "source_fps": round(r.fps, 1),

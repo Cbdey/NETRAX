@@ -168,16 +168,13 @@ class LiveView(threading.Thread):
                 ov = predict_overlay(ov, self.motion.shift(cam, ov, ts, w))
             persons, items, parts, fire, rej = _scale_overlay(ov, k)
             polys = ov["polys"]
-            img = annotate.draw(small, persons, ov["shown"], items, fire, polys, rej, parts=parts)
+            img = annotate.draw(small, persons, ov["shown"], items, fire, polys, rej, parts=parts,
+                                unauth=ov.get("unauth", ()))
             if ov.get("entrance") is not None:
                 annotate.entrance_banner(img, ov["entrance"])
-            ai = wk.processed_fps() if wk else 0.0
-            label = f"AI {ai:.1f} fps"
         else:
             img = small
-            label = "AI starting..." if wk is not None and not wk.proc_times else "AI: no recent result"
-        cv2.putText(img, label, (8, img.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3, cv2.LINE_AA)
-        cv2.putText(img, label, (8, img.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+        # 13 Nov: no "AI x fps" writing in the picture any more - the camera tile shows the AI rate under the video
         self.publisher.frame(cam, img, ts)
         if self.clips is not None and self.clips.due(cam, ts):
             self.clips.add(cam, img, ts, [{"bbox": p["bbox"]} for p in persons])
